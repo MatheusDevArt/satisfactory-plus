@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./styles.css?v=11" />
+  <link rel="stylesheet" href="./styles.css?v=12" />
 </head>
 <body class="theme-light">
   <!-- ANIMAÇÃO DE ENTRADA (INTRO SPLASH) COM LOGO S+ E NOME SATISFACTORY+ -->
@@ -135,16 +135,19 @@
       <!-- ESTADO VAZIO (QUANDO AINDA NÃO SELECIONOU NADA) -->
       <div id="spaces-empty-overlay" class="spaces-empty-overlay"></div>
 
-      <!-- ORIENTAÇÃO DO FLUXO FLUTUANTE NO CANTO SUPERIOR DIREITO -->
+      <!-- ORIENTAÇÃO DO FLUXO E TUTORIAL NO CANTO SUPERIOR DIREITO -->
       <div id="top-right-floating-actions" class="top-right-floating-actions">
-        <div class="floating-orient-pill">
-          <button id="orient-lr" class="orient-btn active" onclick="setFlowOrientation('LR')" title="Fluxo da Esquerda para a Direita">
-            ➡️ Esquerda ➔ Direita
-          </button>
-          <button id="orient-tb" class="orient-btn" onclick="setFlowOrientation('TB')" title="Fluxo de Cima para Baixo">
+        <div class="floating-orient-pill" id="orient-pill-wrap">
+          <button id="orient-tb" class="orient-btn active" onclick="setFlowOrientation('TB')" title="Fluxo de Cima para Baixo (Padrão)">
             ⬇️ Cima ➔ Baixo
           </button>
+          <button id="orient-lr" class="orient-btn" onclick="setFlowOrientation('LR')" title="Fluxo da Esquerda para a Direita">
+            ➡️ Esquerda ➔ Direita
+          </button>
         </div>
+        <button id="btn-open-tutorial" class="btn-tutorial-pill" onclick="openTutorialModal()" title="Abrir Tutorial Interativo da Ferramenta">
+          📖 Tutorial
+        </button>
       </div>
 
       <!-- BARRA INFERIOR ESQUERDA DO MODO LIVRE (DIVISOR, UNIFICADOR & JUNÇÃO DE TUBO) -->
@@ -207,12 +210,36 @@
     </div>
   </div>
 
+  <!-- MODAL DE NOVA LINHA A PARTIR DO EXCESSO -->
+  <div id="excess-recipe-modal" class="modal-backdrop hidden" onclick="if(event.target===this) closeExcessRecipeModal()">
+    <div class="modal-dialog inspector-dialog" role="dialog" aria-modal="true" aria-labelledby="excess-modal-title">
+      <div class="modal-header">
+        <h3 id="excess-modal-title">♻️ Gerar Nova Linha a partir do Excesso</h3>
+        <button class="icon-close" onclick="closeExcessRecipeModal()" aria-label="Fechar">✕</button>
+      </div>
+      <div id="excess-modal-body" class="inspector-body"></div>
+    </div>
+  </div>
+
+  <!-- OVERLAY DO TUTORIAL INTERATIVO (CARROSSEL) -->
+  <div id="tutorial-modal" class="modal-backdrop hidden" onclick="if(event.target===this) closeTutorialModal()">
+    <div class="modal-dialog tutorial-dialog" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
+      <div class="modal-header">
+        <h3 id="tutorial-title">📖 Tutorial — Satisfactory+</h3>
+        <button class="icon-close" onclick="closeTutorialModal()" aria-label="Fechar">✕</button>
+      </div>
+      <div id="tutorial-body" class="tutorial-body"></div>
+      <div id="tutorial-footer" class="tutorial-footer"></div>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="./data/satisfactory-data.js?v=11"></script>
-  <script src="./js/map-data.js?v=11"></script>
-  <script src="./js/library-data.js?v=11"></script>
-  <script src="./js/icons.js?v=11"></script>
-  <script src="./js/solver.js?v=11"></script>
-  <script src="./js/app.js?v=11"></script>
+  <script src="./js/elk.bundled.js?v=12"></script>
+  <script src="./data/satisfactory-data.js?v=12"></script>
+  <script src="./js/map-data.js?v=12"></script>
+  <script src="./js/library-data.js?v=12"></script>
+  <script src="./js/icons.js?v=12"></script>
+  <script src="./js/solver.js?v=12"></script>
+  <script src="./js/app.js?v=12"></script>
 </body>
 </html>

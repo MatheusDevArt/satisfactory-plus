@@ -3497,3 +3497,409 @@ img {
   font-size: 11.5px;
   color: #cbd5e1;
 }
+
+/* ============================================================================
+ * OTIMIZAÇÃO DE ARRASTO 60 FPS (DESLIGA TRANSIÇÕES E ANIMAÇÕES PESADAS)
+ * ========================================================================== */
+
+.spaces-viewport.dragging-card *,
+.spaces-viewport.panning * {
+  transition: none !important;
+}
+
+.spaces-viewport.dragging-card .belt-track-animated,
+.spaces-viewport.dragging-card .pipe-liquid-animated,
+.spaces-viewport.panning .belt-track-animated,
+.spaces-viewport.panning .pipe-liquid-animated {
+  animation-play-state: paused !important;
+}
+
+.magnific-card.is-dragging-node {
+  z-index: 50 !important;
+  will-change: transform;
+  box-shadow: 0 22px 46px rgba(15, 23, 42, 0.28) !important;
+}
+
+/* ============================================================================
+ * NÓS DE RECURSO (SEM SEÇÃO DE SAÍDA) & PRODUTO FINAL EM DESTAQUE LARANJA
+ * ========================================================================== */
+
+.io-resource-extract {
+  background: rgba(14, 165, 233, 0.08);
+  border: 1px solid rgba(14, 165, 233, 0.35);
+}
+
+.resource-val {
+  color: #0284c7;
+}
+
+body.theme-dark .resource-val {
+  color: #38bdf8;
+}
+
+.magnific-card.final-product-highlight .mcard-top-label.final-top-label {
+  background: linear-gradient(135deg, #ea580c, #c2410c);
+  padding: 6px 10px;
+  border-radius: 10px;
+  box-shadow: 0 6px 16px rgba(234, 88, 12, 0.35);
+}
+
+.magnific-card.final-product-highlight .final-top-label .mcard-title {
+  color: #ffffff;
+}
+
+.final-product-pill {
+  font-size: 9.5px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #c2410c;
+  white-space: nowrap;
+}
+
+.mcard-box.final-product-box {
+  border: 3px solid #ea580c !important;
+  background: linear-gradient(180deg, rgba(255, 237, 213, 0.92) 0%, var(--bg-card) 58%) !important;
+  box-shadow: 0 16px 38px rgba(234, 88, 12, 0.32), 0 0 0 2px rgba(251, 146, 60, 0.45) !important;
+}
+
+body.theme-dark .mcard-box.final-product-box {
+  background: linear-gradient(180deg, rgba(154, 52, 18, 0.55) 0%, var(--bg-card) 62%) !important;
+}
+
+.mcard-image-stage.final-product-stage {
+  background: linear-gradient(180deg, rgba(249, 115, 22, 0.16) 0%, rgba(251, 146, 60, 0.05) 100%) !important;
+  border-bottom: 1.5px solid rgba(234, 88, 12, 0.35) !important;
+}
+
+/* ============================================================================
+ * EXCESSO NO QUADRO DE STATUS & MODAL DE NOVA LINHA
+ * ========================================================================== */
+
+.fqs-excess-block {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-card);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fqs-excess-title {
+  font-size: 10.5px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #d97706;
+}
+
+.fqs-excess-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid rgba(217, 119, 6, 0.35);
+}
+
+.fqs-excess-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fqs-excess-item strong {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-main);
+}
+
+.fqs-excess-item span {
+  display: block;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  color: #d97706;
+}
+
+.btn-excess-new-line {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(234, 88, 12, 0.45);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.14s ease;
+}
+
+.btn-excess-new-line:hover {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.excess-recipe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.excess-recipe-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-card);
+  background: var(--bg-card-inner);
+  color: var(--text-main);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.14s ease;
+}
+
+.excess-recipe-option:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.excess-rec-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.excess-rec-left strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.excess-rec-left span {
+  display: block;
+  font-size: 11.5px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.excess-rec-left small {
+  display: block;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.excess-rec-go {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* ============================================================================
+ * MARCADORES DE CONTINUAÇÃO (WRAPPING) & CONECTORES DE SAÍDA DE PÁGINA
+ * ========================================================================== */
+
+.wrap-flow-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  z-index: 7;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+}
+
+.wrap-flow-marker.out {
+  background: #1e293b;
+  color: #fb923c;
+  border: 1.5px solid #f97316;
+}
+
+.wrap-flow-marker.in {
+  background: #0f766e;
+  color: #ffffff;
+  border: 1.5px solid #14b8a6;
+}
+
+.offpage-full-ghost {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
+.offpage-full-ghost.wire-highlight {
+  opacity: 0.95 !important;
+  stroke-width: 4.5px !important;
+}
+
+.wire-belt-pill.offpage-pill {
+  pointer-events: auto !important;
+  cursor: pointer;
+  z-index: 9;
+  font-size: 10px;
+  padding: 3px 9px;
+}
+
+.wire-belt-pill.offpage-pill:hover {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+/* ============================================================================
+ * BOTÃO TUTORIAL (CANTO SUPERIOR DIREITO) & CARROSSEL OVERLAY
+ * ========================================================================== */
+
+.btn-tutorial-pill {
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 1.5px solid var(--accent);
+  background: var(--bg-card);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  transition: all 0.14s ease;
+  white-space: nowrap;
+}
+
+.btn-tutorial-pill:hover {
+  background: var(--accent);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.tutorial-dialog {
+  max-width: 560px;
+}
+
+.tutorial-body {
+  padding: 24px 24px 16px;
+}
+
+.tutorial-slide-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+}
+
+.tutorial-slide-icon {
+  width: 68px;
+  height: 68px;
+  border-radius: 18px;
+  background: var(--accent-soft);
+  border: 1.5px solid rgba(255, 107, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+}
+
+.tutorial-step-counter {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.tutorial-slide-card h4 {
+  font-size: 19px;
+  font-weight: 900;
+  color: var(--text-main);
+}
+
+.tutorial-slide-sub {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.tutorial-slide-desc {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-main);
+  background: var(--bg-card-inner);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 14px 16px;
+  text-align: left;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.tutorial-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-card-inner);
+}
+
+.btn-tutorial-nav {
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--border-card);
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.btn-tutorial-nav:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-tutorial-nav.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.tutorial-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tutorial-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: none;
+  background: var(--border-card);
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.tutorial-dot.active {
+  width: 24px;
+  background: var(--accent);
+}

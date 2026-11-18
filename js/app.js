@@ -12,9 +12,18 @@
 const AppState = {
   theme: 'light', // 'light' (padrão) | 'dark'
   mode: 'production', // 'production' | 'power' | 'free' | 'map'
-  orientation: 'LR', // 'LR' (Esquerda -> Direita) | 'TB' (Cima -> Baixo)
+  orientation: 'TB', // 'TB' (Cima -> Baixo, padrão) | 'LR' (Esquerda -> Direita)
   showAllMachines: true,
   sidebarCollapsed: false,
+  tutorial: {
+    isOpen: false,
+    step: 0
+  },
+  excessModal: {
+    isOpen: false,
+    itemId: null,
+    rate: 0
+  },
 
   // Aba 1 Unificada: Produção (determinada pelo que o usuário coloca primeiro: 'input' ou 'product')
   production: {
@@ -217,7 +226,7 @@ function switchMode(mode) {
   if (activeBtn) activeBtn.classList.add('active');
 
   const actionSec = document.getElementById('sidebar-action-section');
-  const topRightOrient = document.getElementById('top-right-floating-actions');
+  const orientPillWrap = document.getElementById('orient-pill-wrap');
   const hudControls = document.getElementById('spaces-hud-controls');
   const mapView = document.getElementById('map-workspace-view');
   const libraryView = document.getElementById('library-workspace-view');
@@ -233,7 +242,7 @@ function switchMode(mode) {
   const isFree = mode === 'free';
   const freeToolbar = document.getElementById('free-logistics-toolbar');
   if (actionSec) actionSec.classList.toggle('hidden', isWorkspaceOverlay);
-  if (topRightOrient) topRightOrient.classList.toggle('hidden', isWorkspaceOverlay);
+  if (orientPillWrap) orientPillWrap.classList.toggle('hidden', isWorkspaceOverlay);
   if (hudControls) hudControls.classList.toggle('hidden', isWorkspaceOverlay);
   if (freeToolbar) freeToolbar.classList.toggle('hidden', !isFree);
   if (mapView) mapView.classList.toggle('hidden', !isMap);
@@ -355,8 +364,19 @@ function clientToWorld(clientX, clientY) {
 }
 
 function resetAllCanvasInteractions() {
+  if (AppState.canvas.dragRafId) {
+    cancelAnimationFrame(AppState.canvas.dragRafId);
+    AppState.canvas.dragRafId = null;
+  }
   AppState.canvas.isPanning = false;
-  AppState.canvas.draggingNode = null;
+  if (AppState.canvas.draggingNode) {
+    const el = AppState.canvas.draggingNode.cardEl;
+    if (el) {
+      el.style.transform = '';
+      el.classList.remove('is-dragging-node');
+    }
+    AppState.canvas.draggingNode = null;
+  }
   if (AppState.canvas.wiring) {
     AppState.canvas.wiring = null;
     const prev = document.getElementById('wire-preview-path');
@@ -369,6 +389,32 @@ function resetAllCanvasInteractions() {
   if (viewportEl) {
     viewportEl.classList.remove('panning', 'dragging-card', 'wiring-active');
   }
+}
+
+function updateConnectedWiresForNode(nodeId) {
+  const graph = AppState.canvas.lastGraph;
+  if (!graph || !Array.isArray(graph.edges)) return;
+  const isTB = AppState.orientation === 'TB';
+  const nodeCoords = AppState.canvas.nodeMap;
+
+  graph.edges.forEach((edge, idx) => {
+    if (edge.from !== nodeId && edge.to !== nodeId) return;
+    if (edge._isOffPage) return;
+    const fromBox = nodeCoords.get(edge.from);
+    const toBox = nodeCoords.get(edge.to);
+    if (!fromBox || !toBox) return;
+
+    const geom = computeEdgeGeometry(fromBox, toBox, isTB, edge);
+    const groupEl = document.getElementById(`edge-group-${idx}`);
+    if (groupEl) {
+      groupEl.querySelectorAll('path').forEach(p => p.setAttribute('d', geom.d));
+    }
+    const pillEl = document.getElementById(`wire-pill-${idx}`);
+    if (pillEl) {
+      pillEl.style.left = `${geom.badgeX}px`;
+      pillEl.style.top = `${geom.badgeY}px`;
+    }
+  });
 }
 
 function initInfiniteCanvasEvents() {
@@ -435,12 +481,17 @@ function initInfiniteCanvasEvents() {
       }
 
       if (!box) return;
+      const actualCardEl = document.getElementById(targetNodeId);
+      if (actualCardEl) actualCardEl.classList.add('is-dragging-node');
       AppState.canvas.draggingNode = {
         nodeId: targetNodeId,
+        cardEl: actualCardEl,
         startClientX: e.clientX,
         startClientY: e.clientY,
         origX: box.x,
         origY: box.y,
+        currDx: 0,
+        currDy: 0,
         moved: false
       };
       AppState.canvas.movedDuringDrag = false;
@@ -475,7 +526,7 @@ function initInfiniteCanvasEvents() {
       return;
     }
 
-    // Arrastando card de máquina
+    // Arrastando card de máquina (60fps com transform + requestAnimationFrame, atualizando SÓ esteiras ligadas)
     if (AppState.canvas.draggingNode) {
       const dn = AppState.canvas.draggingNode;
       const dist = Math.hypot(e.clientX - dn.startClientX, e.clientY - dn.startClientY);
@@ -483,27 +534,28 @@ function initInfiniteCanvasEvents() {
         dn.moved = true;
         AppState.canvas.movedDuringDrag = true;
       }
-      const dx = (e.clientX - dn.startClientX) / AppState.canvas.scale;
-      const dy = (e.clientY - dn.startClientY) / AppState.canvas.scale;
-      const newX = Math.round(dn.origX + dx);
-      const newY = Math.round(dn.origY + dy);
+      dn.currDx = Math.round((e.clientX - dn.startClientX) / AppState.canvas.scale);
+      dn.currDy = Math.round((e.clientY - dn.startClientY) / AppState.canvas.scale);
 
-      const box = AppState.canvas.nodeMap.get(dn.nodeId);
-      if (box) {
-        box.x = newX;
-        box.y = newY;
-        AppState.canvas.customPositions[dn.nodeId] = { x: newX, y: newY };
-        const cardEl = document.getElementById(dn.nodeId);
-        if (cardEl) {
-          cardEl.style.left = `${newX}px`;
-          cardEl.style.top = `${newY}px`;
-        }
-        updateCanvasWiresOnly();
+      if (!AppState.canvas.dragRafId) {
+        AppState.canvas.dragRafId = requestAnimationFrame(() => {
+          AppState.canvas.dragRafId = null;
+          const activeDn = AppState.canvas.draggingNode;
+          if (!activeDn) return;
+          const box = AppState.canvas.nodeMap.get(activeDn.nodeId);
+          if (!box) return;
+          box.x = activeDn.origX + activeDn.currDx;
+          box.y = activeDn.origY + activeDn.currDy;
+          if (activeDn.cardEl) {
+            activeDn.cardEl.style.transform = `translate3d(${activeDn.currDx}px, ${activeDn.currDy}px, 0)`;
+          }
+          updateConnectedWiresForNode(activeDn.nodeId);
+        });
       }
       return;
     }
 
-    // Pan da câmera
+    // Pan da câmera (com requestAnimationFrame)
     if (!AppState.canvas.isPanning) return;
     const nx = e.clientX - AppState.canvas.startX;
     const ny = e.clientY - AppState.canvas.startY;
@@ -512,7 +564,12 @@ function initInfiniteCanvasEvents() {
     }
     AppState.canvas.x = nx;
     AppState.canvas.y = ny;
-    applyCanvasTransform();
+    if (!AppState.canvas.dragRafId) {
+      AppState.canvas.dragRafId = requestAnimationFrame(() => {
+        AppState.canvas.dragRafId = null;
+        applyCanvasTransform();
+      });
+    }
   });
 
   window.addEventListener('mouseup', (e) => {
@@ -533,10 +590,19 @@ function initInfiniteCanvasEvents() {
 
     if (AppState.canvas.draggingNode) {
       const dn = AppState.canvas.draggingNode;
-      if (dn.moved) {
+      const box = AppState.canvas.nodeMap.get(dn.nodeId);
+      if (dn.moved && box) {
+        box.x = dn.origX + dn.currDx;
+        box.y = dn.origY + dn.currDy;
+        AppState.canvas.customPositions[dn.nodeId] = { x: box.x, y: box.y };
+        if (dn.cardEl) {
+          dn.cardEl.style.transform = '';
+          dn.cardEl.style.left = `${box.x}px`;
+          dn.cardEl.style.top = `${box.y}px`;
+        }
+        updateConnectedWiresForNode(dn.nodeId);
         AppState.canvas.suppressClickUntil = Date.now() + 140;
-        const box = AppState.canvas.nodeMap.get(dn.nodeId);
-        if (AppState.mode === 'free' && box?.node?.blockId) {
+        if (AppState.mode === 'free' && box.node?.blockId) {
           const blk = AppState.free.blocks.find(b => b.id === box.node.blockId);
           if (blk && (blk.count || 1) === 1) {
             blk.x = box.x;
@@ -721,11 +787,39 @@ function updateTopRightFloatingActions() {
         const totalMach = plan.stages.reduce((s, x) => s + (x.intMachines || 0), 0);
         const totalExt = (plan.extractionPlan || plan.extraction || []).reduce((s, x) => s + (x.intExtractors || 0), 0);
         const totalMw = plan.totalPowerMw ?? plan.summary?.grandTotalPowerMw ?? plan.summary?.totalFactoryPowerMw ?? 0;
+        const excessList = (plan.allExcessItems || []).filter(ex => ex.item && ex.excessRate > 0.05);
+
+        const excessHtml = excessList.length > 0 ? `
+          <div class="fqs-excess-block">
+            <div class="fqs-excess-title">♻️ Excesso da Linha (${excessList.length})</div>
+            ${excessList.map(ex => `
+              <div class="fqs-excess-row">
+                <div class="fqs-excess-item">
+                  ${renderEntityIcon(ex.item, 22)}
+                  <div>
+                    <strong>${ex.item.name}</strong>
+                    <span>+${fmt(ex.excessRate, 1)} ${ex.item.unit || 'un'}/min</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="btn-excess-new-line"
+                  onclick="openExcessRecipeModal('${ex.item.id}', ${Number(ex.excessRate.toFixed(4))})"
+                  title="Escolher receita para aproveitar este excesso em uma nova linha de produção"
+                >
+                  ⚡ Gerar nova linha de produção
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        ` : '';
+
         summaryHtml = `
           <div class="flow-quick-summary">
             <div class="fqs-row"><span>🎯 Produto Final:</span><strong>${fmt(lastSt.actualProducedRate, 1)}/m ${lastSt.item?.name || ''}</strong></div>
-            <div class="fqs-row"><span>🏭 Máquinas / Extratores:</span><strong>${totalMach} máq. • ${totalExt} extr.</strong></div>
+            <div class="fqs-row"><span>🏭 Máquinas / Nós:</span><strong>${totalMach} máq. • ${totalExt} nó(s)</strong></div>
             <div class="fqs-row"><span>⚡ Consumo Total:</span><strong>${fmt(totalMw, 1)} MW</strong></div>
+            ${excessHtml}
           </div>
         `;
       }
@@ -1779,12 +1873,12 @@ function renderFreeMode(sidebarEl, emptyOverlay, autoFit) {
         ` : ''}
 
         ${rep.surpluses.length > 0 ? `
-          <div class="check-section-title">🟡 Sobras / Produção Disponível (${rep.surpluses.length})</div>
+          <div class="check-section-title">🟡 Excesso / Produção Disponível (${rep.surpluses.length})</div>
           ${rep.surpluses.map(s => `
             <div class="check-item-card surplus">
               <div class="check-item-head">
                 ${renderEntityIcon(s.item, 24)}
-                <strong>+${fmt(s.surplusRate, 1)} ${s.item.unit}/min de ${s.item.name} (${s.isFinalOutput ? 'Produto Final' : 'Sobra'})</strong>
+                <strong>+${fmt(s.surplusRate, 1)} ${s.item.unit}/min de ${s.item.name} (${s.isFinalOutput ? 'Produto Final' : 'Excesso'})</strong>
               </div>
               ${s.extraConsumerNote ? `<div class="check-tip">💡 ${s.extraConsumerNote}</div>` : ''}
             </div>
@@ -2207,6 +2301,16 @@ function clearCanvasGraph() {
   if (wiresEl) wiresEl.innerHTML = '';
 }
 
+let _elkInstance = null;
+let _layoutRunSeq = 0;
+
+function getElkInstance() {
+  if (!_elkInstance && typeof ELK !== 'undefined') {
+    _elkInstance = new ELK();
+  }
+  return _elkInstance;
+}
+
 function renderCanvasGraph(graph, autoFit = false) {
   const nodesEl = document.getElementById('spaces-nodes');
   const wiresEl = document.getElementById('spaces-wires');
@@ -2223,17 +2327,8 @@ function renderCanvasGraph(graph, autoFit = false) {
 
   const CARD_WIDTH = 330;
   const COMPACT_WIDTH = 228;
-  const CARD_HEIGHT = 430;
-  const COMPACT_HEIGHT = 180;
-
-  const STAGE_GAP_LR = 175;
-  const NODE_GAP_LR = 44;
-
-  const STAGE_GAP_TB = 140;
-  const NODE_GAP_TB = 44;
-
-  const nodeCoords = new Map();
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  const CARD_HEIGHT = 400;
+  const COMPACT_HEIGHT = 176;
 
   const ORIGIN_X = 600;
   const ORIGIN_Y = 500;
@@ -2262,6 +2357,8 @@ function renderCanvasGraph(graph, autoFit = false) {
 
   if (is3D) {
     // Layout de Maquete Vertical (Andares empilhados de baixo para cima: 1º Andar embaixo, 2º em cima...)
+    const nodeCoords = new Map();
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     const FLOOR_HEIGHT = 490;
     const FLOOR_GAP_X = 390;
     const floorsMap = new Map();
@@ -2282,12 +2379,11 @@ function renderCanvasGraph(graph, autoFit = false) {
     let maqueteFramesHtml = '';
     let maxFloorWidth = 420;
 
-    // First pass: position nodes per floor side-by-side
     sortedFloors.forEach((floor) => {
       const entries = floorsMap.get(floor);
       const floorY = BASE_BOTTOM_Y - (floor - 1) * FLOOR_HEIGHT;
       entries.forEach((entry, idxOnFloor) => {
-        const { node, col } = entry;
+        const { node, col, stageIdx } = entry;
         const isCompact = node.kind === 'splitter' || node.kind === 'merger' || node.kind === 'pipe_junction' || node.kind === 'power_emblem';
         const cardW = isCompact ? COMPACT_WIDTH : CARD_WIDTH;
         const cardH = isCompact ? COMPACT_HEIGHT : CARD_HEIGHT;
@@ -2297,7 +2393,7 @@ function renderCanvasGraph(graph, autoFit = false) {
         const x = customPos ? customPos.x : (typeof node.x === 'number' ? node.x : autoX);
         const y = customPos ? customPos.y : (typeof node.y === 'number' ? node.y : autoY);
 
-        nodeCoords.set(node.id, { x, y, w: cardW, h: cardH, node, title: col.title, isFirstInStage: false, floor });
+        nodeCoords.set(node.id, { x, y, w: cardW, h: cardH, node, title: col.title, stageIdx, wrapGroup: 0, floor });
         minX = Math.min(minX, x - 60);
         maxX = Math.max(maxX, x + cardW + 60);
         minY = Math.min(minY, y - 90);
@@ -2306,7 +2402,6 @@ function renderCanvasGraph(graph, autoFit = false) {
       maxFloorWidth = Math.max(maxFloorWidth, entries.length * FLOOR_GAP_X + 60);
     });
 
-    // Build architectural Maquete floor frames behind each floor
     sortedFloors.forEach((floor) => {
       const floorY = BASE_BOTTOM_Y - (floor - 1) * FLOOR_HEIGHT;
       const frameX = ORIGIN_X - 42;
@@ -2333,129 +2428,273 @@ function renderCanvasGraph(graph, autoFit = false) {
       nodesHtml += renderMagnificNodeCard(box, isTB);
     }
     nodesEl.innerHTML = nodesHtml;
-  } else {
-    // Layout Estilo Colmeia (ramificado e compacto, evitando linhas retas intermináveis)
-    const MAX_STAGES_PER_TIER = isTB ? 3 : 4;
-    const tierColOffsets = new Map();
-    const tierMaxSpan = new Map();
+    renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl);
 
-    // Pré-calcula a largura/altura de cada estágio em colmeia
-    const stageMeta = graph.columns.map((col, stageIdx) => {
-      const count = col.nodes.length;
-      const firstNode = col.nodes[0];
-      const isCompactCol = firstNode && (firstNode.kind === 'splitter' || firstNode.kind === 'merger' || firstNode.kind === 'pipe_junction' || firstNode.kind === 'power_emblem');
-      const cardW = isCompactCol ? COMPACT_WIDTH : CARD_WIDTH;
-      const cardH = isCompactCol ? COMPACT_HEIGHT : CARD_HEIGHT;
-      const useHoneycombCluster = count > 3;
-      const subCols = useHoneycombCluster ? 2 : 1;
-      const subRows = useHoneycombCluster ? Math.ceil(count / 2) : count;
-      const tierIdx = Math.floor(stageIdx / MAX_STAGES_PER_TIER);
-      const posInTier = stageIdx % MAX_STAGES_PER_TIER;
-
-      const stageW = isTB
-        ? (count * cardW + Math.max(0, count - 1) * NODE_GAP_TB)
-        : (subCols * cardW + (subCols - 1) * 36);
-      const stageH = isTB
-        ? cardH + (useHoneycombCluster ? 90 : 0)
-        : (subRows * cardH + Math.max(0, subRows - 1) * NODE_GAP_LR + (subCols > 1 ? Math.round((cardH + NODE_GAP_LR) / 2) : 0));
-
-      tierMaxSpan.set(tierIdx, Math.max(tierMaxSpan.get(tierIdx) || 0, isTB ? stageW : stageH));
-      return { col, count, isCompactCol, cardW, cardH, useHoneycombCluster, subCols, subRows, tierIdx, posInTier, stageW, stageH };
-    });
-
-    // Calcula origem de cada tier (faixa) para que nunca haja sobreposição
-    const tierOrigins = new Map();
-    let accOffset = 0;
-    const totalTiers = Math.ceil(graph.columns.length / MAX_STAGES_PER_TIER);
-    for (let t = 0; t < totalTiers; t++) {
-      tierOrigins.set(t, accOffset);
-      accOffset += (tierMaxSpan.get(t) || 450) + (isTB ? 220 : 180);
+    if (autoFit) {
+      setTimeout(() => fitCanvasToScreen(), 20);
+    } else {
+      applyCanvasTransform();
     }
+    return;
+  }
 
-    // Calcula X acumulado por posição dentro de cada tier (LR) ou Y (TB)
-    stageMeta.forEach((meta) => {
-      if (meta.count === 0) return;
-      const { col, cardW, cardH, useHoneycombCluster, tierIdx, posInTier, stageW } = meta;
-      const tierKey = `${tierIdx}_${posInTier}`;
-      const prevKey = `${tierIdx}_${posInTier - 1}`;
-      const baseCursor = posInTier === 0 ? 0 : (tierColOffsets.get(prevKey) || 0);
-      const gap = isTB ? STAGE_GAP_TB : STAGE_GAP_LR;
-      tierColOffsets.set(tierKey, baseCursor + (isTB ? cardH : stageW) + gap);
+  // =========================================================================
+  // LAYOUT EM CAMADAS COMPACTO COM ELKJS (layered + wrapping + grade > 8)
+  // Direção DOWN (padrão) ou RIGHT — quem consome SEMPRE fica depois!
+  // =========================================================================
+  const NODE_GAP = 20;
+  const LAYER_GAP = 48;
+  const WRAP_GAP = 96;
 
-      const tierBase = tierOrigins.get(tierIdx) || 0;
-      const honeycombStagger = (posInTier % 2 === 1) ? 58 : 0;
+  // Pré-calcula cada camada (sub-grade interna se > 8 máquinas)
+  const layersInfo = graph.columns
+    .map((col, idx) => {
+      const count = col.nodes.length;
+      if (count === 0) return null;
+      const firstNode = col.nodes[0];
+      const isCompact = firstNode && (firstNode.kind === 'splitter' || firstNode.kind === 'merger' || firstNode.kind === 'pipe_junction' || firstNode.kind === 'power_emblem');
+      const cardW = isCompact ? COMPACT_WIDTH : CARD_WIDTH;
+      const cardH = isCompact ? COMPACT_HEIGHT : CARD_HEIGHT;
 
-      if (!isTB) {
-        const colBaseX = ORIGIN_X + baseCursor;
-        const colCenterY = ORIGIN_Y + tierBase + (tierMaxSpan.get(tierIdx) || 430) / 2 + honeycombStagger;
-        const startY = colCenterY - meta.stageH / 2;
+      // Se camada tem > 8 máquinas, divide em grade dentro da própria camada mantendo a ordem
+      const maxPerLine = count > 8 ? Math.min(8, Math.ceil(Math.sqrt(count * 1.4))) : count;
+      const lines = Math.ceil(count / maxPerLine);
+      const gridCols = isTB ? maxPerLine : lines;
+      const gridRows = isTB ? lines : maxPerLine;
 
-        col.nodes.forEach((node, rowIdx) => {
-          const floor = getEffectiveFloor(node, rowIdx);
-          node._effectiveFloor = floor;
-          const customPos = AppState.canvas.customPositions[node.id];
+      const boxW = gridCols * cardW + Math.max(0, gridCols - 1) * NODE_GAP;
+      const boxH = gridRows * cardH + Math.max(0, gridRows - 1) * NODE_GAP;
 
-          const subCol = useHoneycombCluster ? (rowIdx % 2) : 0;
-          const subRow = useHoneycombCluster ? Math.floor(rowIdx / 2) : rowIdx;
-          const subStaggerY = (useHoneycombCluster && subCol === 1) ? Math.round((cardH + NODE_GAP_LR) / 2) : 0;
+      return {
+        layerIdx: idx,
+        col,
+        count,
+        isCompact,
+        cardW,
+        cardH,
+        gridCols,
+        gridRows,
+        boxW,
+        boxH
+      };
+    })
+    .filter(Boolean);
 
-          const autoX = colBaseX + subCol * (cardW + 36);
-          const autoY = startY + subRow * (cardH + NODE_GAP_LR) + subStaggerY;
+  const finalizeLayeredPositions = (layerPosMap, wrapGroupMap) => {
+    const nodeCoords = new Map();
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    let wrapMarkersHtml = '';
 
-          const x = customPos ? customPos.x : (typeof node.x === 'number' ? node.x : autoX);
-          const y = customPos ? customPos.y : (typeof node.y === 'number' ? node.y : autoY);
+    // Detecta quebras de coluna/linha (wrapping) para marcar onde o fluxo continua
+    let prevWrapGroup = null;
+    let prevLayerRect = null;
 
-          nodeCoords.set(node.id, { x, y, w: cardW, h: cardH, node, title: col.title, isFirstInStage: rowIdx === 0 && !customPos && typeof node.x !== 'number', floor });
+    layersInfo.forEach((li) => {
+      const pos = layerPosMap.get(li.layerIdx) || { x: 0, y: 0 };
+      const wrapGroup = wrapGroupMap.get(li.layerIdx) || 0;
+      const layerX = ORIGIN_X + pos.x;
+      const layerY = ORIGIN_Y + pos.y;
 
-          minX = Math.min(minX, x - 40);
-          maxX = Math.max(maxX, x + cardW + 40);
-          minY = Math.min(minY, y - 70);
-          maxY = Math.max(maxY, y + cardH + 40);
-        });
-      } else {
-        const rowBaseY = ORIGIN_Y + baseCursor;
-        const rowCenterX = ORIGIN_X + tierBase + (tierMaxSpan.get(tierIdx) || 400) / 2 + honeycombStagger;
-        const startX = rowCenterX - stageW / 2;
+      if (prevWrapGroup !== null && wrapGroup !== prevWrapGroup && prevLayerRect) {
+        // Marcador de continuação na saída da coluna/linha anterior e na entrada da nova
+        const outX = isTB ? (prevLayerRect.x + prevLayerRect.w / 2) : (prevLayerRect.x + prevLayerRect.w + 18);
+        const outY = isTB ? (prevLayerRect.y + prevLayerRect.h + 18) : (prevLayerRect.y + prevLayerRect.h / 2);
+        const inX = isTB ? (layerX + li.boxW / 2) : (layerX - 18);
+        const inY = isTB ? (layerY - 26) : (layerY + li.boxH / 2);
 
-        col.nodes.forEach((node, colIdx) => {
-          const floor = getEffectiveFloor(node, colIdx);
-          node._effectiveFloor = floor;
-          const customPos = AppState.canvas.customPositions[node.id];
-          const subStaggerY = (useHoneycombCluster && colIdx % 2 === 1) ? 72 : 0;
-
-          const autoX = startX + colIdx * (cardW + NODE_GAP_TB);
-          const autoY = rowBaseY + subStaggerY;
-
-          const x = customPos ? customPos.x : (typeof node.x === 'number' ? node.x : autoX);
-          const y = customPos ? customPos.y : (typeof node.y === 'number' ? node.y : autoY);
-
-          nodeCoords.set(node.id, { x, y, w: cardW, h: cardH, node, title: col.title, isFirstInStage: colIdx === 0 && !customPos && typeof node.x !== 'number', floor });
-
-          minX = Math.min(minX, x - 40);
-          maxX = Math.max(maxX, x + cardW + 40);
-          minY = Math.min(minY, y - 70);
-          maxY = Math.max(maxY, y + cardH + 40);
-        });
+        wrapMarkersHtml += `
+          <div class="wrap-flow-marker out" style="left:${outX}px; top:${outY}px;">
+            ${isTB ? `↪ Continua na Coluna ${wrapGroup + 1}` : `↪ Continua na Faixa ${wrapGroup + 1}`}
+          </div>
+          <div class="wrap-flow-marker in" style="left:${inX}px; top:${inY}px;">
+            ${isTB ? `↘ Continuação (Coluna ${wrapGroup + 1})` : `↘ Continuação (Faixa ${wrapGroup + 1})`}
+          </div>
+        `;
       }
+      prevWrapGroup = wrapGroup;
+      prevLayerRect = { x: layerX, y: layerY, w: li.boxW, h: li.boxH };
+
+      li.col.nodes.forEach((node, idxInLayer) => {
+        const floor = getEffectiveFloor(node, idxInLayer);
+        node._effectiveFloor = floor;
+        const customPos = AppState.canvas.customPositions[node.id];
+
+        let subCol, subRow;
+        if (isTB) {
+          subCol = idxInLayer % li.gridCols;
+          subRow = Math.floor(idxInLayer / li.gridCols);
+        } else {
+          subRow = idxInLayer % li.gridRows;
+          subCol = Math.floor(idxInLayer / li.gridRows);
+        }
+
+        const autoX = Math.round(layerX + subCol * (li.cardW + NODE_GAP));
+        const autoY = Math.round(layerY + subRow * (li.cardH + NODE_GAP));
+        const x = customPos ? customPos.x : (typeof node.x === 'number' ? node.x : autoX);
+        const y = customPos ? customPos.y : (typeof node.y === 'number' ? node.y : autoY);
+
+        nodeCoords.set(node.id, {
+          x,
+          y,
+          w: li.cardW,
+          h: li.cardH,
+          node,
+          title: li.col.title,
+          stageIdx: li.layerIdx,
+          wrapGroup,
+          floor
+        });
+
+        minX = Math.min(minX, x - 48);
+        maxX = Math.max(maxX, x + li.cardW + 48);
+        minY = Math.min(minY, y - 64);
+        maxY = Math.max(maxY, y + li.cardH + 48);
+      });
     });
 
     AppState.canvas.lastGraphBounds = { minX, maxX, minY, maxY };
     AppState.canvas.nodeMap = nodeCoords;
 
-    let nodesHtml = '';
+    let nodesHtml = wrapMarkersHtml;
     for (const [, box] of nodeCoords.entries()) {
       nodesHtml += renderMagnificNodeCard(box, isTB);
     }
     nodesEl.innerHTML = nodesHtml;
+    renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl);
+
+    if (autoFit) {
+      setTimeout(() => fitCanvasToScreen(), 25);
+    } else {
+      applyCanvasTransform();
+    }
+  };
+
+  // Fallback síncrono caso ELK não esteja disponível no ambiente
+  const runFallbackWrappedLayout = () => {
+    const layerPosMap = new Map();
+    const wrapGroupMap = new Map();
+    const targetPrimarySpan = isTB ? 2400 : 3200;
+    let cursorPrimary = 0;
+    let cursorSecondary = 0;
+    let maxSecondaryInStrip = 0;
+    let wrapIdx = 0;
+
+    layersInfo.forEach((li) => {
+      const primarySize = isTB ? li.boxH : li.boxW;
+      const secondarySize = isTB ? li.boxW : li.boxH;
+
+      if (cursorPrimary > 0 && cursorPrimary + primarySize > targetPrimarySpan) {
+        wrapIdx++;
+        cursorPrimary = 0;
+        cursorSecondary += maxSecondaryInStrip + WRAP_GAP;
+        maxSecondaryInStrip = 0;
+      }
+
+      if (isTB) {
+        layerPosMap.set(li.layerIdx, { x: cursorSecondary, y: cursorPrimary });
+      } else {
+        layerPosMap.set(li.layerIdx, { x: cursorPrimary, y: cursorSecondary });
+      }
+      wrapGroupMap.set(li.layerIdx, wrapIdx);
+      cursorPrimary += primarySize + LAYER_GAP;
+      maxSecondaryInStrip = Math.max(maxSecondaryInStrip, secondarySize);
+    });
+
+    finalizeLayeredPositions(layerPosMap, wrapGroupMap);
+  };
+
+  const elk = getElkInstance();
+  if (!elk || layersInfo.length === 0) {
+    runFallbackWrappedLayout();
+    return;
   }
 
-  renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl);
+  const runSeq = ++_layoutRunSeq;
+  const elkChildren = layersInfo.map((li) => ({
+    id: `L_${li.layerIdx}`,
+    width: Math.round(li.boxW),
+    height: Math.round(li.boxH)
+  }));
+  const elkEdges = [];
+  for (let i = 1; i < layersInfo.length; i++) {
+    elkEdges.push({
+      id: `LE_${i}`,
+      sources: [`L_${layersInfo[i - 1].layerIdx}`],
+      targets: [`L_${layersInfo[i].layerIdx}`]
+    });
+  }
 
-  if (autoFit) {
-    setTimeout(() => fitCanvasToScreen(), 20);
+  const elkGraph = {
+    id: 'root',
+    layoutOptions: {
+      'elk.algorithm': 'layered',
+      'elk.direction': isTB ? 'DOWN' : 'RIGHT',
+      'elk.aspectRatio': '1.6',
+      'elk.edgeRouting': 'ORTHOGONAL',
+      'elk.layered.wrapping.strategy': 'MULTI_EDGE',
+      'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+      'elk.spacing.nodeNode': String(NODE_GAP + 16),
+      'elk.layered.spacing.nodeNodeBetweenLayers': String(LAYER_GAP)
+    },
+    children: elkChildren,
+    edges: elkEdges
+  };
+
+  elk.layout(elkGraph).then((res) => {
+    if (runSeq !== _layoutRunSeq) return;
+    const layerPosMap = new Map();
+    const wrapGroupMap = new Map();
+
+    // Agrupa por coluna (DOWN) ou faixa (RIGHT) para identificar quebras de wrapping
+    let currentGroup = 0;
+    let prevPrimary = -Infinity;
+    (res.children || []).forEach((c) => {
+      const layerIdx = Number(String(c.id).replace('L_', ''));
+      const x = Math.round(c.x || 0);
+      const y = Math.round(c.y || 0);
+      const primary = isTB ? y : x;
+      if (prevPrimary !== -Infinity && primary < prevPrimary - 10) {
+        currentGroup++;
+      }
+      prevPrimary = primary;
+      layerPosMap.set(layerIdx, { x, y });
+      wrapGroupMap.set(layerIdx, currentGroup);
+    });
+
+    finalizeLayeredPositions(layerPosMap, wrapGroupMap);
+  }).catch(() => {
+    if (runSeq !== _layoutRunSeq) return;
+    runFallbackWrappedLayout();
+  });
+}
+
+function computeEdgeGeometry(fromBox, toBox, isTB, edge) {
+  let x1, y1, x2, y2, midX, midY, d, badgeX, badgeY;
+  const fromCompact = fromBox.node?.kind === 'splitter' || fromBox.node?.kind === 'merger' || fromBox.node?.kind === 'pipe_junction';
+  const toCompact = toBox.node?.kind === 'splitter' || toBox.node?.kind === 'merger' || toBox.node?.kind === 'pipe_junction';
+
+  if (!isTB) {
+    x1 = fromBox.x + fromBox.w;
+    y1 = fromBox.y + (fromCompact ? 78 : 132);
+    x2 = toBox.x;
+    y2 = toBox.y + (toCompact ? 78 : 132);
+    midX = (x1 + x2) / 2;
+    midY = (y1 + y2) / 2;
+    d = buildRoundedOrthogonalPathLR(x1, y1, x2, y2, midX);
+    badgeX = midX;
+    badgeY = midY;
   } else {
-    applyCanvasTransform();
+    x1 = fromBox.x + fromBox.w / 2;
+    y1 = fromBox.y + fromBox.h;
+    x2 = toBox.x + toBox.w / 2;
+    y2 = toBox.y;
+    midX = (x1 + x2) / 2;
+    midY = (y1 + y2) / 2;
+    d = buildRoundedOrthogonalPathTB(x1, y1, x2, y2, midY);
+    badgeX = midX;
+    badgeY = midY;
   }
+  return { x1, y1, x2, y2, midX, midY, d, badgeX, badgeY };
 }
 
 function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
@@ -2468,43 +2707,112 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
     if (!fromBox || !toBox) return;
 
     const isLift = (fromBox.floor || 1) !== (toBox.floor || 1);
-    const strokeColor = edge.isPipe ? '#475569' : '#f97316';
-    let d = '';
-    let midX = 0;
-    let midY = 0;
-
-    if (!isTB) {
-      const fromCompact = fromBox.node?.kind === 'splitter' || fromBox.node?.kind === 'merger' || fromBox.node?.kind === 'pipe_junction';
-      const toCompact = toBox.node?.kind === 'splitter' || toBox.node?.kind === 'merger' || toBox.node?.kind === 'pipe_junction';
-      const x1 = fromBox.x + fromBox.w;
-      const y1 = fromBox.y + (fromCompact ? 78 : 132);
-      const x2 = toBox.x;
-      const y2 = toBox.y + (toCompact ? 78 : 132);
-      midX = (x1 + x2) / 2;
-      midY = (y1 + y2) / 2;
-      d = buildRoundedOrthogonalPathLR(x1, y1, x2, y2, midX);
-    } else {
-      const x1 = fromBox.x + fromBox.w / 2;
-      const y1 = fromBox.y + fromBox.h;
-      const x2 = toBox.x + toBox.w / 2;
-      const y2 = toBox.y;
-      midX = (x1 + x2) / 2;
-      midY = (y1 + y2) / 2;
-      d = buildRoundedOrthogonalPathTB(x1, y1, x2, y2, midY);
-    }
+    const stageDiff = (typeof toBox.stageIdx === 'number' && typeof fromBox.stageIdx === 'number')
+      ? (toBox.stageIdx - fromBox.stageIdx)
+      : 1;
+    const isWrapJump = (typeof fromBox.wrapGroup === 'number' && typeof toBox.wrapGroup === 'number')
+      && fromBox.wrapGroup !== toBox.wrapGroup;
+    const isCycleBack = stageDiff <= 0;
+    const isOffPage = !edge.isCustom && (isWrapJump || stageDiff > 2 || isCycleBack);
+    edge._isOffPage = isOffPage;
 
     const hitHandler = (edge.isCustom && edge.edgeId)
       ? `onclick="openEdgeBeltMenu(event, '${edge.edgeId}')" oncontextmenu="openEdgeBeltMenu(event, '${edge.edgeId}')"`
       : '';
 
+    if (isOffPage) {
+      // Conector curto de saída de página (não desenha linha gigante atravessando camadas ou colunas)
+      const fromCompact = fromBox.node?.kind === 'splitter' || fromBox.node?.kind === 'merger' || fromBox.node?.kind === 'pipe_junction';
+      const toCompact = toBox.node?.kind === 'splitter' || toBox.node?.kind === 'merger' || toBox.node?.kind === 'pipe_junction';
+      const STUB = 28;
+
+      let sx1, sy1, sx2, sy2, tx1, ty1, tx2, ty2;
+      if (!isTB) {
+        sx1 = fromBox.x + fromBox.w;
+        sy1 = fromBox.y + (fromCompact ? 78 : 132);
+        sx2 = sx1 + STUB;
+        sy2 = sy1;
+        tx2 = toBox.x;
+        ty2 = toBox.y + (toCompact ? 78 : 132);
+        tx1 = tx2 - STUB;
+        ty1 = ty2;
+      } else {
+        sx1 = fromBox.x + fromBox.w / 2;
+        sy1 = fromBox.y + fromBox.h;
+        sx2 = sx1;
+        sy2 = sy1 + STUB;
+        tx2 = toBox.x + toBox.w / 2;
+        ty2 = toBox.y;
+        tx1 = tx2;
+        ty1 = ty2 - STUB;
+      }
+
+      const dOut = `M ${sx1} ${sy1} L ${sx2} ${sy2}`;
+      const dIn = `M ${tx1} ${ty1} L ${tx2} ${ty2}`;
+      const fullGeom = computeEdgeGeometry(fromBox, toBox, isTB, edge);
+      const stubStroke = edge.isPipe ? '#0284c7' : '#f97316';
+      const fromName = (fromBox.node?.topLabel || fromBox.node?.item?.name || 'Origem').slice(0, 22);
+      const toName = (toBox.node?.topLabel || toBox.node?.item?.name || 'Destino').slice(0, 22);
+      const ratePart = edge.label ? ` · ${edge.label}` : '';
+
+      pathsHtml += `
+        <g id="edge-group-${idx}" class="conveyor-edge-group offpage-edge-group" data-from="${edge.from}" data-to="${edge.to}">
+          <path class="offpage-stub" d="${dOut}" stroke="${stubStroke}" stroke-width="5" stroke-linecap="round" fill="none" />
+          <path class="offpage-stub" d="${dIn}" stroke="${stubStroke}" stroke-width="5" stroke-linecap="round" fill="none" />
+          <path
+            id="wire-${idx}"
+            data-from="${edge.from}"
+            data-to="${edge.to}"
+            class="magnific-wire offpage-full-ghost"
+            d="${fullGeom.d}"
+            stroke="${stubStroke}"
+            stroke-width="3.5"
+            stroke-dasharray="8 6"
+            fill="none"
+          />
+        </g>
+      `;
+
+      badgesHtml += `
+        <div
+          class="wire-belt-pill offpage-pill ${edge.isPipe ? 'pipe-pill' : 'belt-pill'}"
+          data-from="${edge.from}"
+          data-to="${edge.to}"
+          style="left:${sx2}px; top:${sy2 + (isTB ? 14 : 0)}px;"
+          onmouseenter="highlightEdgePair('${edge.from}', '${edge.to}', true)"
+          onmouseleave="highlightEdgePair('${edge.from}', '${edge.to}', false)"
+          onclick="focusOnNode('${edge.to}')"
+          title="Clique para ir até ${toName} • Passe o mouse para ver o caminho completo"
+        >
+          <span>→ ${toName}${ratePart}</span>
+        </div>
+        <div
+          class="wire-belt-pill offpage-pill ${edge.isPipe ? 'pipe-pill' : 'belt-pill'}"
+          data-from="${edge.from}"
+          data-to="${edge.to}"
+          style="left:${tx1}px; top:${ty1 - (isTB ? 14 : 0)}px;"
+          onmouseenter="highlightEdgePair('${edge.from}', '${edge.to}', true)"
+          onmouseleave="highlightEdgePair('${edge.from}', '${edge.to}', false)"
+          onclick="focusOnNode('${edge.from}')"
+          title="Clique para ir até ${fromName} • Passe o mouse para ver o caminho completo"
+        >
+          <span>← ${fromName}${ratePart}</span>
+        </div>
+      `;
+      return;
+    }
+
+    const geom = computeEdgeGeometry(fromBox, toBox, isTB, edge);
+    const { d, badgeX, badgeY } = geom;
+
     if (edge.isPipe) {
       pathsHtml += `
-        <g class="conveyor-edge-group pipe-edge-group ${edge.isCustom ? 'clickable-edge-group' : ''}" ${hitHandler}>
+        <g id="edge-group-${idx}" class="conveyor-edge-group pipe-edge-group ${edge.isCustom ? 'clickable-edge-group' : ''}" ${hitHandler}>
           <path
             class="pipe-casing"
             d="${d}"
             stroke="#334155"
-            stroke-width="12"
+            stroke-width="11"
             stroke-linecap="round"
             stroke-linejoin="round"
             fill="none"
@@ -2516,7 +2824,7 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
             class="magnific-wire pipe-wire"
             d="${d}"
             stroke="#0284c7"
-            stroke-width="7"
+            stroke-width="6.5"
             stroke-linecap="round"
             fill="none"
           />
@@ -2524,23 +2832,16 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
             class="pipe-liquid-flow pipe-liquid-animated"
             d="${d}"
             stroke="#38bdf8"
-            stroke-width="3.5"
+            stroke-width="3.2"
             stroke-dasharray="14 10"
             stroke-linecap="round"
-            fill="none"
-          />
-          <path
-            class="pipe-specular"
-            d="${d}"
-            stroke="rgba(255,255,255,0.42)"
-            stroke-width="1.4"
             fill="none"
           />
           <path
             class="wire-hit-area ${edge.isCustom ? 'clickable-wire' : ''}"
             d="${d}"
             stroke="transparent"
-            stroke-width="28"
+            stroke-width="24"
             fill="none"
           >
             ${edge.isCustom ? '<title>Clique para escolher a tubulação ou excluir conexão</title>' : ''}
@@ -2549,12 +2850,12 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
       `;
     } else {
       pathsHtml += `
-        <g class="conveyor-edge-group ${edge.isCustom ? 'clickable-edge-group' : ''}" ${hitHandler}>
+        <g id="edge-group-${idx}" class="conveyor-edge-group ${edge.isCustom ? 'clickable-edge-group' : ''}" ${hitHandler}>
           <path
             class="belt-rail"
             d="${d}"
             stroke="#1e293b"
-            stroke-width="10"
+            stroke-width="9"
             stroke-linecap="round"
             stroke-linejoin="round"
             fill="none"
@@ -2566,7 +2867,7 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
             class="magnific-wire belt-wire belt-track-animated ${isLift ? 'lift-wire' : ''}"
             d="${d}"
             stroke="#f97316"
-            stroke-width="5.5"
+            stroke-width="5"
             stroke-dasharray="10 6"
             fill="none"
           />
@@ -2574,7 +2875,7 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
             class="wire-hit-area ${edge.isCustom ? 'clickable-wire' : ''}"
             d="${d}"
             stroke="transparent"
-            stroke-width="28"
+            stroke-width="24"
             fill="none"
           >
             ${edge.isCustom ? '<title>Clique para escolher o nível da esteira ou excluir conexão</title>' : ''}
@@ -2584,16 +2885,7 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
     }
 
     if (edge.label || edge.isCustom) {
-      let badgeX = midX;
-      let badgeY = midY;
-      if (!isTB) {
-        badgeX = toBox.x - 76;
-        badgeY = toBox.y + 132 - 22;
-      } else {
-        badgeX = toBox.x + toBox.w / 2;
-        badgeY = toBox.y - 26;
-      }
-      const liftPrefix = isLift ? '🛗 Elevador • ' : '';
+      const liftPrefix = isLift ? '🛗 ' : '';
       const pillClick = (edge.isCustom && edge.edgeId)
         ? `onclick="openEdgeBeltMenu(event, '${edge.edgeId}')" oncontextmenu="openEdgeBeltMenu(event, '${edge.edgeId}')"`
         : '';
@@ -2602,13 +2894,14 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
         : '';
       badgesHtml += `
         <div
+          id="wire-pill-${idx}"
           class="wire-belt-pill ${edge.isPipe ? 'pipe-pill' : 'belt-pill'} ${edge.isCustom ? 'clickable-belt-pill' : ''} ${isLift ? 'lift-pill' : ''}"
           data-from="${edge.from}"
           data-to="${edge.to}"
           style="left:${badgeX}px; top:${badgeY}px;"
           ${pillClick}
         >
-          <span>${liftPrefix}${edge.label || 'Esteira (clique na linha)'}</span>
+          <span>${liftPrefix}${edge.label || 'v.1 · 60/m'}</span>
           ${deletePillBtn}
         </div>
       `;
@@ -2618,6 +2911,31 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
   wiresEl.innerHTML = pathsHtml;
   nodesEl.querySelectorAll('.wire-belt-pill').forEach(el => el.remove());
   nodesEl.insertAdjacentHTML('beforeend', badgesHtml);
+}
+
+function highlightEdgePair(fromId, toId, active) {
+  document.querySelectorAll('.magnific-wire').forEach(path => {
+    const match = path.getAttribute('data-from') === fromId && path.getAttribute('data-to') === toId;
+    if (match) path.classList.toggle('wire-highlight', active);
+  });
+  document.querySelectorAll('.wire-belt-pill').forEach(pill => {
+    const match = pill.getAttribute('data-from') === fromId && pill.getAttribute('data-to') === toId;
+    if (match) pill.classList.toggle('pill-highlight', active);
+  });
+}
+
+function focusOnNode(nodeId) {
+  const viewport = document.getElementById('spaces-viewport');
+  const box = AppState.canvas.nodeMap.get(nodeId);
+  if (!viewport || !box) return;
+  const rect = viewport.getBoundingClientRect();
+  const targetScale = Math.max(AppState.canvas.scale, 0.72);
+  AppState.canvas.scale = targetScale;
+  AppState.canvas.x = (rect.width / 2) - (box.x + box.w / 2) * targetScale;
+  AppState.canvas.y = (rect.height / 2) - (box.y + box.h / 2) * targetScale;
+  applyCanvasTransform();
+  highlightNodeWires(nodeId, true);
+  setTimeout(() => highlightNodeWires(nodeId, false), 1500);
 }
 
 function updateCanvasWiresOnly() {
@@ -2694,13 +3012,32 @@ function renderMagnificNodeCard(box, isTB) {
   }
 
   const isCompact = node.kind === 'splitter' || node.kind === 'merger' || node.kind === 'pipe_junction';
+  const isExtractor = node.kind === 'extractor';
+  const isFinalProduct = node.kind === 'final_product' || Boolean(node.isFinalProduct);
   const isConfigurable = Boolean(node.configMeta);
   const imgSize = isCompact ? 74 : 168;
 
   const inputsList = node.inputsList || [];
   const outputsList = node.outputsList || [];
 
-  const inputsHtml = isCompact ? '' : (inputsList.length > 0 ? `
+  // Nós de recurso: sem seção de SAÍDA, mostra apenas nome do recurso e quantidade extraída por minuto
+  const resourceExtractHtml = (isExtractor && node.resourceExtractInfo) ? `
+    <div class="io-section io-resource-extract">
+      <div class="io-item-row">
+        <div class="io-item-left">
+          ${node.resourceExtractInfo.item ? renderEntityIcon(node.resourceExtractInfo.item, 34) : ''}
+          <div class="io-item-text">
+            <strong class="io-item-name">${node.resourceExtractInfo.item ? node.resourceExtractInfo.item.name : 'Recurso'}</strong>
+          </div>
+        </div>
+        <div class="io-rate-value resource-val">
+          ${fmt(node.resourceExtractInfo.rate, 1)} <small>${node.resourceExtractInfo.unit || 'un'}/min</small>
+        </div>
+      </div>
+    </div>
+  ` : '';
+
+  const inputsHtml = (isCompact || isExtractor) ? '' : (inputsList.length > 0 ? `
     <div class="io-section io-consume">
       <div class="io-section-title">ENTRADA</div>
       ${inputsList.map(inp => `
@@ -2719,9 +3056,9 @@ function renderMagnificNodeCard(box, isTB) {
     </div>
   ` : '');
 
-  const outputsHtml = isCompact ? '' : (outputsList.length > 0 ? `
+  const outputsHtml = (isCompact || isExtractor) ? '' : (outputsList.length > 0 ? `
     <div class="io-section io-produce">
-      <div class="io-section-title">SAÍDA</div>
+      <div class="io-section-title">${isFinalProduct ? 'PRODUÇÃO FINAL' : 'SAÍDA'}</div>
       ${outputsList.map(out => `
         <div class="io-item-row">
           <div class="io-item-left">
@@ -2776,34 +3113,35 @@ function renderMagnificNodeCard(box, isTB) {
     <div
       id="${node.id}"
       data-floor="${floorNum}"
-      class="magnific-card kind-${node.kind} ${isCompact ? 'compact-card' : ''} ${isConfigurable ? 'configurable-card' : ''} ${floorNum > 1 ? 'upper-floor-card' : ''}"
+      class="magnific-card kind-${node.kind} ${isCompact ? 'compact-card' : ''} ${isFinalProduct ? 'final-product-highlight' : ''} ${isConfigurable ? 'configurable-card' : ''} ${floorNum > 1 ? 'upper-floor-card' : ''}"
       style="left:${x}px; top:${y}px; width:${w}px; --card-accent:${node.accent || '#ff7a1a'}; --floor-idx:${floorNum - 1};"
       onmouseenter="highlightNodeWires('${node.id}', true)"
       onmouseleave="highlightNodeWires('${node.id}', false)"
       ${isConfigurable ? `onclick="handleCanvasCardClick(event, '${node.id}')"` : ''}
       title="${isConfigurable ? 'Arraste para mover (Alt+Arrastar para duplicar) ou clique para configurar' : 'Arraste para mover livremente'}"
     >
-      <div class="mcard-top-label">
-        <span class="mcard-title">${node.topLabel}</span>
+      <div class="mcard-top-label ${isFinalProduct ? 'final-top-label' : ''}">
+        <span class="mcard-title">${isFinalProduct ? `🎯 ${node.entity?.name || 'Produto Final'}` : node.topLabel}</span>
         <div class="mcard-top-badges">
+          ${isFinalProduct ? '<span class="final-product-pill">PRODUTO FINAL</span>' : ''}
           ${floorBadgeHtml}
           ${deleteBtnHtml}
         </div>
       </div>
 
-      <div class="mcard-box">
-        <div class="mcard-image-stage ${isCompact ? 'compact-stage' : ''}">
+      <div class="mcard-box ${isFinalProduct ? 'final-product-box' : ''}">
+        <div class="mcard-image-stage ${isCompact ? 'compact-stage' : ''} ${isFinalProduct ? 'final-product-stage' : ''}">
           ${renderShowcaseImage(node.entity, imgSize)}
-          ${node.recipePill ? `<div class="mcard-recipe-pill">${node.recipePill}</div>` : ''}
+          ${node.recipePill && !isFinalProduct ? `<div class="mcard-recipe-pill">${node.recipePill}</div>` : ''}
           ${node.metaRight && !isCompact ? `<div class="mcard-meta-pill">${node.metaRight}</div>` : ''}
         </div>
 
         <div class="mcard-io-container">
           ${compactIoHtml}
+          ${resourceExtractHtml}
           ${inputsHtml}
           ${outputsHtml}
           ${logisticsHtml}
-          ${node.surplusLine ? `<div class="mcard-surplus-alert">🟡 ${node.surplusLine}</div>` : ''}
         </div>
         ${groupedCircleHtml}
       </div>
@@ -4012,6 +4350,8 @@ function initPickerEvents() {
   }
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      if (AppState.tutorial.isOpen) closeTutorialModal();
+      if (AppState.excessModal.isOpen) closeExcessRecipeModal();
       if (AppState.picker.isOpen) closePickerModal();
       if (AppState.inspector.isOpen) closeMachineInspector();
       if (AppState.library.selectedId) {
@@ -4023,6 +4363,9 @@ function initPickerEvents() {
         renderRecipesWorkspace();
       }
       closeCanvasMenus();
+    } else if (AppState.tutorial.isOpen) {
+      if (e.key === 'ArrowRight') nextTutorialStep();
+      else if (e.key === 'ArrowLeft') prevTutorialStep();
     }
   });
 }
@@ -5106,5 +5449,236 @@ function renderCalculatorWorkspace() {
         ${detailsHtml}
       </div>
     </div>
+  `;
+}
+
+/* ============================================================================
+ * EXCESSO -> GERAR NOVA LINHA DE PRODUÇÃO (APENAS ABA DE PRODUÇÃO)
+ * ========================================================================== */
+
+function openExcessRecipeModal(itemId, excessRate) {
+  const item = Solver.getItem(itemId);
+  if (!item) return;
+  AppState.excessModal = { isOpen: true, itemId, rate: Number(excessRate) || 0 };
+
+  const modal = document.getElementById('excess-recipe-modal');
+  const titleEl = document.getElementById('excess-modal-title');
+  const body = document.getElementById('excess-modal-body');
+  if (!modal || !body) return;
+
+  if (titleEl) {
+    titleEl.textContent = `♻️ Aproveitar Excesso de ${item.name} (${fmt(excessRate, 1)} ${item.unit || 'un'}/min)`;
+  }
+
+  const compatRecs = Solver.getCompatibleRecipesForItem(itemId);
+
+  if (compatRecs.length === 0) {
+    body.innerHTML = `
+      <div class="inspector-hero">
+        ${renderShowcaseImage(item, 80)}
+        <div class="inspector-hero-info">
+          <h4>${item.name}</h4>
+          <p>Não há receitas de fabricação que utilizem este item como ingrediente. Você pode enviá-lo para o Triturador AWESOME (AWESOME Sink).</p>
+        </div>
+      </div>
+      <div class="inspector-footer">
+        <button type="button" class="btn-mount-flow ready" onclick="closeExcessRecipeModal()">Fechar</button>
+      </div>
+    `;
+  } else {
+    body.innerHTML = `
+      <div class="inspector-hero">
+        ${renderShowcaseImage(item, 80)}
+        <div class="inspector-hero-info">
+          <h4>Escolha uma receita para consumir o excesso</h4>
+          <p>Disponível: <strong>${fmt(excessRate, 2)} ${item.unit || 'un'}/min</strong> de <strong>${item.name}</strong>. Ao selecionar uma receita abaixo, será gerada a nova linha de produção respeitando vazões de esteiras/tubos, máquinas inteiras e clock.</p>
+        </div>
+      </div>
+
+      <div class="excess-recipe-list">
+        ${compatRecs.map(r => {
+          const m = r.machineObj || Solver.getMachine(r.machine);
+          const ingEntry = (r.ingredients || []).find(i => i.item === itemId);
+          const mainProd = r.products?.[0];
+          const prodItem = mainProd ? Solver.getItem(mainProd.item) : null;
+          const estMachines = ingEntry && ingEntry.ratePerMin > 0 ? (excessRate / ingEntry.ratePerMin) : 0;
+          const estOut = mainProd ? estMachines * mainProd.ratePerMin : 0;
+          const otherIngs = (r.ingredients || [])
+            .filter(i => i.item !== itemId)
+            .map(i => `${fmt(estMachines * i.ratePerMin, 1)}/m ${Solver.getItem(i.item)?.name || i.item}`)
+            .join(' + ');
+
+          return `
+            <button type="button" class="excess-recipe-option" onclick="generateLineFromExcess('${itemId}', ${Number(excessRate.toFixed(4))}, '${r.id}', '${mainProd ? mainProd.item : ''}')">
+              <div class="excess-rec-left">
+                ${prodItem ? renderEntityIcon(prodItem, 40) : ''}
+                <div>
+                  <strong>${r.isAlternate ? '⭐ ' : ''}${r.cleanName || r.name}</strong>
+                  <span>${m ? m.name : 'Máquina'} • Produz ~${fmt(estOut, 1)} ${prodItem?.unit || 'un'}/min de ${prodItem?.name || ''}</span>
+                  ${otherIngs ? `<small>Também usa: ${otherIngs}</small>` : '<small>Usa apenas este item em excesso!</small>'}
+                </div>
+              </div>
+              <span class="excess-rec-go">Gerar ➔</span>
+            </button>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function closeExcessRecipeModal() {
+  AppState.excessModal.isOpen = false;
+  const modal = document.getElementById('excess-recipe-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function generateLineFromExcess(excessItemId, excessRate, recipeId, targetItemId) {
+  closeExcessRecipeModal();
+  if (!excessItemId || !targetItemId) return;
+
+  AppState.production.driver = 'input';
+  AppState.production.mounted = true;
+  AppState.push.inputs = [
+    {
+      id: uid(),
+      itemId: excessItemId,
+      mode: 'rate',
+      minerMark: 'mk2',
+      purity: 'normal',
+      extractorCount: 1,
+      clockPercent: 100,
+      rate: Math.max(0.1, Number(excessRate) || 30)
+    }
+  ];
+  AppState.push.targetItemId = targetItemId;
+  AppState.push.recipeOverrides = { [targetItemId]: recipeId };
+  AppState.push.stepSettings = {};
+  AppState.canvas.customPositions = {};
+  switchMode('production');
+}
+
+/* ============================================================================
+ * TUTORIAL INTERATIVO EM CARROSSEL (BOTÃO NO CANTO SUPERIOR DIREITO)
+ * ========================================================================== */
+
+const TUTORIAL_SLIDES = [
+  {
+    icon: '🧭',
+    title: 'Bem-vindo ao Satisfactory+ 1.0+',
+    subtitle: 'Visão geral das 7 abas da ferramenta',
+    desc: 'Use a barra superior à esquerda para navegar entre: 🏭 Produção (planejamento automático de fábricas), ⚡ Energia (usinas e bombas d\'água), 🛠️ Livre (sandbox manual + diagnóstico), 🗺️ Mapa (MASSAGE-2(A-B)b com 2.509 pinos), 📜 Receitas, 📚 Biblioteca e 🧮 Calculadora.'
+  },
+  {
+    icon: '🏭',
+    title: 'Como Gerar uma Linha de Produção',
+    subtitle: 'Comece pelo Recurso ou pelo Produto Final',
+    desc: 'Na aba Produção, você pode começar adicionando um Recurso/Mineradora (para ver tudo o que consegue fabricar) ou escolher diretamente o Produto Final e a meta por minuto. Depois clique em "Montar Linha de Produção" para visualizar todo o grafo.'
+  },
+  {
+    icon: '⬇️',
+    title: 'Como Ler o Fluxo e os Rótulos das Esteiras',
+    subtitle: 'Sempre de cima para baixo (ou esquerda para direita)',
+    desc: 'Quem consome um recurso SEMPRE fica depois de quem o produz. No meio de cada esteira ou tubo aparece uma pílula compacta com a versão mínima necessária e a vazão (ex.: "v.2 · 120/m"). Linhas longas ou que mudam de coluna usam conectores curtos "→ Destino" e "← Origem" — passe o mouse para destacar o caminho completo ou clique para saltar até o destino!'
+  },
+  {
+    icon: '⛏️',
+    title: 'Nós de Recurso e Cards de Máquina',
+    subtitle: 'Informação limpa e configuração direta no clique',
+    desc: 'Mineradoras, extratoras e bombas aparecem como "Nó de [recurso]" (ou "Água"), mostrando apenas o recurso e a taxa extraída por minuto. Clique em qualquer card de máquina ou nó no espaço para abrir o configurador de receita, overclock (1% a 250%) e quantidade inteira.'
+  },
+  {
+    icon: '🎯',
+    title: 'Produto Final em Destaque Laranja',
+    subtitle: 'Identifique imediatamente o objetivo da fábrica',
+    desc: 'O card do Produto Final (ou todos eles, se houver múltiplos objetivos) recebe destaque visual em laranja forte com a etiqueta "PRODUTO FINAL", ficando bem distinto das máquinas intermediárias e das esteiras.'
+  },
+  {
+    icon: '♻️',
+    title: 'Excesso e Nova Linha a Partir Dele',
+    subtitle: 'Aproveite subprodutos como Resina de Polímero',
+    desc: 'Somente itens produzidos pela linha que não são o produto final nem consumidos por outra etapa contam como Excesso. Eles aparecem somados no Quadro de Status (abaixo do botão Montar). Na aba Produção, clique em "⚡ Gerar nova linha de produção" ao lado de qualquer excesso para escolher uma receita já preenchida com a vazão disponível!'
+  },
+  {
+    icon: '🛠️',
+    title: 'Criação Livre (Sandbox) & Diagnóstico',
+    subtitle: 'Construa do seu jeito e valide gargalos',
+    desc: 'Na aba 🛠️ Livre, adicione mineradoras, máquinas, divisores, unificadores, junções de tubo e geradores. Arraste da porta de saída até outra máquina para conectar esteiras (ou solte no vazio para criar uma máquina compatível). Clique em "🩺 Diagnóstico / Check" para validar falta de recursos, limites de esteiras e receitas melhores.'
+  },
+  {
+    icon: '🔍',
+    title: 'Controles do Espaço, Agrupamento, Foco & 3D',
+    subtitle: 'Domine a navegação mesmo em fábricas gigantes',
+    desc: '• Arraste o fundo para mover a câmera e use a roda do mouse para dar zoom.\n• Arraste qualquer card livremente (Alt+Arrastar duplica no Modo Livre).\n• Passe o mouse sobre um card ou conector para ativar o Modo Foco nas esteiras ligadas.\n• Use "Todas Máquinas: SIM/NÃO" para expandir ou agrupar máquinas idênticas, "Visão 3D" para andares e "🎯 Centralizar" para enquadrar toda a fábrica.'
+  }
+];
+
+function openTutorialModal() {
+  AppState.tutorial.isOpen = true;
+  AppState.tutorial.step = 0;
+  const modal = document.getElementById('tutorial-modal');
+  if (modal) modal.classList.remove('hidden');
+  renderTutorialSlide();
+}
+
+function closeTutorialModal() {
+  AppState.tutorial.isOpen = false;
+  const modal = document.getElementById('tutorial-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function goToTutorialStep(idx) {
+  AppState.tutorial.step = Math.max(0, Math.min(TUTORIAL_SLIDES.length - 1, idx));
+  renderTutorialSlide();
+}
+
+function nextTutorialStep() {
+  if (AppState.tutorial.step < TUTORIAL_SLIDES.length - 1) {
+    AppState.tutorial.step++;
+    renderTutorialSlide();
+  } else {
+    closeTutorialModal();
+  }
+}
+
+function prevTutorialStep() {
+  if (AppState.tutorial.step > 0) {
+    AppState.tutorial.step--;
+    renderTutorialSlide();
+  }
+}
+
+function renderTutorialSlide() {
+  const body = document.getElementById('tutorial-body');
+  const footer = document.getElementById('tutorial-footer');
+  if (!body || !footer) return;
+
+  const idx = AppState.tutorial.step;
+  const slide = TUTORIAL_SLIDES[idx];
+  const isFirst = idx === 0;
+  const isLast = idx === TUTORIAL_SLIDES.length - 1;
+
+  body.innerHTML = `
+    <div class="tutorial-slide-card">
+      <div class="tutorial-slide-icon">${slide.icon}</div>
+      <span class="tutorial-step-counter">Passo ${idx + 1} de ${TUTORIAL_SLIDES.length}</span>
+      <h4>${slide.title}</h4>
+      <div class="tutorial-slide-sub">${slide.subtitle}</div>
+      <p class="tutorial-slide-desc">${slide.desc.replace(/\n/g, '<br>')}</p>
+    </div>
+  `;
+
+  footer.innerHTML = `
+    <button type="button" class="btn-tutorial-nav" onclick="prevTutorialStep()" ${isFirst ? 'disabled' : ''}>◀ Anterior</button>
+    <div class="tutorial-dots">
+      ${TUTORIAL_SLIDES.map((_, i) => `
+        <button type="button" class="tutorial-dot ${i === idx ? 'active' : ''}" onclick="goToTutorialStep(${i})" aria-label="Slide ${i + 1}"></button>
+      `).join('')}
+    </div>
+    <button type="button" class="btn-tutorial-nav primary" onclick="nextTutorialStep()">
+      ${isLast ? '✅ Começar a Usar' : 'Próximo ▶'}
+    </button>
   `;
 }

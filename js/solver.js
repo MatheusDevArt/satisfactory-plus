@@ -319,15 +319,6 @@
       const excessRate = Math.max(0, actualProducedRate - demandedRate);
       const deficitRate = Math.max(0, demandedRate - actualProducedRate);
 
-      if (excessRate > 1e-4) {
-        allExcessItems.push({
-          item: itemObj,
-          excessRate,
-          sourceItemId: itemId,
-          reason: `Sobra de ${intMachines}x ${mStats.machine.name} (geram ${actualProducedRate.toFixed(1)}/min, uso de ${demandedRate.toFixed(1)}/min)`
-        });
-      }
-
       const byproducts = [];
       recipe.products.forEach((p) => {
         if (p.item !== itemId) {
@@ -342,7 +333,7 @@
             item: byItem,
             excessRate: byRate,
             sourceItemId: itemId,
-            reason: `Subproduto da receita "${recipe.cleanName}"`
+            reason: `Excesso (subproduto) da receita "${recipe.cleanName}"`
           });
         }
       });
@@ -460,15 +451,6 @@
       totalExtractionPowerMw += exPower;
       totalExtractorsInt += intExtractors;
 
-      if (excessExtracted > 1e-4) {
-        allExcessItems.unshift({
-          item: resItem,
-          excessRate: excessExtracted,
-          sourceItemId: resId,
-          reason: `Sobra da extração (${intExtractors}x ${unitEx.extractor.name} extraem ${totalExtracted.toFixed(1)}/min, uso de ${rateNeeded.toFixed(1)}/min)`
-        });
-      }
-
       extractionPlan.push({
         resource: resItem,
         rateNeeded,
@@ -508,10 +490,30 @@
     const totalFactoryPowerMw = stages.reduce((acc, s) => acc + s.totalPowerMw, 0);
     const totalMachinesInt = stages.reduce((acc, s) => acc + s.intMachines, 0);
 
+    // Excesso: somente o que a linha produz (subprodutos) e não é o produto final nem é consumido por outra máquina da linha
+    const targetItemIds = new Set(targets.map((t) => t.item).filter(Boolean));
+    const consumedItemIds = new Set(Object.keys(demandByItem).filter((id) => !targetItemIds.has(id)));
+    const excessMap = {};
+    allExcessItems.forEach((ex) => {
+      if (!ex.item || ex.excessRate <= 1e-4) return;
+      if (targetItemIds.has(ex.item.id)) return;
+      if (consumedItemIds.has(ex.item.id)) return;
+      if (!excessMap[ex.item.id]) {
+        excessMap[ex.item.id] = {
+          item: ex.item,
+          excessRate: 0,
+          sourceItemId: ex.sourceItemId,
+          reason: ex.reason
+        };
+      }
+      excessMap[ex.item.id].excessRate += ex.excessRate;
+    });
+    const aggregatedExcessItems = Object.values(excessMap);
+
     return {
       stages,
       extractionPlan,
-      allExcessItems,
+      allExcessItems: aggregatedExcessItems,
       edges,
       buildCostList,
       summary: {
@@ -726,33 +728,33 @@
       });
     });
 
+    const excessByItemMap = {};
     stages.forEach((st) => {
       const usedDownstream = st.itemId === targetItemId
         ? st.actualProducedRate
         : (consumedFromPool[st.itemId] || 0);
       st.demandedRate = usedDownstream;
       st.excessRate = Math.max(0, st.actualProducedRate - usedDownstream);
-      if (st.excessRate > 1e-4) {
-        allExcessItems.push({
-          item: st.item,
-          excessRate: st.excessRate,
-          sourceItemId: st.itemId,
-          reason: `Sobra na etapa de ${st.item.name} (${st.actualProducedRate.toFixed(1)}/min gerado, ${usedDownstream.toFixed(1)}/min consumido)`
-        });
-      }
+
       st.byproducts.forEach((b) => {
+        if (!b.item || b.item.id === targetItemId) return;
         const usedBy = consumedFromPool[b.item.id] || 0;
+        if (usedBy > 1e-4) return;
         const netBy = Math.max(0, b.ratePerMin - usedBy);
         if (netBy > 1e-4) {
-          allExcessItems.push({
-            item: b.item,
-            excessRate: netBy,
-            sourceItemId: st.itemId,
-            reason: `Subproduto da receita "${st.recipe.cleanName}"`
-          });
+          if (!excessByItemMap[b.item.id]) {
+            excessByItemMap[b.item.id] = {
+              item: b.item,
+              excessRate: 0,
+              sourceItemId: st.itemId,
+              reason: `Excesso (subproduto) da receita "${st.recipe.cleanName}"`
+            };
+          }
+          excessByItemMap[b.item.id].excessRate += netBy;
         }
       });
     });
+    allExcessItems.push(...Object.values(excessByItemMap));
 
     const inputUsage = Object.entries(availableInputs)
       .filter(([, avail]) => avail > 0)
@@ -760,14 +762,6 @@
         const used = consumedFromPool[inId] || 0;
         const surplus = Math.max(0, avail - used);
         const it = DATA.items[inId];
-        if (surplus > 1e-4 && it) {
-          allExcessItems.unshift({
-            item: it,
-            excessRate: surplus,
-            sourceItemId: inId,
-            reason: `Sobra da Entrada (${avail.toFixed(1)}/min na entrada, ${used.toFixed(1)}/min consumido)`
-          });
-        }
         return {
           item: it,
           available: avail,
@@ -1129,6 +1123,18 @@
     return 3;
   }
 
+  function formatCompactWireLabel(logi, rate, isFluid = false) {
+    const numStr = Math.abs(rate - Math.round(rate)) < 0.05 ? String(Math.round(rate)) : rate.toFixed(1);
+    const unitSuffix = isFluid ? ' m³/m' : '/m';
+    if (!logi || !logi.shortTier) return `${numStr}${unitSuffix}`;
+    const vShort = logi.shortTier
+      .replace(/^Esteira\s+/i, '')
+      .replace(/^Tubo\s+/i, '')
+      .replace(/Esteira\s+/gi, '')
+      .replace(/Tubo\s+/gi, '');
+    return `${vShort} · ${numStr}${unitSuffix}`;
+  }
+
   /**
    * ============================================================================
    * INFINITE CANVAS GRAPH BUILDER ("SPACES DO MAGNIFIC" LAYOUT)
@@ -1164,17 +1170,14 @@
         const cardPower = pwr.extractorStats
           ? (showIndivEx ? pwr.extractorStats.powerPerExtractor : pwr.extractorStats.totalPowerMw)
           : 0;
-        const logi = getLogisticsInfo(cardRate, fuelItem.isFluid, maxBeltId);
-        const perExLogi = getLogisticsInfo(ratePerEx, fuelItem.isFluid, maxBeltId);
+        const nodeTitleBase = fuelItem.id === 'Desc_Water_C' ? 'Água' : `Nó de ${fuelItem.name}`;
 
         sourceNodes.push({
           id: `pwr_src_${i}`,
           kind: 'extractor',
           realCount: exCount,
           perMachineRate: ratePerEx,
-          topLabel: exObj
-            ? (showIndivEx ? `${exObj.name.toUpperCase()} #${i + 1}` : exObj.name.toUpperCase())
-            : `FONTE DE ${fuelItem.name.toUpperCase()}`,
+          topLabel: showIndivEx && exCount > 1 ? `${nodeTitleBase} #${i + 1}` : nodeTitleBase,
           badgeText: !showIndivEx && exCount > 1 ? `${exCount}x` : null,
           metaRight: pwr.extractorStats
             ? `${pwr.extractorStats.clockPercent}% • ⚡ ${cardPower.toFixed(1)} MW`
@@ -1183,20 +1186,16 @@
           recipePill: null,
           configMeta: {
             configType: 'power_fuel_source',
-            title: exObj ? exObj.name : `Fonte de ${fuelItem.name}`,
+            title: nodeTitleBase,
             itemId: fuelItem.id
           },
           inputsList: [],
-          outputsList: [
-            {
-              item: fuelItem,
-              rate: cardRate,
-              unit: fuelItem.unit,
-              beltText: showIndivEx
-                ? logi.beltTag
-                : `${logi.beltTag} (${perExLogi.shortTier} por máquina)`
-            }
-          ],
+          outputsList: [],
+          resourceExtractInfo: {
+            item: fuelItem,
+            rate: cardRate,
+            unit: fuelItem.unit
+          },
           outRate: cardRate,
           item: fuelItem
         });
@@ -1214,36 +1213,31 @@
         for (let w = 0; w < pumpCards; w++) {
           const wRate = showIndivPumps ? perPumpRate : pwr.totalWaterExtracted;
           const wPower = showIndivPumps ? perPumpMw : pwr.waterPumpPowerMw;
-          const wLogi = getLogisticsInfo(wRate, true, maxBeltId);
           sourceNodes.push({
             id: `pwr_water_${w}`,
             kind: 'extractor',
             realCount: pwr.intWaterPumps,
             perMachineRate: perPumpRate,
-            topLabel: !showIndivPumps && pwr.intWaterPumps > 1
-              ? `BOMBA D'ÁGUA`
-              : `BOMBA D'ÁGUA #${w + 1}`,
+            topLabel: showIndivPumps && pwr.intWaterPumps > 1
+              ? `Água #${w + 1}`
+              : `Água`,
             badgeText: !showIndivPumps && pwr.intWaterPumps > 1 ? `${pwr.intWaterPumps}x` : null,
             metaRight: `Clock ${pumpClock}% • ⚡ ${wPower.toFixed(1)} MW`,
             entity: waterEx,
             recipePill: null,
             configMeta: {
               configType: 'power_water_pump',
-              title: "Bomba d'Água (Resfriamento)",
+              title: "Água",
               itemId: 'Desc_Water_C'
             },
             inputsList: [],
-            outputsList: [
-              {
-                item: waterItem,
-                rate: wRate,
-                unit: 'm³',
-                beltText: wLogi.beltTag
-              }
-            ],
-            surplusLine: w === pumpCards - 1 && pwr.waterDeficit > 0.05
-              ? `🔴 Falta Água: -${pwr.waterDeficit.toFixed(1)} m³/min (aumente bombas ou overclock)`
-              : (w === pumpCards - 1 && pwr.waterExcess > 0.05 ? `Sobra de Água: +${pwr.waterExcess.toFixed(1)} m³/min` : null),
+            outputsList: [],
+            resourceExtractInfo: {
+              item: waterItem,
+              rate: wRate,
+              unit: 'm³'
+            },
+            surplusLine: null,
             outRate: wRate,
             item: waterItem
           });
@@ -1390,7 +1384,7 @@
             unit: 'm³',
             item: DATA.items['Desc_Water_C'],
             logistics: wLogi,
-            splitLabel: `${wn.outRate.toFixed(0)} m³/m • ${wLogi.wireTag}`
+            splitLabel: formatCompactWireLabel(wLogi, wn.outRate, true)
           });
         });
       }
@@ -1439,14 +1433,8 @@
         label: c.splitLabel,
         isPipe: c.item ? Boolean(c.item.isFluid) : false,
         isPowerLine: Boolean(c.isPowerLine),
-        isExcessLine: Boolean(c.isExcessLine)
+        isExcessLine: false
       }));
-
-      columns.forEach((col) => {
-        col.nodes.forEach((n) => {
-          if (n.excessText && !n.surplusLine) n.surplusLine = n.excessText;
-        });
-      });
 
       return { columns, connections, edges };
     }
@@ -1457,7 +1445,7 @@
     const nodeGroupsByItem = {};
     const stageMetaByItem = {};
 
-    // 1. Column 0: Raw Extractors (Mineradoras Individuais #1, #2, #3... ou Agrupadas)
+    // 1. Column 0: Raw Extractors ("Nó de [recurso]" ou "Água")
     if (plan.extractionPlan && plan.extractionPlan.length > 0) {
       const extractorNodes = [];
       plan.extractionPlan.forEach((ex) => {
@@ -1467,14 +1455,13 @@
         const showIndiv = expandIndividual && count <= MAX_INDIVIDUAL_CARDS && !ex.isCollectible;
         const cardsCount = showIndiv ? count : 1;
         const itemNodes = [];
-        const perExLogi = getLogisticsInfo(ex.ratePerExtractor, res.isFluid, maxBeltId);
 
         for (let i = 0; i < cardsCount; i++) {
           const nodeRate = showIndiv ? ex.ratePerExtractor : ex.totalExtracted;
           const nodePower = showIndiv ? ex.powerPerExtractor : ex.powerMw;
-          const logi = getLogisticsInfo(nodeRate, res.isFluid, maxBeltId);
           const purityLabel = ex.purity === 0.5 ? 'Impuro' : ex.purity === 2.0 ? 'Puro' : 'Normal';
           const nodeId = `ext_${res.id}_${i}`;
+          const baseTitle = res.id === 'Desc_Water_C' ? 'Água' : `Nó de ${res.name}`;
 
           const nodeObj = {
             id: nodeId,
@@ -1482,33 +1469,25 @@
             itemId: res.id,
             realCount: count,
             perMachineRate: ex.ratePerExtractor,
-            topLabel: ex.extractor
-              ? (showIndiv ? `${ex.extractor.name.toUpperCase()} #${i + 1}` : ex.extractor.name.toUpperCase())
-              : `ENTRADA DE ${res.name.toUpperCase()}`,
+            topLabel: showIndiv && count > 1 ? `${baseTitle} #${i + 1}` : baseTitle,
             badgeText: !showIndiv && count > 1 ? `${count}x` : null,
             metaRight: ex.extractor ? `${ex.clockPercent || 100}% • ⚡ ${nodePower.toFixed(1)} MW` : 'Entrada Direta',
             entity: ex.extractor || res,
-            recipePill: ex.extractor ? `Nó ${purityLabel}` : null,
+            recipePill: ex.extractor && res.id !== 'Desc_Water_C' ? `Nó ${purityLabel}` : null,
             configMeta: {
               configType: 'extractor',
               mode,
               itemId: res.id,
-              title: ex.extractor ? ex.extractor.name : res.name
+              title: baseTitle
             },
             inputsList: [],
-            outputsList: [
-              {
-                item: res,
-                rate: nodeRate,
-                unit: res.unit,
-                beltText: showIndiv
-                  ? logi.beltTag
-                  : `${logi.beltTag} (${ex.ratePerExtractor.toFixed(1)}/m • ${perExLogi.shortTier} cada)`
-              }
-            ],
-            excessText: i === cardsCount - 1 && ex.excessExtracted > 0.05
-              ? `Sobra na extração: +${ex.excessExtracted.toFixed(1)} ${res.unit}/min`
-              : null,
+            outputsList: [],
+            resourceExtractInfo: {
+              item: res,
+              rate: nodeRate,
+              unit: res.unit
+            },
+            excessText: null,
             outRate: nodeRate,
             item: res
           };
@@ -1528,7 +1507,7 @@
       if (extractorNodes.length > 0) {
         columns.push({
           id: 'col_extractors',
-          title: '⛏️ Extração (Mineradoras)',
+          title: '⛏️ Nós de Recurso',
           nodes: extractorNodes
         });
       }
@@ -1596,9 +1575,7 @@
           },
           inputsList: cardInputsList,
           outputsList: cardOutputsList,
-          excessText: m === cardsCount - 1 && st.excessRate > 0.05
-            ? `Sobra desta etapa: +${st.excessRate.toFixed(2)} ${st.item.unit}/min`
-            : null,
+          excessText: null,
           inRate: st.inputsConsumed[0] ? (showIndiv ? st.inputsConsumed[0].perMachineRate : st.inputsConsumed[0].ratePerMin) : 0,
           outRate: outRatePerCard,
           item: st.item
@@ -1647,27 +1624,31 @@
       };
     });
 
-    // 3. Final Output Product Card
+    // 3. Final Output Product Card(s) — todos os produtos finais recebem destaque laranja "PRODUTO FINAL"
     if (plan.stages && plan.stages.length > 0) {
-      const lastStage = plan.stages[plan.stages.length - 1];
-      const finalItem = lastStage.item;
-      const finalRate = lastStage.actualProducedRate;
-      const finalLogi = getLogisticsInfo(finalRate, finalItem.isFluid, maxBeltId);
-      const finalNodeId = `final_prod_${finalItem.id}`;
+      const finalTargetStages = (Array.isArray(plan.finalTargetIds) && plan.finalTargetIds.length > 0)
+        ? plan.stages.filter((s) => plan.finalTargetIds.includes(s.itemId))
+        : [plan.stages[plan.stages.length - 1]];
 
-      const finalNodes = [
-        {
+      const finalNodes = [];
+      finalTargetStages.forEach((tStage) => {
+        const finalItem = tStage.item;
+        const finalRate = tStage.actualProducedRate;
+        const finalNodeId = `final_prod_${finalItem.id}`;
+
+        finalNodes.push({
           id: finalNodeId,
           kind: 'final_product',
-          topLabel: '🎯 PRODUTO FINAL',
-          metaRight: `${lastStage.intMachines}x ${lastStage.machine.name}`,
+          isFinalProduct: true,
+          topLabel: 'PRODUTO FINAL',
+          metaRight: `${tStage.intMachines}x ${tStage.machine.name}`,
           entity: finalItem,
-          recipePill: null,
+          recipePill: 'PRODUTO FINAL',
           configMeta: {
             configType: 'stage_machine',
             mode,
             itemId: finalItem.id,
-            title: `${lastStage.machine.name} — ${finalItem.name}`
+            title: `${tStage.machine.name} — ${finalItem.name}`
           },
           inputsList: [],
           outputsList: [
@@ -1678,65 +1659,30 @@
             }
           ],
           excessText: null
-        }
-      ];
-
-      (plan.allExcessItems || []).forEach((ex, exIdx) => {
-        if (!ex.item || ex.excessRate <= 0.05) return;
-        const exNodeId = `excess_node_${exIdx}`;
-        finalNodes.push({
-          id: exNodeId,
-          kind: 'excess_output',
-          topLabel: '🟡 SOBRA',
-          metaRight: null,
-          entity: ex.item,
-          recipePill: null,
-          inputsList: [],
-          outputsList: [
-            {
-              item: ex.item,
-              rate: ex.excessRate,
-              unit: ex.item.unit
-            }
-          ],
-          excessText: ex.reason
         });
 
-        const srcGroup = nodeGroupsByItem[ex.sourceItemId];
-        if (srcGroup && srcGroup.length > 0) {
-          const exLogi = getLogisticsInfo(ex.excessRate, ex.item.isFluid, maxBeltId);
+        const lastMachineNodes = nodeGroupsByItem[finalItem.id] || [];
+        lastMachineNodes.forEach((mn) => {
+          const mLogi = getLogisticsInfo(mn.outRate, finalItem.isFluid, maxBeltId);
           connections.push({
-            fromNodeId: srcGroup[srcGroup.length - 1].id,
-            toNodeId: exNodeId,
-            rate: ex.excessRate,
-            unit: ex.item.unit,
-            item: ex.item,
-            isExcessLine: true,
-            logistics: exLogi,
-            splitLabel: `Sobra +${ex.excessRate.toFixed(1)}/m • ${exLogi.wireTag}`
+            fromNodeId: mn.id,
+            toNodeId: finalNodeId,
+            rate: mn.outRate,
+            unit: finalItem.unit,
+            item: finalItem,
+            logistics: mLogi,
+            splitLabel: formatCompactWireLabel(mLogi, mn.outRate, finalItem.isFluid)
           });
-        }
-      });
-
-      columns.push({
-        id: 'col_final_output',
-        title: '🎯 Resultado & Sobras',
-        nodes: finalNodes
-      });
-
-      const lastMachineNodes = nodeGroupsByItem[finalItem.id] || [];
-      lastMachineNodes.forEach((mn) => {
-        const mLogi = getLogisticsInfo(mn.outRate, finalItem.isFluid, maxBeltId);
-        connections.push({
-          fromNodeId: mn.id,
-          toNodeId: finalNodeId,
-          rate: mn.outRate,
-          unit: finalItem.unit,
-          item: finalItem,
-          logistics: mLogi,
-          splitLabel: `${mn.outRate.toFixed(1)}/m • ${mLogi.wireTag}`
         });
       });
+
+      if (finalNodes.length > 0) {
+        columns.push({
+          id: 'col_final_output',
+          title: '🎯 Produto Final',
+          nodes: finalNodes
+        });
+      }
     }
 
     const edges = connections.map((c) => ({
@@ -1745,14 +1691,8 @@
       label: c.splitLabel,
       isPipe: c.item ? Boolean(c.item.isFluid) : false,
       isPowerLine: Boolean(c.isPowerLine),
-      isExcessLine: Boolean(c.isExcessLine)
+      isExcessLine: false
     }));
-
-    columns.forEach((col) => {
-      col.nodes.forEach((n) => {
-        if (n.excessText && !n.surplusLine) n.surplusLine = n.excessText;
-      });
-    });
 
     return { columns, connections, edges };
   }
@@ -1809,7 +1749,7 @@
             unit,
             item,
             logistics: logi,
-            splitLabel: `${logi.shortTier} • ${r.toFixed(1)}${isFluid ? ' m³/m' : '/m'}`
+            splitLabel: formatCompactWireLabel(logi, r, isFluid)
           });
         }
       } else {
@@ -1823,7 +1763,7 @@
             unit,
             item,
             logistics: logi,
-            splitLabel: `${logi.shortTier} • ${sNode.outRate.toFixed(1)}${isFluid ? ' m³/m' : '/m'}`
+            splitLabel: formatCompactWireLabel(logi, sNode.outRate, isFluid)
           });
         });
       }
@@ -1978,7 +1918,7 @@
           unit,
           item,
           logistics: logi,
-          splitLabel: `${sNode.outRate.toFixed(1)}/m • ${logi.wireTag}`
+          splitLabel: formatCompactWireLabel(logi, sNode.outRate, isFluid)
         });
       });
       return;
@@ -2075,8 +2015,8 @@
             item,
             logistics: wLogi,
             splitLabel: showIndivLvl
-              ? `${wLogi.shortTier} • ${lvl.inRate.toFixed(1)}${isFluid ? ' m³/m' : '/m'}`
-              : `${wLogi.shortTier} • ${(lvl.totalCount * lvl.inRate).toFixed(1)}${isFluid ? ' m³/m' : '/m'}`
+              ? formatCompactWireLabel(wLogi, lvl.inRate, isFluid)
+              : formatCompactWireLabel(wLogi, lvl.totalCount * lvl.inRate, isFluid)
           });
         }
       } else {
@@ -2090,7 +2030,7 @@
             unit,
             item,
             logistics: wLogi,
-            splitLabel: `${wLogi.shortTier} • ${lvl.inRate.toFixed(1)}${isFluid ? ' m³/m' : '/m'}`
+            splitLabel: formatCompactWireLabel(wLogi, lvl.inRate, isFluid)
           });
         }
       }
@@ -2125,8 +2065,8 @@
           item,
           logistics: finalBranchLogi,
           splitLabel: T_cards > 1
-            ? `${finalBranchLogi.shortTier} • ${finalBranchRate.toFixed(1)}${isFluid ? ' m³/m' : '/m'}`
-            : `${finalBranchLogi.shortTier} • ${(T_real * finalBranchRate).toFixed(1)}${isFluid ? ' m³/m' : '/m'}`
+            ? formatCompactWireLabel(finalBranchLogi, finalBranchRate, isFluid)
+            : formatCompactWireLabel(finalBranchLogi, T_real * finalBranchRate, isFluid)
         });
       }
     } else {
@@ -2139,7 +2079,7 @@
           unit,
           item,
           logistics: finalBranchLogi,
-          splitLabel: `${finalBranchLogi.shortTier} • ${finalBranchRate.toFixed(1)}${isFluid ? ' m³/m' : '/m'}`
+          splitLabel: formatCompactWireLabel(finalBranchLogi, finalBranchRate, isFluid)
         });
       }
     }
@@ -2364,6 +2304,7 @@
 
       return {
         ...rawPlan,
+        finalTargetIds: targetItemId ? [targetItemId] : [],
         outputRate: rawPlan.finalOutputRate,
         totalPowerMw,
         summary: {
@@ -2473,6 +2414,7 @@
 
       return {
         ...rawPlan,
+        finalTargetIds: formattedTargets.map((t) => t.item).filter(Boolean),
         totalPowerMw,
         summary: {
           ...rawPlan.summary,
@@ -2562,12 +2504,13 @@
 
         const purityLabels = { impure: 'Nó Impuro', normal: 'Nó Normal', pure: 'Nó Puro' };
         const puritySub = item.id === 'Desc_Water_C' ? 'Extração de Água' : (purityLabels[block.purity] || 'Nó Normal');
+        const nodeTitle = item.id === 'Desc_Water_C' ? 'Água' : `Nó de ${item.name}`;
 
         return {
           blockId: block.id,
           blockType: 'extractor',
           entity: stats.extractor || item,
-          title: stats.extractor ? stats.extractor.name : item.name,
+          title: nodeTitle,
           subtitle: puritySub,
           count,
           clockPercent: clock,
@@ -2857,15 +2800,19 @@
             };
           });
 
+          const isExtractorBlock = st.blockType === 'extractor';
+          const firstOut = st.outputs[0];
+          const firstOutRate = firstOut ? (showIndiv ? firstOut.perMachineRate : firstOut.totalRate) : 0;
+
           const nodeObj = {
             id: nodeId,
             blockId: block.id,
             kind: st.blockType,
             realCount: st.count,
             perMachineRate: st.outputs[0] ? st.outputs[0].perMachineRate : 0,
-            topLabel: showIndiv
-              ? `${st.title.toUpperCase()} #${cardSeq}`
-              : st.title.toUpperCase(),
+            topLabel: showIndiv && st.count > 1
+              ? `${st.title} #${cardSeq}`
+              : st.title,
             badgeText: !showIndiv && st.count > 1 ? `${st.count}x` : null,
             metaRight: (st.blockType === 'splitter' || st.blockType === 'merger' || st.blockType === 'pipe_junction')
               ? null
@@ -2880,9 +2827,14 @@
               title: st.title
             },
             inputsList,
-            outputsList,
-            surplusLine: i === cardCount - 1 && alertSummary ? alertSummary : null,
-            outRate: st.outputs[0] ? (showIndiv ? st.outputs[0].perMachineRate : st.outputs[0].totalRate) : 0,
+            outputsList: isExtractorBlock ? [] : outputsList,
+            resourceExtractInfo: (isExtractorBlock && firstOut) ? {
+              item: firstOut.item,
+              rate: firstOutRate,
+              unit: firstOut.unit
+            } : null,
+            surplusLine: null,
+            outRate: firstOutRate,
             inRate: st.inputs[0] ? (showIndiv ? st.inputs[0].perMachineRate : st.inputs[0].totalRate) : 0,
             x: typeof block.x === 'number' ? block.x : null,
             y: typeof block.y === 'number' ? block.y : null,
@@ -2962,7 +2914,7 @@
       const nodeById = {};
       allCreatedNodes.forEach((n) => {
         nodeById[n.id] = n;
-        const firstOut = (n.outputsList || []).find(o => o.item && !o.isPower);
+        const firstOut = (n.outputsList || []).find(o => o.item && !o.isPower) || n.resourceExtractInfo;
         n._liveOutItem = firstOut ? firstOut.item : null;
         n._liveOutRate = firstOut ? (Number(firstOut.rate) || 0) : 0;
         n._liveInItem = null;
@@ -3069,12 +3021,15 @@
         const item = re.item;
         const unit = item?.isFluid ? ' m³/m' : '/m';
         const beltShort = re.beltObj?.name
-          ? re.beltObj.name.replace('Esteira de transporte ', 'Esteira ').replace('Tubulação ', 'Tubulação ')
-          : (item?.isFluid ? 'Tubulação v.1' : 'Esteira v.1');
+          ? re.beltObj.name.replace(/^Esteira de transporte\s+/i, '').replace(/^Tubulação\s+/i, '')
+          : 'v.1';
+        const numStr = Math.abs(re.actualRate - Math.round(re.actualRate)) < 0.05
+          ? String(Math.round(re.actualRate))
+          : re.actualRate.toFixed(1);
         const capWarn = re.isBottlenecked
           ? ` ⚠️ Máx ${re.beltObj.ratePerMin}/m`
           : '';
-        const label = `${beltShort} • ${re.actualRate.toFixed(1)}${unit}${capWarn}`;
+        const label = `${beltShort} · ${numStr}${unit}${capWarn}`;
 
         connections.push({
           edgeId: re.ce.id,
@@ -3131,6 +3086,7 @@
       let totalPowerProducedMw = 0;
 
       const producedByItem = {};
+      const extractedByItem = {};
       const consumedByItem = {};
       const blockStatsList = [];
 
@@ -3146,6 +3102,9 @@
         st.outputs.forEach((out) => {
           if (out.isPower || !out.item) return;
           producedByItem[out.item.id] = (producedByItem[out.item.id] || 0) + out.totalRate;
+          if (st.blockType === 'extractor') {
+            extractedByItem[out.item.id] = (extractedByItem[out.item.id] || 0) + out.totalRate;
+          }
 
           const cap = out.transportUsed?.ratePerMin || 60;
           const maxCapInGame = out.item.isFluid ? 600 : 1200;
@@ -3298,7 +3257,8 @@
             }
           });
         } else if (diff > 0.05) {
-          // Surplus
+          // Recurso extraído (nós de recurso) nunca conta como excesso
+          if ((extractedByItem[itemId] || 0) >= prod - 1e-4) return;
           const consumersExist = cons > 0.01;
           let extraConsumerNote = '';
           const consumerBlock = blockStatsList.find(({ stats }) => stats.inputs.some((i) => i.item?.id === itemId));
