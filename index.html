@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Satisfactory+ — Planejador Visual &amp; Mapa Interativo 1.0+</title>
+  <meta name="description" content="Planejador visual de fábricas, logística de divisores/esteiras, geradores de energia, mapa interativo MASSAGE-2(A-B)b e enciclopédia completa do Satisfactory 1.0+ em português." />
+  <meta property="og:title" content="Satisfactory+ — Planejador Visual &amp; Mapa Interativo 1.0+" />
+  <meta property="og:description" content="Planejador de fábricas no espaço infinito, cálculo de máquinas inteiras e divisores, diagnóstico livre e mapa interativo 1.0+ completo." />
+  <meta property="og:image" content="./assets/logo-splus.jpg" />
+  <link rel="icon" type="image/jpeg" href="./assets/logo-splus.jpg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="./styles.css?v=11" />
+</head>
+<body class="theme-light">
+  <!-- ANIMAÇÃO DE ENTRADA (INTRO SPLASH) COM LOGO S+ E NOME SATISFACTORY+ -->
+  <div id="intro-splash" class="intro-splash" onclick="dismissIntroSplash()">
+    <div class="intro-splash-card">
+      <div class="intro-logo-stage">
+        <div class="intro-logo-ring"></div>
+        <div class="intro-logo-glow"></div>
+        <img src="./assets/logo-splus.jpg" alt="Satisfactory+ Logo" class="intro-logo-img" />
+      </div>
+      <h1 class="intro-title">Satisfactory<span>+</span></h1>
+      <p class="intro-subtitle">Planejador de Fábricas, Logística &amp; Mapa Interativo 1.0+</p>
+      <div class="intro-progress-track">
+        <div class="intro-progress-bar"></div>
+      </div>
+      <div class="splash-credit">Criado por Matheus Pinheiro</div>
+    </div>
+  </div>
+
+  <div id="app-layout-root" class="app-layout-lr">
+    <!-- PAINEL LATERAL À ESQUERDA -->
+    <aside id="left-sidebar" class="left-sidebar">
+      <!-- CABEÇALHO COM LOGO S+, TEMA CLARO/ESCURO E MINIMIZAR -->
+      <div class="sidebar-brand">
+        <img src="./assets/logo-splus.jpg" alt="Satisfactory+" class="brand-logo-img" />
+        <div class="brand-text">
+          <h1>Satisfactory+</h1>
+          <span class="brand-subtitle">Planejador &amp; Mapa 1.0+</span>
+        </div>
+        <div class="brand-header-actions">
+          <button
+            id="btn-theme-toggle"
+            class="btn-header-icon"
+            onclick="toggleTheme()"
+            title="Alternar entre Modo Claro e Modo Escuro"
+          >
+            🌙 Escuro
+          </button>
+          <button
+            id="btn-collapse-sidebar"
+            class="btn-header-icon"
+            onclick="toggleSidebarCollapse()"
+            title="Minimizar barra lateral para ver apenas a Área de Trabalho"
+          >
+            ◀
+          </button>
+        </div>
+      </div>
+
+      <!-- BARRA DE ABAS REAL (SEPARADAS E LIMPAS, APENAS COM O TÍTULO) -->
+      <div class="tabs-bar-container">
+        <nav class="real-tabs-bar" role="tablist" aria-label="Abas principais">
+          <button id="tab-production" class="real-tab active" role="tab" onclick="switchMode('production')">
+            🏭 Produção
+          </button>
+          <button id="tab-power" class="real-tab" role="tab" onclick="switchMode('power')">
+            ⚡ Energia
+          </button>
+          <button id="tab-free" class="real-tab" role="tab" onclick="switchMode('free')">
+            🛠️ Livre
+          </button>
+          <button id="tab-map" class="real-tab" role="tab" onclick="switchMode('map')">
+            🗺️ Mapa
+          </button>
+          <button id="tab-recipes" class="real-tab" role="tab" onclick="switchMode('recipes')">
+            📜 Receitas
+          </button>
+          <button id="tab-library" class="real-tab" role="tab" onclick="switchMode('library')">
+            📚 Biblioteca
+          </button>
+          <button id="tab-calculator" class="real-tab" role="tab" onclick="switchMode('calculator')">
+            🧮 Calculadora
+          </button>
+        </nav>
+      </div>
+
+      <!-- AÇÃO PRINCIPAL NO PAINEL (MONTAR LINHA DE PRODUÇÃO / DIAGNÓSTICO) -->
+      <div id="sidebar-action-section" class="sidebar-section hidden"></div>
+
+      <!-- CONTEÚDO DINÂMICO DA ABA ATIVA -->
+      <div id="left-sidebar-content" class="sidebar-scroll-area"></div>
+
+      <div class="sidebar-creator-footer">Criado por Matheus Pinheiro</div>
+    </aside>
+
+    <!-- ÁREA DE TRABALHO À DIREITA (ESPAÇO INFINITO & MAPA INTERATIVO) -->
+    <main id="spaces-viewport" class="spaces-viewport">
+      <div id="spaces-grid-bg" class="spaces-grid-bg"></div>
+
+      <!-- BOTÃO FLUTUANTE PARA REABRIR A SIDEBAR QUANDO MINIMIZADA -->
+      <button
+        id="btn-expand-sidebar"
+        class="btn-expand-sidebar hidden"
+        onclick="toggleSidebarCollapse()"
+        title="Mostrar Barra Lateral de Configuração"
+      >
+        <img src="./assets/logo-splus.jpg" alt="S+" class="expand-btn-logo" />
+        <span>▶ Abrir Painel</span>
+      </button>
+
+      <!-- MUNDO TRANSFORMÁVEL (PAN & ZOOM DO FLUXO) -->
+      <div id="spaces-world" class="spaces-world">
+        <svg id="spaces-wires" class="spaces-wires" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="spaces-nodes" class="spaces-nodes"></div>
+      </div>
+
+      <!-- CAMADA DO MAPA INTERATIVO (EXIBIDA QUANDO A ABA MAPA ESTÁ ATIVA) -->
+      <div id="map-workspace-view" class="map-workspace-view hidden"></div>
+
+      <!-- CAMADA DA BIBLIOTECA DO JOGO (EXIBIDA QUANDO A ABA BIBLIOTECA ESTÁ ATIVA) -->
+      <div id="library-workspace-view" class="library-workspace-view hidden"></div>
+
+      <!-- CAMADA DE RECEITAS DO JOGO (EXIBIDA QUANDO A ABA RECEITAS ESTÁ ATIVA) -->
+      <div id="recipes-workspace-view" class="library-workspace-view hidden"></div>
+
+      <!-- CAMADA DA CALCULADORA NO SPACES (EXIBIDA QUANDO A ABA CALCULADORA ESTÁ ATIVA) -->
+      <div id="calculator-workspace-view" class="calculator-workspace-view hidden"></div>
+
+      <!-- ESTADO VAZIO (QUANDO AINDA NÃO SELECIONOU NADA) -->
+      <div id="spaces-empty-overlay" class="spaces-empty-overlay"></div>
+
+      <!-- ORIENTAÇÃO DO FLUXO FLUTUANTE NO CANTO SUPERIOR DIREITO -->
+      <div id="top-right-floating-actions" class="top-right-floating-actions">
+        <div class="floating-orient-pill">
+          <button id="orient-lr" class="orient-btn active" onclick="setFlowOrientation('LR')" title="Fluxo da Esquerda para a Direita">
+            ➡️ Esquerda ➔ Direita
+          </button>
+          <button id="orient-tb" class="orient-btn" onclick="setFlowOrientation('TB')" title="Fluxo de Cima para Baixo">
+            ⬇️ Cima ➔ Baixo
+          </button>
+        </div>
+      </div>
+
+      <!-- BARRA INFERIOR ESQUERDA DO MODO LIVRE (DIVISOR, UNIFICADOR & JUNÇÃO DE TUBO) -->
+      <div id="free-logistics-toolbar" class="free-logistics-toolbar hidden">
+        <button class="hud-btn hud-btn-logistics" onclick="addFreeBlock('splitter')" title="Adicionar Divisor de Esteira ao espaço">🔀 + Divisor</button>
+        <button class="hud-btn hud-btn-logistics" onclick="addFreeBlock('merger')" title="Adicionar Unificador de Esteira ao espaço">🔗 + Unificador</button>
+        <button class="hud-btn hud-btn-logistics" onclick="addFreeBlock('pipe_junction')" title="Adicionar Junção de Tubulação (líquidos e gases)">🔩 + Junção de Tubo</button>
+      </div>
+
+      <!-- CONTROLES FLUTUANTES DE ZOOM / VISÃO 3D / EXPANSÃO / ENQUADRAMENTO -->
+      <div id="spaces-hud-controls" class="spaces-hud-controls">
+        <button class="hud-btn" onclick="zoomCanvas(-0.15)" title="Diminuir Zoom">➖</button>
+        <span id="zoom-readout" class="zoom-readout" onclick="resetCanvasView()" title="Resetar Zoom para 100%">100%</span>
+        <button class="hud-btn" onclick="zoomCanvas(0.15)" title="Aumentar Zoom">➕</button>
+        <button id="btn-toggle-3d" class="hud-btn hud-btn-toggle" onclick="toggle3DView()" title="Alternar para Visão 3D em Andares (layout vertical)">
+          🏢 Visão 3D: NÃO
+        </button>
+        <button id="btn-toggle-expand" class="hud-btn hud-btn-toggle active" onclick="toggleShowAllMachines()" title="Alternar entre mostrar cada máquina individualmente ou agrupar por etapa">
+          🏭 Todas Máquinas: SIM
+        </button>
+        <button class="hud-btn hud-btn-fit" onclick="fitCanvasToScreen()" title="Centralizar e Enquadrar Fluxo">🎯 Centralizar</button>
+      </div>
+
+      <!-- MENU DE CONTEXTO (BOTÃO DIREITO NO MODO LIVRE) -->
+      <div id="canvas-context-menu" class="canvas-context-menu hidden"></div>
+
+      <!-- MENU RÁPIDO AO SOLTAR ESTEIRA NO VAZIO -->
+      <div id="wire-drop-menu" class="canvas-context-menu hidden"></div>
+    </main>
+  </div>
+
+  <!-- MODAL DE CONFIGURAÇÃO DIRETA AO CLICAR NA MÁQUINA NO ESPAÇO -->
+  <div id="machine-inspector-modal" class="modal-backdrop hidden" onclick="handleInspectorBackdropClick(event)">
+    <div class="modal-dialog inspector-dialog" role="dialog" aria-modal="true" aria-labelledby="inspector-title">
+      <div class="modal-header">
+        <h3 id="inspector-title">⚙️ Configurar Máquina</h3>
+        <button class="icon-close" onclick="closeMachineInspector()" aria-label="Fechar">✕</button>
+      </div>
+      <div id="inspector-body" class="inspector-body"></div>
+    </div>
+  </div>
+
+  <!-- MODAL VISUAL DE ESCOLHA DE ITEM (COM IMAGENS GRANDES) -->
+  <div id="picker-modal" class="modal-backdrop hidden" onclick="handleBackdropClick(event)">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+      <div class="modal-header">
+        <h3 id="picker-title">Selecionar Item</h3>
+        <button class="icon-close" onclick="closePickerModal()" aria-label="Fechar">✕</button>
+      </div>
+      <div class="modal-search-bar">
+        <input
+          type="text"
+          id="picker-search"
+          placeholder="🔍 Buscar pelo nome em português (ex: Carvão, Lingote de Ferro, Chapa, Barra)..."
+          autocomplete="off"
+        />
+        <div id="picker-categories" class="category-chips"></div>
+      </div>
+      <div id="picker-grid" class="picker-grid"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="./data/satisfactory-data.js?v=11"></script>
+  <script src="./js/map-data.js?v=11"></script>
+  <script src="./js/library-data.js?v=11"></script>
+  <script src="./js/icons.js?v=11"></script>
+  <script src="./js/solver.js?v=11"></script>
+  <script src="./js/app.js?v=11"></script>
+</body>
+</html>
