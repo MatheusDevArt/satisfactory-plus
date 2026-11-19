@@ -322,7 +322,6 @@ function renderAuthModalBody() {
           required
           minlength="3"
           maxlength="20"
-          pattern="[a-zA-Z0-9_.-]+"
           placeholder="Ex: Pioneiro_01"
           autocomplete="username"
         />

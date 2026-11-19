@@ -441,7 +441,7 @@ function initInfiniteCanvasEvents() {
     }
 
     if (e.button !== 0) return;
-    if (e.target.closest('button, input, select, .hud-btn, .empty-card-box, .btn-expand-sidebar, .map-workspace-view, .library-workspace-view, .calculator-workspace-view, .wire-hit-area, .conveyor-edge-group, .wire-belt-pill, #canvas-context-menu, #wire-drop-menu')) return;
+    if (e.target.closest('button, input, select, .hud-btn, .empty-card-box, .btn-expand-sidebar, .top-right-floating-actions, .user-dropdown-menu, .modal-backdrop, .map-workspace-view, .library-workspace-view, .calculator-workspace-view, .projects-workspace-view, .reports-workspace-view, .wire-hit-area, .conveyor-edge-group, .wire-belt-pill, #canvas-context-menu, #wire-drop-menu')) return;
 
     // 1. Clique em uma porta de saída para puxar esteira/conexão (APENAS no Modo Livre)
     const outPort = e.target.closest('.port-lr-out, .port-tb-out');
