@@ -1,4 +1,4 @@
-const { cleanupExpiredReports, applySecurityHeaders, sendJson } = require('../../_lib/store');
+const { cleanupExpiredReports, applySecurityHeaders, sendJson } = require('../_lib/store');
 
 module.exports = async function handler(req, res) {
   applySecurityHeaders(req, res);

@@ -53,6 +53,7 @@ async function writeJsonBlob(pathname, obj) {
     contentType: 'application/json; charset=utf-8',
     addRandomSuffix: false,
     allowOverwrite: true,
+    cacheControlMaxAge: 0,
     token: getToken()
   });
 }
@@ -337,35 +338,54 @@ async function invalidateSession(req, res) {
   if (res) clearSessionCookie(res);
 }
 
-// ---------- Rate Limiting (Blob-backed) ----------
+// ---------- Rate Limiting (Blob-backed, strongly consistent via list) ----------
 async function checkRateLimit(bucketKey, maxAttempts, windowMs) {
   const hashKey = crypto.createHash('sha256').update(bucketKey).digest('hex').slice(0, 24);
-  const pathname = `db/ratelimit/${hashKey}.json`;
-  const data = (await readJsonBlob(pathname)) || { attempts: [] };
+  const prefix = `db/ratelimit/${hashKey}/`;
+  const { blobs } = await list({ prefix, limit: 100, token: getToken() });
   const now = Date.now();
-  const valid = (data.attempts || []).filter((ts) => now - ts < windowMs);
+  const valid = [];
+  for (const b of blobs) {
+    const file = b.pathname.slice(prefix.length);
+    const ts = Number(file.split('_')[0]);
+    if (Number.isFinite(ts) && now - ts < windowMs) {
+      valid.push(ts);
+    } else {
+      del(b.url, { token: getToken() }).catch(() => {});
+    }
+  }
+  valid.sort((a, b) => a - b);
   return {
     blocked: valid.length >= maxAttempts,
     remaining: Math.max(0, maxAttempts - valid.length),
     retryAfterMs: valid.length >= maxAttempts ? Math.max(1000, windowMs - (now - valid[0])) : 0,
-    pathname,
+    prefix,
     valid
   };
 }
 
 async function recordRateLimitHit(bucketKey, windowMs) {
   const hashKey = crypto.createHash('sha256').update(bucketKey).digest('hex').slice(0, 24);
-  const pathname = `db/ratelimit/${hashKey}.json`;
-  const data = (await readJsonBlob(pathname)) || { attempts: [] };
   const now = Date.now();
-  const valid = (data.attempts || []).filter((ts) => now - ts < windowMs);
-  valid.push(now);
-  await writeJsonBlob(pathname, { attempts: valid });
+  const rand = crypto.randomBytes(4).toString('hex');
+  const pathname = `db/ratelimit/${hashKey}/${now}_${rand}.json`;
+  await put(pathname, '{}', {
+    access: 'public',
+    contentType: 'application/json',
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    cacheControlMaxAge: 0,
+    token: getToken()
+  });
 }
 
 async function clearRateLimit(bucketKey) {
   const hashKey = crypto.createHash('sha256').update(bucketKey).digest('hex').slice(0, 24);
-  await deleteBlobByPathname(`db/ratelimit/${hashKey}.json`).catch(() => {});
+  const prefix = `db/ratelimit/${hashKey}/`;
+  const { blobs } = await list({ prefix, limit: 100, token: getToken() });
+  for (const b of blobs) {
+    await del(b.url, { token: getToken() }).catch(() => {});
+  }
 }
 
 // ---------- Magic Bytes Image Validation ----------
