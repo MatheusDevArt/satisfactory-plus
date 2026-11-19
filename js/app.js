@@ -4370,7 +4370,6 @@ function initPickerEvents() {
   }
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      if (AppState.tutorial.isOpen) closeTutorialModal();
       if (AppState.excessModal.isOpen) closeExcessRecipeModal();
       if (AppState.picker.isOpen) closePickerModal();
       if (AppState.inspector.isOpen) closeMachineInspector();
@@ -4383,9 +4382,6 @@ function initPickerEvents() {
         renderRecipesWorkspace();
       }
       closeCanvasMenus();
-    } else if (AppState.tutorial.isOpen) {
-      if (e.key === 'ArrowRight') nextTutorialStep();
-      else if (e.key === 'ArrowLeft') prevTutorialStep();
     }
   });
 }
