@@ -481,14 +481,13 @@ function pickLogisticsFromModal(logisticsId) {
   closeAddMachineModal();
 
   if (typeof addFreeBlock === 'function') {
-    const newId = addFreeBlock(logObj.kind, {
+    addFreeBlock(logObj.kind, {
       logisticsId: logObj.id,
       x: pos.x,
-      y: pos.y
+      y: pos.y,
+      connectFromNodeId: fromNodeId || undefined,
+      itemId: filterItemId || undefined
     });
-    if (fromNodeId && newId && typeof handleWireDropOnCard === 'function') {
-      handleWireDropOnCard(fromNodeId, `free_${newId}_0`, filterItemId);
-    }
   }
 }
 
@@ -500,14 +499,13 @@ function pickRecipeFromModal(recipeId) {
   closeAddMachineModal();
 
   if (typeof addFreeBlock === 'function') {
-    const newId = addFreeBlock('machine', {
+    addFreeBlock('machine', {
       recipeId,
       x: pos.x,
-      y: pos.y
+      y: pos.y,
+      connectFromNodeId: fromNodeId || undefined,
+      itemId: filterItemId || undefined
     });
-    if (fromNodeId && newId && typeof handleWireDropOnCard === 'function') {
-      handleWireDropOnCard(fromNodeId, `free_${newId}_0`, filterItemId);
-    }
   }
 }
 
