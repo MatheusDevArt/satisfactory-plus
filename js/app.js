@@ -2122,8 +2122,8 @@ function renderMapWorkspace(filteredLocs) {
   }
 
   if (!mState.leafletMap && typeof L !== 'undefined') {
-    // Área útil real dos tiles MapGenie MASSAGE-2(A-B)b (evita bordas vazias)
-    const mapBounds = L.latLngBounds([0.04, -1.36], [1.36, -0.04]);
+    // Área útil real sem as margens pretas embutidas nos tiles MapGenie MASSAGE-2(A-B)b
+    const mapBounds = L.latLngBounds([0.18, -1.14], [1.22, -0.26]);
     mState.mapBounds = mapBounds;
     const map = L.map('leaflet-map-canvas', {
       center: [0.7, -0.7],
