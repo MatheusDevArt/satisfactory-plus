@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./styles.css?v=12" />
+  <link rel="stylesheet" href="./styles.css?v=13" />
 </head>
 <body class="theme-light">
   <!-- ANIMAÇÃO DE ENTRADA (INTRO SPLASH) COM LOGO S+ E NOME SATISFACTORY+ -->
@@ -87,6 +87,12 @@
           <button id="tab-calculator" class="real-tab" role="tab" onclick="switchMode('calculator')">
             🧮 Calculadora
           </button>
+          <button id="tab-projects" class="real-tab hidden" role="tab" onclick="switchMode('projects')">
+            📁 Projetos
+          </button>
+          <button id="tab-reports" class="real-tab hidden" role="tab" onclick="switchMode('reports')">
+            🛡️ Reports
+          </button>
         </nav>
       </div>
 
@@ -132,10 +138,16 @@
       <!-- CAMADA DA CALCULADORA NO SPACES (EXIBIDA QUANDO A ABA CALCULADORA ESTÁ ATIVA) -->
       <div id="calculator-workspace-view" class="calculator-workspace-view hidden"></div>
 
+      <!-- CAMADA DE PROJETOS SALVOS (SOMENTE USUÁRIOS LOGADOS) -->
+      <div id="projects-workspace-view" class="library-workspace-view hidden"></div>
+
+      <!-- CAMADA DE REPORTS DO ADMIN (SOMENTE ADMIN) -->
+      <div id="reports-workspace-view" class="library-workspace-view hidden"></div>
+
       <!-- ESTADO VAZIO (QUANDO AINDA NÃO SELECIONOU NADA) -->
       <div id="spaces-empty-overlay" class="spaces-empty-overlay"></div>
 
-      <!-- ORIENTAÇÃO DO FLUXO E TUTORIAL NO CANTO SUPERIOR DIREITO -->
+      <!-- ORIENTAÇÃO DO FLUXO, TUTORIAL, CONTA E REPORTAR NO CANTO SUPERIOR DIREITO -->
       <div id="top-right-floating-actions" class="top-right-floating-actions">
         <div class="floating-orient-pill" id="orient-pill-wrap">
           <button id="orient-tb" class="orient-btn active" onclick="setFlowOrientation('TB')" title="Fluxo de Cima para Baixo (Padrão)">
@@ -147,6 +159,14 @@
         </div>
         <button id="btn-open-tutorial" class="btn-tutorial-pill" onclick="openTutorialModal()" title="Abrir Tutorial Interativo da Ferramenta">
           📖 Tutorial
+        </button>
+        <div id="auth-header-slot" class="auth-header-slot">
+          <button id="btn-auth-login" class="btn-top-action" onclick="openAuthModal('login')" title="Entrar ou criar uma conta">
+            👤 Entrar
+          </button>
+        </div>
+        <button id="btn-open-report" class="btn-top-action btn-report-pill" onclick="handleReportButtonClick()" title="Reportar bug, enviar sugestão ou avaliação">
+          📣 Reportar
         </button>
       </div>
 
@@ -233,13 +253,55 @@
     </div>
   </div>
 
+  <!-- MODAL DE AUTENTICAÇÃO (ENTRAR / CRIAR CONTA / ALTERAR SENHA) -->
+  <div id="auth-modal" class="modal-backdrop hidden" onclick="if(event.target===this) closeAuthModal()">
+    <div class="modal-dialog auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+      <div class="modal-header">
+        <h3 id="auth-modal-title">👤 Entrar na Conta</h3>
+        <button class="icon-close" onclick="closeAuthModal()" aria-label="Fechar">✕</button>
+      </div>
+      <div id="auth-modal-body" class="inspector-body"></div>
+    </div>
+  </div>
+
+  <!-- MODAL DE REPORTAR (NOVO REPORT + MEUS REPORTS) -->
+  <div id="report-modal" class="modal-backdrop hidden" onclick="if(event.target===this) closeReportModal()">
+    <div class="modal-dialog report-dialog" role="dialog" aria-modal="true" aria-labelledby="report-modal-title">
+      <div class="modal-header">
+        <h3 id="report-modal-title">📣 Reportar / Feedback</h3>
+        <button class="icon-close" onclick="closeReportModal()" aria-label="Fechar">✕</button>
+      </div>
+      <div id="report-modal-body" class="inspector-body"></div>
+    </div>
+  </div>
+
+  <!-- MODAL DE SALVAR / RENOMEAR PROJETO -->
+  <div id="save-project-modal" class="modal-backdrop hidden" onclick="if(event.target===this) closeSaveProjectModal()">
+    <div class="modal-dialog auth-dialog" role="dialog" aria-modal="true" aria-labelledby="save-project-title">
+      <div class="modal-header">
+        <h3 id="save-project-title">💾 Salvar Projeto</h3>
+        <button class="icon-close" onclick="closeSaveProjectModal()" aria-label="Fechar">✕</button>
+      </div>
+      <div id="save-project-body" class="inspector-body"></div>
+    </div>
+  </div>
+
+  <!-- LIGHTBOX DE AMPLIAÇÃO DE IMAGEM -->
+  <div id="image-lightbox-modal" class="modal-backdrop hidden" onclick="closeImageLightbox()">
+    <div class="lightbox-wrap" onclick="event.stopPropagation()">
+      <button type="button" class="lightbox-close" onclick="closeImageLightbox()" aria-label="Fechar">✕</button>
+      <img id="image-lightbox-img" src="" alt="Imagem ampliada" />
+    </div>
+  </div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="./js/elk.bundled.js?v=12"></script>
-  <script src="./data/satisfactory-data.js?v=12"></script>
-  <script src="./js/map-data.js?v=12"></script>
-  <script src="./js/library-data.js?v=12"></script>
-  <script src="./js/icons.js?v=12"></script>
-  <script src="./js/solver.js?v=12"></script>
-  <script src="./js/app.js?v=12"></script>
+  <script src="./js/elk.bundled.js?v=13"></script>
+  <script src="./data/satisfactory-data.js?v=13"></script>
+  <script src="./js/map-data.js?v=13"></script>
+  <script src="./js/library-data.js?v=13"></script>
+  <script src="./js/icons.js?v=13"></script>
+  <script src="./js/solver.js?v=13"></script>
+  <script src="./js/app.js?v=13"></script>
+  <script src="./js/account-features.js?v=13"></script>
 </body>
 </html>

@@ -1,0 +1,9 @@
+{
+  "name": "satisfactory-plus",
+  "version": "1.2.0",
+  "private": true,
+  "description": "Satisfactory+ — Planejador Visual, Contas, Reports e Projetos",
+  "dependencies": {
+    "@vercel/blob": "^1.1.1"
+  }
+}

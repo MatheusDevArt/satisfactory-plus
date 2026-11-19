@@ -232,13 +232,17 @@ function switchMode(mode) {
   const libraryView = document.getElementById('library-workspace-view');
   const recipesView = document.getElementById('recipes-workspace-view');
   const calcView = document.getElementById('calculator-workspace-view');
+  const projectsView = document.getElementById('projects-workspace-view');
+  const reportsView = document.getElementById('reports-workspace-view');
   const spacesWorld = document.getElementById('spaces-world');
 
   const isMap = mode === 'map';
   const isLibrary = mode === 'library';
   const isRecipes = mode === 'recipes';
   const isCalc = mode === 'calculator';
-  const isWorkspaceOverlay = isMap || isLibrary || isRecipes || isCalc;
+  const isProjects = mode === 'projects';
+  const isReports = mode === 'reports';
+  const isWorkspaceOverlay = isMap || isLibrary || isRecipes || isCalc || isProjects || isReports;
   const isFree = mode === 'free';
   const freeToolbar = document.getElementById('free-logistics-toolbar');
   if (actionSec) actionSec.classList.toggle('hidden', isWorkspaceOverlay);
@@ -249,6 +253,8 @@ function switchMode(mode) {
   if (libraryView) libraryView.classList.toggle('hidden', !isLibrary);
   if (recipesView) recipesView.classList.toggle('hidden', !isRecipes);
   if (calcView) calcView.classList.toggle('hidden', !isCalc);
+  if (projectsView) projectsView.classList.toggle('hidden', !isProjects);
+  if (reportsView) reportsView.classList.toggle('hidden', !isReports);
   if (spacesWorld) spacesWorld.classList.toggle('hidden', isWorkspaceOverlay);
 
   closeCanvasMenus();
@@ -427,7 +433,7 @@ function initInfiniteCanvasEvents() {
   });
 
   viewport.addEventListener('mousedown', (e) => {
-    if (AppState.mode === 'map' || AppState.mode === 'library' || AppState.mode === 'recipes' || AppState.mode === 'calculator') return;
+    if (AppState.mode === 'map' || AppState.mode === 'library' || AppState.mode === 'recipes' || AppState.mode === 'calculator' || AppState.mode === 'projects' || AppState.mode === 'reports') return;
 
     // Fecha menus se clicar fora deles
     if (!e.target.closest('#canvas-context-menu, #wire-drop-menu')) {
@@ -624,7 +630,7 @@ function initInfiniteCanvasEvents() {
   });
 
   viewport.addEventListener('wheel', (e) => {
-    if (AppState.mode === 'map' || AppState.mode === 'library' || AppState.mode === 'recipes' || AppState.mode === 'calculator') return;
+    if (AppState.mode === 'map' || AppState.mode === 'library' || AppState.mode === 'recipes' || AppState.mode === 'calculator' || AppState.mode === 'projects' || AppState.mode === 'reports') return;
     e.preventDefault();
     const rect = viewport.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
@@ -732,6 +738,10 @@ function renderAll(autoFit = false) {
     renderLibraryMode(sidebarContent, emptyOverlay);
   } else if (AppState.mode === 'calculator') {
     renderCalculatorMode(sidebarContent, emptyOverlay);
+  } else if (AppState.mode === 'projects' && typeof renderProjectsMode === 'function') {
+    renderProjectsMode(sidebarContent, emptyOverlay);
+  } else if (AppState.mode === 'reports' && typeof renderAdminReportsMode === 'function') {
+    renderAdminReportsMode(sidebarContent, emptyOverlay);
   }
 
   updateTopRightFloatingActions();
@@ -755,7 +765,7 @@ function updateTopRightFloatingActions() {
   const container = document.getElementById('sidebar-action-section');
   if (!container) return;
 
-  if (AppState.mode === 'map' || AppState.mode === 'library' || AppState.mode === 'recipes' || AppState.mode === 'calculator') {
+  if (AppState.mode === 'map' || AppState.mode === 'library' || AppState.mode === 'recipes' || AppState.mode === 'calculator' || AppState.mode === 'projects' || AppState.mode === 'reports') {
     container.classList.add('hidden');
     container.innerHTML = '';
     return;
@@ -825,6 +835,10 @@ function updateTopRightFloatingActions() {
       }
     }
 
+    const saveActionsHtml = (isReady && typeof renderSaveProjectButtonsHtml === 'function')
+      ? renderSaveProjectButtonsHtml('production')
+      : '';
+
     container.innerHTML = `
       <button
         class="btn-floating-primary sidebar-action-btn ${isReady ? 'ready' : 'disabled'}"
@@ -833,6 +847,7 @@ function updateTopRightFloatingActions() {
       >
         ${isMounted ? '🔄 Atualizar Linha de Produção' : '⚡ Montar Linha de Produção'}
       </button>
+      ${saveActionsHtml}
       ${summaryHtml}
     `;
   } else if (AppState.mode === 'power') {
@@ -881,6 +896,10 @@ function updateTopRightFloatingActions() {
         </div>
       `;
     }
+    const freeSaveHtml = (hasBlocks && typeof renderSaveProjectButtonsHtml === 'function')
+      ? renderSaveProjectButtonsHtml('free')
+      : '';
+
     container.innerHTML = `
       <button
         class="btn-floating-primary sidebar-action-btn ${hasBlocks ? 'ready check-mode' : 'disabled'}"
@@ -889,6 +908,7 @@ function updateTopRightFloatingActions() {
       >
         🩺 Diagnóstico / Check
       </button>
+      ${freeSaveHtml}
       ${summaryHtml}
     `;
   }
@@ -5612,6 +5632,24 @@ const TUTORIAL_SLIDES = [
     title: 'Controles do Espaço, Agrupamento, Foco & 3D',
     subtitle: 'Domine a navegação mesmo em fábricas gigantes',
     desc: '• Arraste o fundo para mover a câmera e use a roda do mouse para dar zoom.\n• Arraste qualquer card livremente (Alt+Arrastar duplica no Modo Livre).\n• Passe o mouse sobre um card ou conector para ativar o Modo Foco nas esteiras ligadas.\n• Use "Todas Máquinas: SIM/NÃO" para expandir ou agrupar máquinas idênticas, "Visão 3D" para andares e "🎯 Centralizar" para enquadrar toda a fábrica.'
+  },
+  {
+    icon: '👤',
+    title: 'Contas e Login Persistente',
+    subtitle: 'Sem e-mail — apenas nome de usuário e senha',
+    desc: 'Você pode usar toda a ferramenta sem login. Clique em "👤 Entrar" no canto superior direito para criar uma conta (3 a 20 caracteres, senha de no mínimo 8 caracteres) e liberar os recursos de Reports e Projetos na nuvem. Seu login fica salvo automaticamente ao reabrir o navegador. Atenção: como não pedimos e-mail, não há recuperação de senha.'
+  },
+  {
+    icon: '📣',
+    title: 'Como Reportar Bugs, Sugestões e Avaliações',
+    subtitle: 'Ajude a melhorar o Satisfactory+ com imagens e detalhes',
+    desc: 'Estando logado, clique em "📣 Reportar" no canto superior direito. Escolha o tipo (Bug, Sugestão de melhoria ou Avaliação com 1 a 5 estrelas), escreva sua mensagem e anexe até 7 imagens (PNG, JPG ou WEBP, comprimidas automaticamente). Você pode enviar até 10 reports a cada 24 horas e acompanhar o que enviou em "Meus reports". Reports são apagados automaticamente após 14 dias.'
+  },
+  {
+    icon: '💾',
+    title: 'Salvar Linhas de Produção e Aba "Projetos"',
+    subtitle: 'Guarde suas fábricas na nuvem e reabra exatamente como deixou',
+    desc: 'Após montar uma linha na aba Produção (ou no Modo Livre), clique em "💾 Salvar" no painel esquerdo para dar um nome ao projeto. Ele salva receitas, máquinas, conexões, clock, posições dos cards e visualização. Acesse a aba "📁 Projetos" para abrir, atualizar, renomear ou remover qualquer fábrica salva (até 50 projetos por conta).'
   }
 ];
 

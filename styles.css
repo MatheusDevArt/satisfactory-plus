@@ -3903,3 +3903,696 @@ body.theme-dark .mcard-box.final-product-box {
   width: 24px;
   background: var(--accent);
 }
+
+
+/* ============================================================================
+ * CONTAS, REPORTAR, ABA REPORTS (ADMIN) E ABA PROJETOS
+ * ========================================================================== */
+
+.btn-top-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border-card);
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: transform 0.12s ease, border-color 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-top-action:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.btn-report-pill {
+  border-color: rgba(249, 115, 22, 0.45);
+  background: var(--bg-card);
+  color: var(--text-main);
+}
+
+.btn-report-pill:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.btn-user-pill {
+  border-color: rgba(37, 99, 235, 0.45);
+}
+
+.user-menu-wrap {
+  position: relative;
+}
+
+.user-role-tag {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.user-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 190px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border-card);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 150;
+}
+
+.user-dropdown-menu.hidden {
+  display: none;
+}
+
+.user-dropdown-menu button {
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.user-dropdown-menu button:hover {
+  background: var(--bg-card-inner);
+}
+
+.user-dropdown-menu button.danger-item {
+  color: #ef4444;
+}
+
+/* Modais de Conta, Report e Salvar Projeto */
+.auth-dialog {
+  max-width: 460px;
+}
+
+.report-dialog {
+  max-width: 680px;
+}
+
+.account-modal-body {
+  padding: 18px 20px 22px;
+  max-height: 78vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.account-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--bg-card-inner);
+  border: 1px solid var(--border-subtle);
+}
+
+.account-tabs .cat-chip {
+  text-align: center;
+  justify-content: center;
+  padding: 9px 10px;
+}
+
+.password-field-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-field-wrap .modern-input {
+  padding-right: 44px;
+}
+
+.btn-toggle-eye {
+  position: absolute;
+  right: 6px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+
+.btn-toggle-eye:hover {
+  background: var(--bg-card-inner);
+}
+
+.form-alert {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.form-alert.info {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: var(--text-main);
+}
+
+.form-alert.warn {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: var(--text-main);
+}
+
+.form-alert.error {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #dc2626;
+}
+
+body.theme-dark .form-alert.error {
+  color: #fca5a5;
+}
+
+.form-alert.ok {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #059669;
+}
+
+body.theme-dark .form-alert.ok {
+  color: #6ee7b7;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.field-hint-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+/* Reportar */
+.report-expiry-notice {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-card-inner);
+  border: 1px dashed var(--border-card);
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.report-quota-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--bg-card-inner);
+  border: 1px solid var(--border-subtle);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.rating-stars-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.star-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  border: 1px solid var(--border-card);
+  background: var(--bg-card-inner);
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.star-btn.active {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.55);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.star-btn:hover {
+  transform: scale(1.06);
+}
+
+.rating-label-txt {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.report-textarea {
+  resize: vertical;
+  min-height: 110px;
+  line-height: 1.5;
+  font-family: inherit;
+}
+
+.file-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1.5px dashed var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-main);
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.file-upload-btn input[type="file"] {
+  display: none;
+}
+
+.report-thumbs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.report-thumb-card {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border-card);
+  background: var(--bg-card-inner);
+  display: flex;
+  flex-direction: column;
+}
+
+.report-thumb-card img {
+  width: 100%;
+  height: 76px;
+  object-fit: cover;
+  cursor: pointer;
+  display: block;
+}
+
+.report-thumb-card small {
+  padding: 4px 6px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.thumb-remove-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(15, 23, 42, 0.8);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.report-thumb-card.readonly a {
+  padding: 4px 6px;
+  font-size: 10.5px;
+  text-align: center;
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* Lista de Reports (Meus reports + Admin) */
+.my-reports-list,
+.admin-reports-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.report-item-card {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border-card);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.report-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.report-head-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.report-head-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.report-type-pill {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.report-type-pill.bug {
+  background: rgba(239, 68, 68, 0.14);
+  color: #dc2626;
+}
+
+body.theme-dark .report-type-pill.bug {
+  color: #fca5a5;
+}
+
+.report-type-pill.sugestao {
+  background: rgba(59, 130, 246, 0.14);
+  color: #2563eb;
+}
+
+body.theme-dark .report-type-pill.sugestao {
+  color: #93c5fd;
+}
+
+.report-type-pill.avaliacao {
+  background: rgba(245, 158, 11, 0.16);
+  color: #d97706;
+}
+
+body.theme-dark .report-type-pill.avaliacao {
+  color: #fcd34d;
+}
+
+.report-user-badge {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.report-stars-inline {
+  font-size: 12px;
+  font-weight: 800;
+  color: #f59e0b;
+}
+
+.report-date-txt {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.report-expiry-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bg-card-inner);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.report-card-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.report-card-msg {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-main);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg-card-inner);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.report-tech-box {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--bg-card-inner);
+  border: 1px solid var(--border-subtle);
+}
+
+.admin-reports-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.admin-reports-toolbar .modern-input,
+.admin-reports-toolbar .modern-select {
+  width: auto;
+  min-width: 150px;
+  flex: 1;
+}
+
+.admin-reports-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+/* Botões Salvar Projeto na Sidebar */
+.save-project-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.btn-save-proj {
+  flex: 1;
+  min-width: 110px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border-card);
+  background: var(--bg-card-inner);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.btn-save-proj:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.btn-save-proj.primary {
+  border-color: rgba(249, 115, 22, 0.55);
+  background: rgba(249, 115, 22, 0.12);
+}
+
+/* Aba Projetos */
+.projects-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 14px;
+}
+
+.project-saved-card {
+  background: var(--bg-card);
+  border: 1.5px solid var(--border-card);
+  border-radius: 14px;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.project-saved-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.project-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.project-card-top h4 {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-main);
+  word-break: break-word;
+}
+
+.project-card-summary {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.project-card-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.project-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.btn-danger-outline {
+  color: #ef4444 !important;
+  border-color: rgba(239, 68, 68, 0.45) !important;
+}
+
+.btn-danger-outline:hover {
+  background: rgba(239, 68, 68, 0.12) !important;
+}
+
+/* Lightbox de Imagens */
+.lightbox-wrap {
+  position: relative;
+  max-width: 92vw;
+  max-height: 90vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lightbox-wrap img {
+  max-width: 90vw;
+  max-height: 86vh;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  background: #0f172a;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 2px solid #ffffff;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+/* Responsivo Mobile / Telas Menores */
+@media (max-width: 768px) {
+  .top-right-floating-actions {
+    top: 10px;
+    right: 10px;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: calc(100vw - 20px);
+  }
+
+  .btn-top-action,
+  .btn-tutorial-float {
+    padding: 7px 10px;
+    font-size: 11.5px;
+  }
+
+  .account-modal-body {
+    padding: 14px;
+  }
+
+  .projects-cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-reports-toolbar .modern-input,
+  .admin-reports-toolbar .modern-select {
+    min-width: 100%;
+  }
+}
