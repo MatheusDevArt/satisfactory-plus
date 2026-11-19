@@ -50,23 +50,23 @@ function toggleCompactCardMode() {
 
 function toggleSummarySection(secId) {
   FactoryUIState.activeFooterTab = (FactoryUIState.activeFooterTab === secId) ? null : secId;
-  if (typeof renderSidebarActionSection === 'function') renderSidebarActionSection();
+  if (typeof updateTopRightFloatingActions === 'function') updateTopRightFloatingActions();
 }
 
 function closeSummaryFooterDrawer() {
   FactoryUIState.activeFooterTab = null;
-  if (typeof renderSidebarActionSection === 'function') renderSidebarActionSection();
+  if (typeof updateTopRightFloatingActions === 'function') updateTopRightFloatingActions();
 }
 
 function setSummaryPowerMargin(val) {
   const num = Math.max(0, Math.min(200, Number(val) || 0));
   FactoryUIState.powerMarginPercent = num;
-  if (typeof renderSidebarActionSection === 'function') renderSidebarActionSection();
+  if (typeof updateTopRightFloatingActions === 'function') updateTopRightFloatingActions();
 }
 
 function toggleOtherGeneratorsList() {
   FactoryUIState.showOtherGenerators = !FactoryUIState.showOtherGenerators;
-  if (typeof renderSidebarActionSection === 'function') renderSidebarActionSection();
+  if (typeof updateTopRightFloatingActions === 'function') updateTopRightFloatingActions();
 }
 
 function escSummary(str) {
