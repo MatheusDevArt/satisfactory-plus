@@ -55,13 +55,13 @@ const AppState = {
     generatorId: null,
     fuelItemId: null,
     fuelInputMode: 'miner',
-    fuelRate: 120,
-    minerMark: 'mk2',
+    fuelRate: 0,
+    minerMark: 'mk1',
     purity: 'normal',
     minerCount: 1,
     minerClock: 100,
-    targetMW: 3000,
-    generatorCount: 10,
+    targetMW: null,
+    generatorCount: 1,
     manualGenerators: null,
     clockPercent: 100,
     waterExtractorClock: 100,
@@ -112,23 +112,23 @@ const AppState = {
   // Aba 7: Calculadora (Contas normais + Cálculos rápidos do jogo no Spaces)
   calculator: {
     mode: 'smart', // 'smart' | 'math'
-    expr: '20 * 75',
-    exprResult: '1500',
+    expr: '',
+    exprResult: '0',
     history: [],
     smartType: 'energy', // 'energy' | 'machines'
     energySource: 'extractor', // 'extractor' | 'generator'
-    energyResourceId: 'Desc_Coal_C',
-    minerCount: 20,
+    energyResourceId: '',
+    minerCount: 1,
     minerMark: 'mk1',
     minerPurity: 'normal',
     minerClock: 100,
-    genId: 'Build_GeneratorCoal_C',
-    genCount: 20,
-    genFuelId: 'Desc_Coal_C',
+    genId: '',
+    genCount: 1,
+    genFuelId: '',
     genClock: 100,
-    machineId: 'Build_ConstructorMk1_C',
+    machineId: '',
     machineRecipeId: null,
-    machineCount: 10,
+    machineCount: 1,
     machineClock: 100
   },
 
@@ -268,10 +268,12 @@ function toggleSidebarCollapse() {
   if (sidebar) sidebar.classList.toggle('collapsed', AppState.sidebarCollapsed);
   if (expandBtn) expandBtn.classList.toggle('hidden', !AppState.sidebarCollapsed);
   setTimeout(() => {
-    if (AppState.mode !== 'map' && AppState.canvas.lastGraphBounds) {
+    if (AppState.mode === 'map' && typeof syncLeafletMapCover === 'function') {
+      syncLeafletMapCover(false);
+    } else if (AppState.mode !== 'map' && AppState.canvas.lastGraphBounds) {
       fitCanvasToScreen();
     }
-  }, 190);
+  }, 210);
 }
 
 function toggleShowAllMachines() {
@@ -1611,7 +1613,7 @@ function renderPowerMode(sidebarEl, emptyOverlay, autoFit) {
           ${p.calcMode === 'by_mw' ? `
             <div class="field-group">
               <label>Meta de Energia Desejada (MW)</label>
-              <input type="number" class="sidebar-input" min="50" step="150" value="${p.targetMW}" onchange="setPowerParam('targetMW', Math.max(1, parseFloat(this.value)||3000))" />
+              <input type="number" class="sidebar-input" min="1" step="any" value="${p.targetMW ?? (selectedGen?.powerProduction || '')}" onchange="setPowerParam('targetMW', Math.max(1, parseFloat(this.value)||${selectedGen?.powerProduction || 1}))" />
             </div>
           ` : ''}
 
@@ -2120,38 +2122,75 @@ function renderMapWorkspace(filteredLocs) {
   }
 
   if (!mState.leafletMap && typeof L !== 'undefined') {
-    const mapBounds = L.latLngBounds([0, -1.4], [1.4, 0]);
+    // Área útil real dos tiles MapGenie MASSAGE-2(A-B)b (evita bordas vazias)
+    const mapBounds = L.latLngBounds([0.04, -1.36], [1.36, -0.04]);
+    mState.mapBounds = mapBounds;
     const map = L.map('leaflet-map-canvas', {
-      center: [0.68, -0.72],
+      center: [0.7, -0.7],
       zoom: 11,
       minZoom: 10,
       maxZoom: 15,
+      zoomSnap: 0.1,
+      zoomDelta: 0.5,
       maxBounds: mapBounds,
       maxBoundsViscosity: 1.0,
       zoomControl: true
     });
 
     L.tileLayer(mapData.tilesUrl, {
-      minZoom: 10,
+      minZoom: 9,
       maxZoom: 15,
       maxNativeZoom: 14,
       tileSize: 256,
-      bounds: mapBounds,
+      bounds: L.latLngBounds([0, -1.4], [1.4, 0]),
       noWrap: true,
       attribution: 'Terreno &amp; Dados: MapGenie (MASSAGE-2(A-B)b)'
     }).addTo(map);
 
     mState.leafletMap = map;
     mState.markersLayer = L.layerGroup().addTo(map);
-    setTimeout(() => {
-      map.invalidateSize();
-      const fillZ = Math.max(11, map.getBoundsZoom(mapBounds, true));
-      map.setView([0.68, -0.72], fillZ, { animate: false });
-    }, 60);
+
+    window.syncLeafletMapCover = function syncLeafletMapCover(recenter = false) {
+      const m = AppState.map.leafletMap;
+      const bounds = AppState.map.mapBounds;
+      if (!m || !bounds) return;
+      const container = m.getContainer();
+      if (!container || container.clientWidth === 0 || container.clientHeight === 0) return;
+      m.invalidateSize({ animate: false });
+      const exactCover = m.getBoundsZoom(bounds, true);
+      const safeMinZoom = Math.min(14.5, Math.ceil((exactCover + 0.05) * 10) / 10);
+      m.setMinZoom(safeMinZoom);
+      m.setMaxBounds(bounds);
+      if (recenter) {
+        m.setView([0.7, -0.7], safeMinZoom, { animate: false });
+      } else if (m.getZoom() < safeMinZoom) {
+        m.setZoom(safeMinZoom, { animate: false });
+      }
+      m.panInsideBounds(bounds, { animate: false });
+    };
+
+    if (!mState._resizeBound) {
+      mState._resizeBound = true;
+      window.addEventListener('resize', () => {
+        if (AppState.mode === 'map') syncLeafletMapCover(false);
+      });
+      if (typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(() => {
+          if (AppState.mode === 'map') syncLeafletMapCover(false);
+        });
+        ro.observe(map.getContainer());
+      }
+    }
+
+    requestAnimationFrame(() => syncLeafletMapCover(true));
+    setTimeout(() => syncLeafletMapCover(true), 120);
   } else if (mState.leafletMap) {
+    requestAnimationFrame(() => {
+      if (typeof syncLeafletMapCover === 'function') syncLeafletMapCover(false);
+    });
     setTimeout(() => {
-      mState.leafletMap.invalidateSize();
-    }, 30);
+      if (typeof syncLeafletMapCover === 'function') syncLeafletMapCover(false);
+    }, 80);
   }
 
   // Update markers on the Leaflet map
@@ -3402,7 +3441,7 @@ function renderMachineInspectorContent() {
         </div>
       `;
     } else {
-      const mCfg = AppState.pull.minerSettings[itemId] || { minerMark: 'mk2', purity: 'normal', clockPercent: 100, customCount: null };
+      const mCfg = AppState.pull.minerSettings[itemId] || { minerMark: 'mk1', purity: 'normal', clockPercent: 100, customCount: null };
       body.innerHTML = `
         <div class="inspector-hero">
           ${renderShowcaseImage(item, 90)}
@@ -3835,6 +3874,28 @@ function setPushStepCustomCount(itemId, countVal) {
   renderAll(false);
 }
 
+/* --- Taxa base real de 1 máquina a 100% (quantidade * 60 / duração) --- */
+function getBaseRecipeRateForItem(itemId, explicitRecipeId = null) {
+  const recipes = Object.values((window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.recipes) || {});
+  let recipe = explicitRecipeId && window.SATISFACTORY_DATA?.recipes?.[explicitRecipeId]
+    ? window.SATISFACTORY_DATA.recipes[explicitRecipeId]
+    : null;
+  if (!recipe) {
+    const overrideId = AppState.pull.recipeOverrides[itemId];
+    if (overrideId && window.SATISFACTORY_DATA?.recipes?.[overrideId]) {
+      recipe = window.SATISFACTORY_DATA.recipes[overrideId];
+    }
+  }
+  if (!recipe) {
+    recipe = recipes.find((r) => !r.isAlternate && (r.products || []).some((p) => p.item === itemId))
+      || recipes.find((r) => (r.products || []).some((p) => p.item === itemId));
+  }
+  if (!recipe || !recipe.duration) return 1;
+  const prod = (recipe.products || []).find((p) => p.item === itemId);
+  if (!prod) return 1;
+  return Math.round(((prod.amount * 60) / recipe.duration) * 10000) / 10000;
+}
+
 /* --- Ações quando começa pelo Produto Final (Pull) --- */
 function openPullAddTargetModal() {
   openPickerModal({
@@ -3843,11 +3904,12 @@ function openPullAddTargetModal() {
     defaultCategory: 'Todos',
     onSelect: (itemId) => {
       AppState.production.driver = 'product';
+      const baseRate = getBaseRecipeRateForItem(itemId);
       const existing = AppState.pull.targets.find(t => t.itemId === itemId);
       if (existing) {
-        existing.rate += 10;
+        existing.rate = Math.round((existing.rate + baseRate) * 10000) / 10000;
       } else {
-        AppState.pull.targets.push({ id: uid(), itemId, rate: 30 });
+        AppState.pull.targets.push({ id: uid(), itemId, rate: baseRate });
       }
       renderAll(true);
     }
@@ -3861,7 +3923,10 @@ function openChangePullTargetModal(targetId) {
     defaultCategory: 'Todos',
     onSelect: (itemId) => {
       const t = AppState.pull.targets.find(x => x.id === targetId);
-      if (t) t.itemId = itemId;
+      if (t) {
+        t.itemId = itemId;
+        t.rate = getBaseRecipeRateForItem(itemId);
+      }
       renderAll(true);
     }
   });
@@ -3869,7 +3934,10 @@ function openChangePullTargetModal(targetId) {
 
 function updatePullTargetRate(id, val) {
   const t = AppState.pull.targets.find(x => x.id === id);
-  if (t) t.rate = Math.max(0.1, parseFloat(val) || 10);
+  if (t) {
+    const baseRate = getBaseRecipeRateForItem(t.itemId);
+    t.rate = Math.max(0.1, parseFloat(val) || baseRate);
+  }
   renderAll(false);
 }
 
@@ -3885,6 +3953,10 @@ function setPullRecipe(itemId, recipeId) {
   AppState.pull.recipeOverrides[itemId] = recipeId;
   if (AppState.pull.stepSettings[itemId]) {
     delete AppState.pull.stepSettings[itemId].customMachineCount;
+  }
+  const target = AppState.pull.targets.find((t) => t.itemId === itemId);
+  if (target) {
+    target.rate = getBaseRecipeRateForItem(itemId, recipeId);
   }
   renderAll(false);
 }
@@ -3908,7 +3980,7 @@ function setPullStepCustomCount(itemId, countVal) {
 
 function ensurePullMinerSetting(itemId) {
   if (!AppState.pull.minerSettings[itemId]) {
-    AppState.pull.minerSettings[itemId] = { minerMark: 'mk2', purity: 'normal', clockPercent: 100, customCount: null };
+    AppState.pull.minerSettings[itemId] = { minerMark: 'mk1', purity: 'normal', clockPercent: 100, customCount: null };
   }
   return AppState.pull.minerSettings[itemId];
 }
@@ -3945,11 +4017,22 @@ function selectPowerGenerator(genId) {
   AppState.power.generatorId = genId;
   AppState.power.manualGenerators = null;
   AppState.power.manualWaterPumps = null;
+  AppState.power.generatorCount = 1;
+  AppState.power.clockPercent = 100;
+  AppState.power.minerMark = 'mk1';
+  AppState.power.purity = 'normal';
+  AppState.power.minerCount = 1;
+  AppState.power.minerClock = 100;
   const gen = Solver.getPowerGenerators().find(g => g.id === genId);
+  if (gen) {
+    AppState.power.targetMW = gen.powerProduction || 1;
+  }
   if (gen && gen.fuels.length > 0) {
     AppState.power.fuelItemId = gen.fuels[0].itemId;
+    AppState.power.fuelRate = gen.fuels[0].ratePerMin || 1;
   } else {
     AppState.power.fuelItemId = null;
+    AppState.power.fuelRate = 0;
   }
   renderAll(true);
 }
@@ -5268,10 +5351,12 @@ function renderCalculatorWorkspace() {
 
   const gens = Solver.getPowerGenerators();
   const prodMachines = Solver.getProductionMachines();
-  const selectedGen = gens.find(g => g.id === c.genId) || gens[0];
-  const selectedMachine = prodMachines.find(m => m.id === c.machineId) || prodMachines[0];
-  const machineRecipes = Solver.getRecipesByMachine(selectedMachine?.id);
-  const selectedRecipe = machineRecipes.find(r => r.id === c.machineRecipeId) || machineRecipes[0];
+  const selectedGen = c.genId ? gens.find(g => g.id === c.genId) : null;
+  const selectedMachine = c.machineId ? prodMachines.find(m => m.id === c.machineId) : null;
+  const machineRecipes = selectedMachine ? Solver.getRecipesByMachine(selectedMachine.id) : [];
+  const selectedRecipe = selectedMachine
+    ? (machineRecipes.find(r => r.id === c.machineRecipeId) || machineRecipes.find(r => !r.isAlternate) || machineRecipes[0] || null)
+    : null;
 
   let visorFormula = '';
   let visorAnswer = '';
@@ -5293,156 +5378,196 @@ function renderCalculatorWorkspace() {
     `;
 
     if (c.energySource === 'extractor') {
+      const hasResource = Boolean(c.energyResourceId);
       const isOil = c.energyResourceId === 'Desc_LiquidOil_C';
-      const baseRate = isOil ? 120 : (c.minerMark === 'mk1' ? 60 : (c.minerMark === 'mk2' ? 120 : 240));
-      const purityMult = c.minerPurity === 'impure' ? 0.5 : (c.minerPurity === 'pure' ? 2.0 : 1.0);
-      const clockMult = (Number(c.minerClock) || 100) / 100;
-      const ratePerEx = baseRate * purityMult * clockMult;
+      const exMap = (window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.extractors) || {};
+      const mk1Rate = exMap.Build_MinerMk1_C?.baseRatePerMin || 60;
+      const mk2Rate = exMap.Build_MinerMk2_C?.baseRatePerMin || 120;
+      const mk3Rate = exMap.Build_MinerMk3_C?.baseRatePerMin || 240;
+      const oilRate = exMap.Build_OilPump_C?.baseRatePerMin || 120;
       const count = Number(c.minerCount) || 1;
-      const totalExtracted = ratePerEx * count;
-
-      let genUsed = gens.find(g => g.id === 'Build_GeneratorCoal_C');
-      let gensSupported = totalExtracted / 15;
-      let waterNeeded = gensSupported * 45;
-      let extraNote = '';
-
-      if (c.energyResourceId === 'Desc_LiquidOil_C') {
-        genUsed = gens.find(g => g.id === 'Build_GeneratorFuel_C');
-        // 60 Petróleo bruto -> 40 Combustível (+30 Resíduo) na Refinaria; 20 Combustível por Gerador a Combustível
-        const fuelProduced = totalExtracted * (40 / 60);
-        gensSupported = fuelProduced / 20;
-        waterNeeded = 0;
-        extraNote = `Produz ~${fmt(fuelProduced, 1)} m³/m de Combustível (Refinaria)`;
-      } else if (c.energyResourceId === 'Desc_OreUranium_C') {
-        genUsed = gens.find(g => g.id === 'Build_GeneratorNuclear_C');
-        // Aprox. 25 Urânio -> 0.2 Barra de Combustível Nuclear/m -> 1 Usina (2500 MW)
-        gensSupported = totalExtracted / 25;
-        waterNeeded = gensSupported * 240;
-        extraNote = 'Estimativa via Barra de Combustível de Urânio';
-      }
-
-      const mwGenerated = gensSupported * (genUsed?.powerProduction || 75);
-      const resObj = Solver.getItem(c.energyResourceId);
-
-      visorFormula = `${count}x Extrator de ${resObj?.name || ''} (${fmt(totalExtracted, 1)}/m)`;
-      visorAnswer = `⚡ ${fmt(mwGenerated, 1)} MW`;
 
       inputsHtml += `
         <div class="field-row-2">
-          <div class="field-group"><label>Recurso</label><select class="sidebar-select" onchange="updateCalcField('energyResourceId', this.value)">${rawEnergyItems.map(it => `<option value="${it.id}" ${it.id===c.energyResourceId?'selected':''}>${it.name}</option>`).join('')}</select></div>
-          <div class="field-group"><label>Quantidade</label><input type="number" class="sidebar-input" min="1" value="${count}" oninput="updateCalcField('minerCount', Math.max(1, Number(this.value)||1))" /></div>
+          <div class="field-group"><label>Recurso</label><select class="sidebar-select" onchange="updateCalcField('energyResourceId', this.value)"><option value="" ${!hasResource ? 'selected' : ''}>Selecione um recurso</option>${rawEnergyItems.map(it => `<option value="${it.id}" ${it.id===c.energyResourceId?'selected':''}>${it.name}</option>`).join('')}</select></div>
+          <div class="field-group"><label>Quantidade</label><input type="number" class="sidebar-input" min="1" value="${hasResource ? count : ''}" placeholder="1" ${!hasResource ? 'disabled' : ''} oninput="updateCalcField('minerCount', Math.max(1, Number(this.value)||1))" /></div>
         </div>
-        <div class="field-row-2">
-          ${!isOil ? `<div class="field-group"><label>Mineradora</label><select class="sidebar-select" onchange="updateCalcField('minerMark', this.value)"><option value="mk1" ${c.minerMark==='mk1'?'selected':''}>v.1 (60/m)</option><option value="mk2" ${c.minerMark==='mk2'?'selected':''}>v.2 (120/m)</option><option value="mk3" ${c.minerMark==='mk3'?'selected':''}>v.3 (240/m)</option></select></div>` : `<div class="field-group"><label>Extrator</label><input type="text" class="sidebar-input" value="Extrator de Petróleo" disabled /></div>`}
-          <div class="field-group"><label>Pureza / Clock (%)</label>
-            <div style="display:flex; gap:4px;">
-              <select class="sidebar-select" onchange="updateCalcField('minerPurity', this.value)"><option value="impure" ${c.minerPurity==='impure'?'selected':''}>Impuro</option><option value="normal" ${c.minerPurity==='normal'?'selected':''}>Normal</option><option value="pure" ${c.minerPurity==='pure'?'selected':''}>Puro</option></select>
-              <input type="number" class="sidebar-input" style="width:70px;" min="1" max="250" value="${c.minerClock}" oninput="updateCalcField('minerClock', Math.min(250, Math.max(1, Number(this.value)||100)))" />
+      `;
+
+      if (!hasResource) {
+        visorFormula = 'Selecione um recurso para calcular';
+        visorAnswer = '—';
+        detailsHtml = `<div class="calc-mini-stats"><div class="calc-mini-row"><span>Escolha um recurso acima para ver a geração real.</span></div></div>`;
+      } else {
+        const baseRate = isOil ? oilRate : (c.minerMark === 'mk1' ? mk1Rate : (c.minerMark === 'mk2' ? mk2Rate : mk3Rate));
+        const purityMult = c.minerPurity === 'impure' ? 0.5 : (c.minerPurity === 'pure' ? 2.0 : 1.0);
+        const clockMult = (Number(c.minerClock) || 100) / 100;
+        const ratePerEx = baseRate * purityMult * clockMult;
+        const totalExtracted = ratePerEx * count;
+
+        let genUsed = gens.find(g => g.id === 'Build_GeneratorCoal_C');
+        const coalFuel = (genUsed?.fuels || []).find(f => f.itemId === 'Desc_Coal_C');
+        let gensSupported = totalExtracted / (coalFuel?.ratePerMin || 15);
+        let waterNeeded = gensSupported * (coalFuel?.waterPerMin || 45);
+        let extraNote = '';
+
+        if (c.energyResourceId === 'Desc_LiquidOil_C') {
+          genUsed = gens.find(g => g.id === 'Build_GeneratorFuel_C');
+          const fuelRecipe = window.SATISFACTORY_DATA?.recipes?.Recipe_LiquidFuel_C;
+          const oilIn = fuelRecipe?.ingredients?.[0]?.ratePerMin || 60;
+          const fuelOut = fuelRecipe?.products?.[0]?.ratePerMin || 40;
+          const fuelGenRate = (genUsed?.fuels || []).find(f => f.itemId === 'Desc_LiquidFuel_C')?.ratePerMin || 20;
+          const fuelProduced = totalExtracted * (fuelOut / oilIn);
+          gensSupported = fuelProduced / fuelGenRate;
+          waterNeeded = 0;
+          extraNote = `Produz ${fmt(fuelProduced, 1)} m³/m de Combustível (Refinaria)`;
+        } else if (c.energyResourceId === 'Desc_OreUranium_C') {
+          genUsed = gens.find(g => g.id === 'Build_GeneratorNuclear_C');
+          const nucFuel = (genUsed?.fuels || []).find(f => f.itemId === 'Desc_NuclearFuelRod_C');
+          gensSupported = totalExtracted / 25;
+          waterNeeded = gensSupported * (nucFuel?.waterPerMin || 240);
+          extraNote = 'Estimativa via Barra de Combustível de Urânio';
+        }
+
+        const mwGenerated = gensSupported * (genUsed?.powerProduction || 75);
+        const resObj = Solver.getItem(c.energyResourceId);
+        const isFractional = Math.abs(gensSupported - Math.round(gensSupported)) > 0.001;
+
+        visorFormula = `${count}x Extrator de ${resObj?.name || ''} (${fmt(totalExtracted, 1)}/m)`;
+        visorAnswer = `⚡ ${fmt(mwGenerated, 1)} MW`;
+
+        inputsHtml += `
+          <div class="field-row-2">
+            ${!isOil ? `<div class="field-group"><label>Mineradora</label><select class="sidebar-select" onchange="updateCalcField('minerMark', this.value)"><option value="mk1" ${c.minerMark==='mk1'?'selected':''}>v.1 (${mk1Rate}/m)</option><option value="mk2" ${c.minerMark==='mk2'?'selected':''}>v.2 (${mk2Rate}/m)</option><option value="mk3" ${c.minerMark==='mk3'?'selected':''}>v.3 (${mk3Rate}/m)</option></select></div>` : `<div class="field-group"><label>Extrator</label><input type="text" class="sidebar-input" value="Extrator de Petróleo" disabled /></div>`}
+            <div class="field-group"><label>Pureza / Clock (%)</label>
+              <div style="display:flex; gap:4px;">
+                <select class="sidebar-select" onchange="updateCalcField('minerPurity', this.value)"><option value="impure" ${c.minerPurity==='impure'?'selected':''}>Impuro</option><option value="normal" ${c.minerPurity==='normal'?'selected':''}>Normal</option><option value="pure" ${c.minerPurity==='pure'?'selected':''}>Puro</option></select>
+                <input type="number" class="sidebar-input" style="width:70px;" min="1" max="250" value="${c.minerClock}" oninput="updateCalcField('minerClock', Math.min(250, Math.max(1, Number(this.value)||100)))" />
+              </div>
             </div>
           </div>
-        </div>
-      `;
+        `;
 
-      detailsHtml = `
-        <div class="calc-mini-stats">
-          <div class="calc-mini-row"><span>Extraído Total:</span><strong>${fmt(totalExtracted, 1)} ${resObj?.unit || 'un'}/min</strong></div>
-          <div class="calc-mini-row"><span>${genUsed?.name || 'Geradores'} Suportados:</span><strong>${fmt(gensSupported, 2)}x</strong></div>
-          <div class="calc-mini-row"><span>Energia Gerada:</span><strong>⚡ ${fmt(mwGenerated, 1)} MW</strong></div>
-          ${waterNeeded > 0 ? `<div class="calc-mini-row"><span>Água Necessária:</span><strong>💧 ${fmt(waterNeeded, 1)} m³/min (${Math.ceil(waterNeeded / 120)}x Bomba)</strong></div>` : ''}
-          ${extraNote ? `<div class="calc-mini-row"><span>Nota:</span><strong>${extraNote}</strong></div>` : ''}
-        </div>
-      `;
+        detailsHtml = `
+          <div class="calc-mini-stats">
+            <div class="calc-mini-row"><span>Extraído Total:</span><strong>${fmt(totalExtracted, 1)} ${resObj?.unit || 'un'}/min</strong></div>
+            <div class="calc-mini-row"><span>${genUsed?.name || 'Geradores'} Suportados:</span><strong>${fmt(gensSupported, 2)}x${isFractional ? ' (não inteira)' : ''}</strong></div>
+            <div class="calc-mini-row"><span>Energia Gerada:</span><strong>⚡ ${fmt(mwGenerated, 1)} MW</strong></div>
+            ${waterNeeded > 0 ? `<div class="calc-mini-row"><span>Água Necessária:</span><strong>💧 ${fmt(waterNeeded, 1)} m³/min (${Math.ceil(waterNeeded / 120)}x Bomba)</strong></div>` : ''}
+            ${extraNote ? `<div class="calc-mini-row"><span>Nota:</span><strong>${extraNote}</strong></div>` : ''}
+          </div>
+        `;
+      }
     } else {
       // A partir dos Geradores
-      const fuelObj = (selectedGen?.fuels || []).find(f => f.itemId === c.genFuelId) || selectedGen?.fuels?.[0];
-      const fuelItem = fuelObj ? Solver.getItem(fuelObj.itemId) : null;
       const count = Number(c.genCount) || 1;
-      const clockMult = (Number(c.genClock) || 100) / 100;
-      const totalFuel = (fuelObj?.ratePerMin || 15) * clockMult * count;
-      const totalMw = (selectedGen?.powerProduction || 75) * clockMult * count;
-      const totalWater = (fuelObj?.waterPerMin || 0) * clockMult * count;
-      const buildMaterials = (selectedGen?.buildCost || []).map(bc => {
-        const it = Solver.getItem(bc.item);
-        return `${fmt(bc.amount * count, 0)}x ${it ? it.name : bc.item}`;
-      }).join(' • ');
-
-      visorFormula = `${count}x ${selectedGen?.name || 'Gerador'} (${c.genClock}%)`;
-      visorAnswer = `⚡ ${fmt(totalMw, 1)} MW`;
-
       inputsHtml += `
         <div class="field-row-2">
-          <div class="field-group"><label>Gerador</label><select class="sidebar-select" onchange="updateCalcField('genId', this.value)">${gens.map(g => `<option value="${g.id}" ${g.id===c.genId?'selected':''}>${g.name}</option>`).join('')}</select></div>
-          <div class="field-group"><label>Quantidade</label><input type="number" class="sidebar-input" min="1" value="${count}" oninput="updateCalcField('genCount', Math.max(1, Number(this.value)||1))" /></div>
-        </div>
-        <div class="field-row-2">
-          <div class="field-group"><label>Combustível</label><select class="sidebar-select" onchange="updateCalcField('genFuelId', this.value)">${(selectedGen?.fuels||[]).map(f => `<option value="${f.itemId}" ${f.itemId===c.genFuelId?'selected':''}>${Solver.getItem(f.itemId)?.name || f.itemId}</option>`).join('')}</select></div>
-          <div class="field-group"><label>Overclock (%)</label><input type="number" class="sidebar-input" min="1" max="250" value="${c.genClock}" oninput="updateCalcField('genClock', Math.min(250, Math.max(1, Number(this.value)||100)))" /></div>
+          <div class="field-group"><label>Gerador</label><select class="sidebar-select" onchange="updateCalcField('genId', this.value)"><option value="" ${!selectedGen ? 'selected' : ''}>Selecione um gerador</option>${gens.map(g => `<option value="${g.id}" ${g.id===c.genId?'selected':''}>${g.name}</option>`).join('')}</select></div>
+          <div class="field-group"><label>Quantidade</label><input type="number" class="sidebar-input" min="1" value="${selectedGen ? count : ''}" placeholder="1" ${!selectedGen ? 'disabled' : ''} oninput="updateCalcField('genCount', Math.max(1, Number(this.value)||1))" /></div>
         </div>
       `;
 
-      detailsHtml = `
-        <div class="calc-mini-stats">
-          <div class="calc-mini-row"><span>Energia Gerada:</span><strong>⚡ ${fmt(totalMw, 1)} MW</strong></div>
-          <div class="calc-mini-row"><span>Consumo (${fuelItem?.name || ''}):</span><strong>${fmt(totalFuel, 2)} ${fuelItem?.unit || 'un'}/min</strong></div>
-          ${totalWater > 0 ? `<div class="calc-mini-row"><span>Água Consumida:</span><strong>💧 ${fmt(totalWater, 1)} m³/min (${Math.ceil(totalWater / 120)}x Bomba)</strong></div>` : ''}
-          ${buildMaterials ? `<div class="calc-mini-row stack"><span>Criar ${count}x ${selectedGen?.name}:</span><strong>${buildMaterials}</strong></div>` : ''}
-        </div>
-      `;
+      if (!selectedGen) {
+        visorFormula = 'Selecione um gerador para calcular';
+        visorAnswer = '—';
+        detailsHtml = `<div class="calc-mini-stats"><div class="calc-mini-row"><span>Escolha um gerador acima para ver consumo e geração reais.</span></div></div>`;
+      } else {
+        const fuelObj = (selectedGen.fuels || []).find(f => f.itemId === c.genFuelId) || selectedGen.fuels?.[0];
+        const fuelItem = fuelObj ? Solver.getItem(fuelObj.itemId) : null;
+        const clockMult = (Number(c.genClock) || 100) / 100;
+        const totalFuel = (fuelObj?.ratePerMin || 0) * clockMult * count;
+        const totalMw = (selectedGen.powerProduction || 0) * clockMult * count;
+        const totalWater = (fuelObj?.waterPerMin || 0) * clockMult * count;
+        const buildMaterials = (selectedGen.buildCost || []).map(bc => {
+          const it = Solver.getItem(bc.item);
+          return `${fmt(bc.amount * count, 0)}x ${it ? it.name : bc.item}`;
+        }).join(' • ');
+
+        visorFormula = `${count}x ${selectedGen.name} (${c.genClock}%)`;
+        visorAnswer = `⚡ ${fmt(totalMw, 1)} MW`;
+
+        inputsHtml += `
+          <div class="field-row-2">
+            <div class="field-group"><label>Combustível</label><select class="sidebar-select" onchange="updateCalcField('genFuelId', this.value)">${(selectedGen.fuels||[]).map(f => `<option value="${f.itemId}" ${f.itemId===fuelObj?.itemId?'selected':''}>${Solver.getItem(f.itemId)?.name || f.itemId}</option>`).join('')}</select></div>
+            <div class="field-group"><label>Overclock (%)</label><input type="number" class="sidebar-input" min="1" max="250" value="${c.genClock}" oninput="updateCalcField('genClock', Math.min(250, Math.max(1, Number(this.value)||100)))" /></div>
+          </div>
+        `;
+
+        detailsHtml = `
+          <div class="calc-mini-stats">
+            <div class="calc-mini-row"><span>Energia Gerada:</span><strong>⚡ ${fmt(totalMw, 1)} MW</strong></div>
+            <div class="calc-mini-row"><span>Consumo (${fuelItem?.name || ''}):</span><strong>${fmt(totalFuel, 2)} ${fuelItem?.unit || 'un'}/min</strong></div>
+            ${totalWater > 0 ? `<div class="calc-mini-row"><span>Água Consumida:</span><strong>💧 ${fmt(totalWater, 1)} m³/min (${Math.ceil(totalWater / 120)}x Bomba)</strong></div>` : ''}
+            ${buildMaterials ? `<div class="calc-mini-row stack"><span>Criar ${count}x ${selectedGen.name}:</span><strong>${buildMaterials}</strong></div>` : ''}
+          </div>
+        `;
+      }
     }
   } else {
     // Modo Máquinas: Seleciona Máquina + Receita/Produto + Quantidade + Clock
     const count = Number(c.machineCount) || 1;
     const clock = Number(c.machineClock) || 100;
-    const clockMult = clock / 100;
-    const baseMw = selectedRecipe?.avgPowerMw ?? selectedMachine?.powerConsumption ?? 0;
-    const pwrPerMach = baseMw * Math.pow(clockMult, 1.321928);
-    const totalMw = pwrPerMach * count;
-
-    const prodsText = selectedRecipe
-      ? (selectedRecipe.products || []).map(p => {
-          const it = Solver.getItem(p.item);
-          return `${fmt(p.ratePerMin * clockMult * count, 1)} ${it?.unit || 'un'}/min ${it ? it.name : p.item}`;
-        }).join(' + ')
-      : '—';
-
-    const ingsText = selectedRecipe
-      ? (selectedRecipe.ingredients || []).map(i => {
-          const it = Solver.getItem(i.item);
-          return `${fmt(i.ratePerMin * clockMult * count, 1)} ${it?.unit || 'un'}/min ${it ? it.name : i.item}`;
-        }).join(' + ')
-      : '—';
-
-    const buildMaterials = (selectedMachine?.buildCost || []).map(bc => {
-      const it = Solver.getItem(bc.item);
-      return `${fmt(bc.amount * count, 0)}x ${it ? it.name : bc.item}`;
-    }).join(' • ');
-
-    const mainOut = selectedRecipe?.products?.[0];
-    const mainOutItem = mainOut ? Solver.getItem(mainOut.item) : null;
-    const mainOutRate = mainOut ? mainOut.ratePerMin * clockMult * count : 0;
-
-    visorFormula = `${count}x ${selectedMachine?.name || 'Máquina'} (${selectedRecipe?.cleanName || ''})`;
-    visorAnswer = mainOut ? `${fmt(mainOutRate, 1)} ${mainOutItem?.unit || ''}/m` : '—';
 
     inputsHtml = `
       <div class="field-row-2">
-        <div class="field-group"><label>Máquina</label><select class="sidebar-select" onchange="updateCalcField('machineId', this.value)">${prodMachines.map(m => `<option value="${m.id}" ${m.id===selectedMachine?.id?'selected':''}>${m.name}</option>`).join('')}</select></div>
-        <div class="field-group"><label>Quantidade</label><input type="number" class="sidebar-input" min="1" value="${count}" oninput="updateCalcField('machineCount', Math.max(1, Number(this.value)||1))" /></div>
-      </div>
-      <div class="field-row-2">
-        <div class="field-group"><label>Produto / Receita</label><select class="sidebar-select" onchange="updateCalcField('machineRecipeId', this.value)">${machineRecipes.map(r => `<option value="${r.id}" ${r.id===selectedRecipe?.id?'selected':''}>${r.isAlternate ? '⭐ ' : ''}${r.cleanName || r.name}</option>`).join('')}</select></div>
-        <div class="field-group"><label>Overclock (%)</label><input type="number" class="sidebar-input" min="1" max="250" value="${clock}" oninput="updateCalcField('machineClock', Math.min(250, Math.max(1, Number(this.value)||100)))" /></div>
+        <div class="field-group"><label>Máquina</label><select class="sidebar-select" onchange="updateCalcField('machineId', this.value)"><option value="" ${!selectedMachine ? 'selected' : ''}>Selecione uma máquina</option>${prodMachines.map(m => `<option value="${m.id}" ${m.id===selectedMachine?.id?'selected':''}>${m.name}</option>`).join('')}</select></div>
+        <div class="field-group"><label>Quantidade</label><input type="number" class="sidebar-input" min="1" value="${selectedMachine ? count : ''}" placeholder="1" ${!selectedMachine ? 'disabled' : ''} oninput="updateCalcField('machineCount', Math.max(1, Number(this.value)||1))" /></div>
       </div>
     `;
 
-    detailsHtml = `
-      <div class="calc-mini-stats">
-        <div class="calc-mini-row stack"><span>Gerado (${count}x ${selectedMachine?.name}):</span><strong>${prodsText}</strong></div>
-        <div class="calc-mini-row stack"><span>Recursos Consumidos:</span><strong>${ingsText}</strong></div>
-        <div class="calc-mini-row"><span>Energia Consumida:</span><strong>⚡ ${fmt(totalMw, 1)} MW</strong></div>
-        ${buildMaterials ? `<div class="calc-mini-row stack"><span>Criar ${count}x ${selectedMachine?.name}:</span><strong>${buildMaterials}</strong></div>` : ''}
-      </div>
-    `;
+    if (!selectedMachine) {
+      visorFormula = 'Selecione uma máquina para calcular';
+      visorAnswer = '—';
+      detailsHtml = `<div class="calc-mini-stats"><div class="calc-mini-row"><span>Escolha uma máquina acima para ver produção e consumo reais.</span></div></div>`;
+    } else {
+      const clockMult = clock / 100;
+      const baseMw = selectedRecipe?.avgPowerMw ?? selectedMachine.powerConsumption ?? 0;
+      const pwrPerMach = baseMw * Math.pow(clockMult, 1.321929);
+      const totalMw = pwrPerMach * count;
+
+      const prodsText = selectedRecipe
+        ? (selectedRecipe.products || []).map(p => {
+            const it = Solver.getItem(p.item);
+            return `${fmt(p.ratePerMin * clockMult * count, 1)} ${it?.unit || 'un'}/min ${it ? it.name : p.item}`;
+          }).join(' + ')
+        : '—';
+
+      const ingsText = selectedRecipe
+        ? (selectedRecipe.ingredients || []).map(i => {
+            const it = Solver.getItem(i.item);
+            return `${fmt(i.ratePerMin * clockMult * count, 1)} ${it?.unit || 'un'}/min ${it ? it.name : i.item}`;
+          }).join(' + ')
+        : '—';
+
+      const buildMaterials = (selectedMachine.buildCost || []).map(bc => {
+        const it = Solver.getItem(bc.item);
+        return `${fmt(bc.amount * count, 0)}x ${it ? it.name : bc.item}`;
+      }).join(' • ');
+
+      const mainOut = selectedRecipe?.products?.[0];
+      const mainOutItem = mainOut ? Solver.getItem(mainOut.item) : null;
+      const mainOutRate = mainOut ? mainOut.ratePerMin * clockMult * count : 0;
+
+      visorFormula = `${count}x ${selectedMachine.name} (${selectedRecipe?.cleanName || ''})`;
+      visorAnswer = mainOut ? `${fmt(mainOutRate, 1)} ${mainOutItem?.unit || ''}/m` : '—';
+
+      inputsHtml += `
+        <div class="field-row-2">
+          <div class="field-group"><label>Produto / Receita</label><select class="sidebar-select" onchange="updateCalcField('machineRecipeId', this.value)">${machineRecipes.map(r => `<option value="${r.id}" ${r.id===selectedRecipe?.id?'selected':''}>${r.isAlternate ? '⭐ ' : ''}${r.cleanName || r.name}</option>`).join('')}</select></div>
+          <div class="field-group"><label>Overclock (%)</label><input type="number" class="sidebar-input" min="1" max="250" value="${clock}" oninput="updateCalcField('machineClock', Math.min(250, Math.max(1, Number(this.value)||100)))" /></div>
+        </div>
+      `;
+
+      detailsHtml = `
+        <div class="calc-mini-stats">
+          <div class="calc-mini-row stack"><span>Gerado (${count}x ${selectedMachine.name}):</span><strong>${prodsText}</strong></div>
+          <div class="calc-mini-row stack"><span>Recursos Consumidos:</span><strong>${ingsText}</strong></div>
+          <div class="calc-mini-row"><span>Energia Consumida:</span><strong>⚡ ${fmt(totalMw, 1)} MW</strong></div>
+          ${buildMaterials ? `<div class="calc-mini-row stack"><span>Criar ${count}x ${selectedMachine.name}:</span><strong>${buildMaterials}</strong></div>` : ''}
+        </div>
+      `;
+    }
   }
 
   view.innerHTML = `

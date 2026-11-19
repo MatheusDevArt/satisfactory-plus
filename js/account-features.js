@@ -322,7 +322,7 @@ function renderAuthModalBody() {
           required
           minlength="3"
           maxlength="20"
-          placeholder="Ex: Pioneiro_01"
+          placeholder="Digite seu usuário"
           autocomplete="username"
         />
         ${isReg ? '<small class="field-hint">3 a 20 caracteres: letras, números, ponto (.), hífen (-) ou underline (_).</small>' : ''}

@@ -7,25 +7,27 @@
 const TUTORIAL_SLIDES = [
   {
     id: 'como-usar',
-    title: 'Como usar este tutorial',
-    oneLiner: 'Um guia rápido e visual para você montar sua primeira fábrica em poucos minutos.',
+    title: 'O que tem na tela principal?',
+    oneLiner: 'A tela se divide em quatro áreas simples: painel à esquerda, área de trabalho, topo e barra inferior.',
     scenes: [
       {
         src: './assets/tutorial/tutorial-01-inicio.webp',
-        alt: 'Tela inicial do Satisfactory+ com o painel lateral à esquerda, a área de trabalho ao centro e os botões no topo direito.',
+        alt: 'Visão geral da interface do Satisfactory+ mostrando painel esquerdo, área de trabalho central, botões no topo direito e controles inferiores.',
         markers: [
-          { n: 1, x: 16, y: 22 },
+          { n: 1, x: 16, y: 24 },
           { n: 2, x: 64, y: 50 },
-          { n: 3, x: 83, y: 6 }
+          { n: 3, x: 83, y: 6 },
+          { n: 4, x: 64, y: 95 }
         ]
       }
     ],
     legend: [
-      '<strong>Painel esquerdo</strong>: escolha abas, itens, quantidades e clique para gerar a linha.',
-      '<strong>Área de trabalho</strong>: onde aparecem as máquinas, esteiras e conexões da fábrica.',
-      '<strong>Topo direito</strong>: abra este <strong>Tutorial</strong>, envie um <strong>Reportar</strong> ou clique em <strong>Entrar</strong>.'
+      '<strong>Painel esquerdo</strong>: abas da ferramenta, escolhas de itens e botão para gerar a linha.',
+      '<strong>Área de trabalho</strong>: espaço central onde as máquinas e esteiras são desenhadas.',
+      '<strong>Topo direito</strong>: direção do fluxo, <strong>Tutorial</strong>, <strong>Patch notes</strong>, <strong>Reportar</strong> e <strong>Entrar</strong>.',
+      '<strong>Barra inferior</strong>: zoom, <strong>Visão 3D</strong>, agrupamento de máquinas e <strong>Centralizar</strong>.'
     ],
-    tip: 'Clique em qualquer imagem do tutorial para ampliar. Use as setas do teclado (← →) ou deslize no celular.'
+    tip: 'Use as setas do teclado (← →) para trocar de passo e clique em qualquer imagem para ampliar.'
   },
   {
     id: 'abas',
@@ -70,7 +72,7 @@ const TUTORIAL_SLIDES = [
     ],
     legend: [
       'Clique em <strong>🎯 Começar com Produto Final</strong> e escolha o item (no exemplo, <strong>Chapa de Ferro</strong>).',
-      'Digite a <strong>Quantidade Desejada</strong> por minuto (ex.: <strong>30</strong>).',
+      'A <strong>Quantidade Desejada</strong> já vem preenchida com a produção base de 1 máquina a 100% (ex.: <strong>20/min</strong> em <strong>Chapa de Ferro</strong>).',
       'Clique no botão laranja <strong>⚡ Montar Linha de Produção</strong> para desenhar toda a fábrica.'
     ],
     tip: 'Você também pode começar pela mineradora usando <strong>⛏️ Começar com Recurso / Mineradora</strong>.',
@@ -85,11 +87,11 @@ const TUTORIAL_SLIDES = [
         src: './assets/tutorial/tutorial-04-fluxo.webp',
         alt: 'Fluxo de produção de Chapa de Ferro mostrando Nó de Minério de Ferro, Divisor, Fornalhas, Construtores e Produto Final.',
         markers: [
-          { n: 1, x: 17, y: 32 },
-          { n: 2, x: 17, y: 54 },
-          { n: 3, x: 39, y: 35 },
-          { n: 4, x: 39, y: 51 },
-          { n: 5, x: 39, y: 65 }
+          { n: 1, x: 35, y: 26 },
+          { n: 2, x: 35, y: 51 },
+          { n: 3, x: 35, y: 71 },
+          { n: 4, x: 65, y: 51 },
+          { n: 5, x: 65, y: 29 }
         ]
       }
     ],
@@ -269,8 +271,8 @@ const TUTORIAL_SLIDES = [
         src: './assets/tutorial/tutorial-11b-foco.webp',
         alt: 'Modo foco destacando apenas a Fornalha #1 e as máquinas diretamente ligadas a ela, suavizando o restante.',
         markers: [
-          { n: 1, x: 39, y: 35 },
-          { n: 2, x: 39, y: 65 }
+          { n: 1, x: 35, y: 71 },
+          { n: 2, x: 65, y: 29 }
         ]
       }
     ],
@@ -303,6 +305,26 @@ const TUTORIAL_SLIDES = [
       '<strong>👤 Entrar</strong>: crie sua conta só com usuário e senha para acessar seus projetos em qualquer lugar.'
     ],
     tip: 'Depois de abrir um projeto salvo, você pode escolher entre <strong>Atualizar projeto</strong> ou <strong>Salvar como novo</strong>.'
+  },
+  {
+    id: 'patch-notes',
+    title: 'Onde ver as novidades da ferramenta?',
+    oneLiner: 'O botão Patch notes mostra as 7 últimas atualizações e melhorias do Satisfactory+.',
+    scenes: [
+      {
+        src: './assets/tutorial/tutorial-12-conta-projetos.webp',
+        alt: 'Barra superior direita mostrando o botão Patch notes ao lado de Tutorial, Reportar e Entrar.',
+        markers: [
+          { n: 1, x: 82, y: 12 },
+          { n: 2, x: 88, y: 12 }
+        ]
+      }
+    ],
+    legend: [
+      '<strong>📋 Patch notes</strong>: abre a linha do tempo com as 7 últimas atualizações (Novo, Melhoria e Correção).',
+      '<strong>Aviso automático</strong>: quando houver uma novidade que você ainda não viu, um card curto aparece uma única vez ao abrir o site.'
+    ],
+    tip: 'Você pode consultar o histórico completo das últimas atualizações a qualquer momento pelo botão no topo.'
   },
   {
     id: 'glossario',
@@ -354,6 +376,9 @@ function closeTutorialModal() {
   }
   const modal = document.getElementById('tutorial-modal');
   if (modal) modal.classList.add('hidden');
+  if (typeof checkPendingPatchAutoCard === 'function') {
+    checkPendingPatchAutoCard();
+  }
 }
 
 function goToTutorialStep(idx) {

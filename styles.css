@@ -1632,7 +1632,7 @@ html, body {
 .leaflet-map-canvas {
   width: 100%;
   height: 100%;
-  background: #0d1520;
+  background: #3b5967;
   z-index: 1;
 }
 
@@ -4671,6 +4671,7 @@ body.theme-dark .report-type-pill.avaliacao {
 .tutorial-dialog {
   width: 94vw !important;
   max-width: 980px !important;
+  height: min(680px, 90vh) !important;
   max-height: 92vh;
   display: flex;
   flex-direction: column;
@@ -5078,4 +5079,183 @@ body.theme-dark .report-type-pill.avaliacao {
     justify-content: center;
     margin-bottom: 4px;
   }
+}
+
+
+/* ============================================================================
+ * PATCH NOTES (BOTÃO, LINHA DO TEMPO E CARD AUTOMÁTICO)
+ * ========================================================================== */
+
+.btn-patch-pill {
+  position: relative;
+}
+
+.pn-unread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  display: inline-block;
+  box-shadow: 0 0 0 2px var(--bg-card);
+}
+
+.pn-dialog {
+  width: 94vw !important;
+  max-width: 680px !important;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pn-auto-dialog {
+  width: 94vw !important;
+  max-width: 520px !important;
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pn-modal-body {
+  padding: 18px 22px 22px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pn-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pn-entry {
+  padding: 15px 16px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border-card);
+  background: var(--bg-card-inner);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pn-entry.pn-latest {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.pn-entry-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pn-entry-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pn-entry-title-wrap h4,
+.pn-auto-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-main);
+  line-height: 1.3;
+}
+
+.pn-auto-title {
+  font-size: 18px;
+}
+
+.pn-latest-badge {
+  align-self: flex-start;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pn-entry-date {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.pn-items-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.pn-item-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.48;
+  color: var(--text-main);
+}
+
+.pn-tag {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 900;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.pn-tag-novo {
+  background: rgba(16, 185, 129, 0.16);
+  color: #059669;
+}
+
+body.theme-dark .pn-tag-novo {
+  color: #6ee7b7;
+}
+
+.pn-tag-melhoria {
+  background: rgba(59, 130, 246, 0.16);
+  color: #2563eb;
+}
+
+body.theme-dark .pn-tag-melhoria {
+  color: #93c5fd;
+}
+
+.pn-tag-correcao {
+  background: rgba(245, 158, 11, 0.18);
+  color: #d97706;
+}
+
+body.theme-dark .pn-tag-correcao {
+  color: #fcd34d;
+}
+
+.pn-auto-head-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pn-auto-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
 }

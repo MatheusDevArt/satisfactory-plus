@@ -1,0 +1,70 @@
+[
+  {
+    "id": "2026-11-18-dados-mapa-patchnotes",
+    "date": "18/11/2026",
+    "title": "Dados oficiais do jogo, mapa sem bordas e Patch notes",
+    "items": [
+      { "tag": "Novo", "text": "Nova seção Patch notes no topo da tela para acompanhar todas as novidades." },
+      { "tag": "Melhoria", "text": "Dados de itens, receitas, máquinas, energia, esteiras e tubos sincronizados com os arquivos oficiais do jogo." },
+      { "tag": "Melhoria", "text": "Valores padrão reais ao escolher qualquer item, máquina ou gerador — sem números de exemplo." },
+      { "tag": "Melhoria", "text": "Tutorial com altura fixa em todos os passos para facilitar a navegação." },
+      { "tag": "Correção", "text": "Mapa interativo agora preenche toda a tela sem tarjas pretas nas laterais." }
+    ]
+  },
+  {
+    "id": "2026-11-18-tutorial-visual",
+    "date": "18/11/2026",
+    "title": "Novo Tutorial interativo com imagens reais",
+    "items": [
+      { "tag": "Novo", "text": "Tutorial reformulado com prints reais da interface, marcadores numerados e ampliação ao clicar." },
+      { "tag": "Novo", "text": "Índice rápido para pular para qualquer tópico, glossário de termos e navegação pelas setas do teclado." }
+    ]
+  },
+  {
+    "id": "2026-11-18-contas-projetos-reports",
+    "date": "18/11/2026",
+    "title": "Contas, Projetos salvos na nuvem e Reportar",
+    "items": [
+      { "tag": "Novo", "text": "Crie uma conta com usuário e senha para salvar suas fábricas na aba Projetos e reabrir quando quiser." },
+      { "tag": "Novo", "text": "Botão Reportar no topo para enviar bugs, sugestões ou avaliações com imagens." },
+      { "tag": "Melhoria", "text": "Login persistente que mantém sua conta conectada ao reabrir o navegador." }
+    ]
+  },
+  {
+    "id": "2026-11-18-excesso-e-produto-final",
+    "date": "18/11/2026",
+    "title": "Produto final em laranja, Excesso e nova linha",
+    "items": [
+      { "tag": "Novo", "text": "Destaque laranja com etiqueta PRODUTO FINAL no objetivo da linha de produção." },
+      { "tag": "Novo", "text": "Botão Gerar nova linha de produção ao lado de cada item em excesso para reaproveitar subprodutos." },
+      { "tag": "Melhoria", "text": "Cards de Nós de recurso simplificados mostrando apenas o recurso e a taxa extraída por minuto." }
+    ]
+  },
+  {
+    "id": "2026-11-18-layout-compacto-arrasto",
+    "date": "18/11/2026",
+    "title": "Arrasto fluido e layout compacto em colunas",
+    "items": [
+      { "tag": "Correção", "text": "Corrigido o travamento ao arrastar cards na área de trabalho." },
+      { "tag": "Melhoria", "text": "Layout compacto em colunas com conectores curtos clicáveis em linhas muito longas." },
+      { "tag": "Melhoria", "text": "Etiquetas das esteiras centralizadas no meio de cada ligação com versão e vazão." }
+    ]
+  },
+  {
+    "id": "2026-11-16-modo-livre-diagnostico",
+    "date": "16/11/2026",
+    "title": "Modo Livre, divisores e diagnóstico da fábrica",
+    "items": [
+      { "tag": "Novo", "text": "Aba Livre para posicionar máquinas manualmente e puxar conexões de esteiras e tubos." },
+      { "tag": "Novo", "text": "Blocos de Divisor, Unificador e Junção de Tubo com diagnóstico automático de gargalos." }
+    ]
+  },
+  {
+    "id": "2026-11-15-lancamento-satisfactory-plus",
+    "date": "15/11/2026",
+    "title": "Lançamento do Satisfactory+ 1.0+",
+    "items": [
+      { "tag": "Novo", "text": "Planejador visual de Produção, Energia, Mapa interativo, Receitas, Biblioteca e Calculadora em português." }
+    ]
+  }
+]

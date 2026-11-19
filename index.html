@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./styles.css?v=16" />
+  <link rel="stylesheet" href="./styles.css?v=18" />
 </head>
 <body class="theme-light">
   <!-- ANIMAÇÃO DE ENTRADA (INTRO SPLASH) COM LOGO S+ E NOME SATISFACTORY+ -->
@@ -160,6 +160,10 @@
         <button id="btn-open-tutorial" class="btn-tutorial-pill" onclick="openTutorialModal()" title="Abrir Tutorial Interativo da Ferramenta">
           📖 Tutorial
         </button>
+        <button id="btn-open-patch-notes" class="btn-top-action btn-patch-pill" onclick="openPatchNotesModal()" title="Ver últimas atualizações e melhorias">
+          📋 Patch notes
+          <span id="patch-notes-unread-dot" class="pn-unread-dot hidden" aria-hidden="true"></span>
+        </button>
         <button id="btn-open-report" class="btn-top-action btn-report-pill" onclick="handleReportButtonClick()" title="Reportar bug, enviar sugestão ou avaliação">
           📣 Reportar
         </button>
@@ -221,7 +225,7 @@
         <input
           type="text"
           id="picker-search"
-          placeholder="🔍 Buscar pelo nome em português (ex: Carvão, Lingote de Ferro, Chapa, Barra)..."
+          placeholder="🔍 Buscar pelo nome em português..."
           autocomplete="off"
         />
         <div id="picker-categories" class="category-chips"></div>
@@ -286,6 +290,28 @@
     </div>
   </div>
 
+  <!-- MODAL DE PATCH NOTES (LINHA DO TEMPO — 7 ÚLTIMAS) -->
+  <div id="patch-notes-modal" class="modal-backdrop hidden" onclick="if(event.target===this) closePatchNotesModal()">
+    <div class="modal-dialog pn-dialog" role="dialog" aria-modal="true" aria-labelledby="patch-notes-title">
+      <div class="modal-header">
+        <h3 id="patch-notes-title">📋 Patch notes</h3>
+        <button class="icon-close" onclick="closePatchNotesModal()" aria-label="Fechar">✕</button>
+      </div>
+      <div id="patch-notes-body" class="pn-modal-body"></div>
+    </div>
+  </div>
+
+  <!-- CARD AUTOMÁTICO DA ÚLTIMA ATUALIZAÇÃO -->
+  <div id="patch-auto-modal" class="modal-backdrop hidden" onclick="if(event.target===this) closePatchAutoCard(true)">
+    <div class="modal-dialog pn-auto-dialog" role="dialog" aria-modal="true" aria-labelledby="patch-auto-title">
+      <div class="modal-header">
+        <h3 id="patch-auto-title">✨ Novidades do Satisfactory+</h3>
+        <button class="icon-close" onclick="closePatchAutoCard(true)" aria-label="Fechar">✕</button>
+      </div>
+      <div id="patch-auto-body" class="pn-modal-body"></div>
+    </div>
+  </div>
+
   <!-- LIGHTBOX DE AMPLIAÇÃO DE IMAGEM -->
   <div id="image-lightbox-modal" class="modal-backdrop hidden" onclick="closeImageLightbox()">
     <div class="lightbox-wrap" onclick="event.stopPropagation()">
@@ -296,13 +322,14 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="./js/elk.bundled.js?v=13"></script>
-  <script src="./data/satisfactory-data.js?v=13"></script>
-  <script src="./js/map-data.js?v=13"></script>
-  <script src="./js/library-data.js?v=13"></script>
-  <script src="./js/icons.js?v=13"></script>
-  <script src="./js/solver.js?v=13"></script>
-  <script src="./js/app.js?v=17"></script>
-  <script src="./js/tutorial.js?v=16"></script>
-  <script src="./js/account-features.js?v=16"></script>
+  <script src="./data/satisfactory-data.js?v=18"></script>
+  <script src="./js/map-data.js?v=18"></script>
+  <script src="./js/library-data.js?v=18"></script>
+  <script src="./js/icons.js?v=18"></script>
+  <script src="./js/solver.js?v=18"></script>
+  <script src="./js/app.js?v=18"></script>
+  <script src="./js/tutorial.js?v=18"></script>
+  <script src="./js/patch-notes.js?v=18"></script>
+  <script src="./js/account-features.js?v=18"></script>
 </body>
 </html>

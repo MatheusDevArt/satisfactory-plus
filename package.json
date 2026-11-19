@@ -4,6 +4,7 @@
   "private": true,
   "description": "Satisfactory+ — Planejador Visual, Contas, Reports e Projetos",
   "scripts": {
+    "dados:gerar": "node scripts/generate-game-data.js",
     "tutorial:prints": "node scripts/generate-tutorial-prints.js"
   },
   "dependencies": {

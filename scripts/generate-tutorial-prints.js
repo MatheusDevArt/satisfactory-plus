@@ -195,10 +195,12 @@ async function run() {
     await cdp.send('Page.navigate', { url });
     await sleep(2600);
 
-    // Garante splash removido e tema claro limpo
+    // Garante splash removido, tema claro limpo e patch notes auto-card silenciado nos prints
     await cdp.eval(`(() => {
       const splash = document.getElementById('intro-splash');
       if (splash) splash.remove();
+      try { localStorage.setItem('splus_last_seen_patch_id', '2026-11-18-dados-mapa-patchnotes'); } catch {}
+      if (typeof closePatchAutoCard === 'function') closePatchAutoCard(true);
       document.body.classList.remove('theme-dark');
       document.body.classList.add('theme-light');
     })()`);
@@ -210,12 +212,13 @@ async function run() {
     // 2. Barra de abas (painel esquerdo superior)
     await cdp.captureWebp('tutorial-02-abas.webp', { x: 0, y: 0, width: 460, height: 340 }, 86);
 
-    // 3. Gerando sua primeira linha (Chapa de Ferro 30/min configurada no painel)
+    // 3. Gerando sua primeira linha (Chapa de Ferro na taxa base real de 1 Construtor = 20/min)
     await cdp.eval(`(() => {
       AppState.mode = 'production';
       AppState.production.driver = 'product';
       AppState.production.mounted = false;
-      AppState.pull.targets = [{ id: uid(), itemId: 'Desc_IronPlate_C', rate: 30 }];
+      const baseRate = typeof getBaseRecipeRateForItem === 'function' ? getBaseRecipeRateForItem('Desc_IronPlate_C') : 20;
+      AppState.pull.targets = [{ id: uid(), itemId: 'Desc_IronPlate_C', rate: baseRate }];
       renderAll();
     })()`);
     await sleep(600);
