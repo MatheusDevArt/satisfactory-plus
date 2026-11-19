@@ -1,5 +1,17 @@
 [
   {
+    "id": "2026-11-19-home-rodape-filtros-ff6b00",
+    "date": "19/11/2026",
+    "title": "Nova tela Home, rodapé de status, filtros rápidos e laranja #FF6B00",
+    "items": [
+      { "tag": "Novo", "text": "Nova tela Home na abertura (e ao clicar na logo) com esteiras animadas para Descubra, Planeje e Crie." },
+      { "tag": "Novo", "text": "Filtros rápidos no modal Adicionar Máquina para escolher logística, contêineres, extratores, geradores e máquinas sem precisar rolar." },
+      { "tag": "Melhoria", "text": "Resumo da linha de produção movido para um rodapé recolhível na parte inferior, deixando o painel lateral mais limpo." },
+      { "tag": "Melhoria", "text": "Cor laranja #FF6B00 padronizada no card do produto final e no site, mapa integrado ao fundo dos spaces e detalhes da Biblioteca ampliados." },
+      { "tag": "Correção", "text": "Abas do status agora abrem e fecham corretamente ao clicar, emblemas das esteiras não se movem no hover e adição de itens/contêineres pelo botão direito corrigida." }
+    ]
+  },
+  {
     "id": "2026-11-19-resumo-logistica-esteiras-lr",
     "date": "19/11/2026",
     "title": "Resumo da fábrica, contêineres, esteiras corrigidas e fluxo Esquerda → Direita",

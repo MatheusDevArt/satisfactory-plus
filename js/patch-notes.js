@@ -40,6 +40,7 @@ function updatePatchNotesBadge() {
 }
 
 function isAnyOtherModalOpen() {
+  if (document.body && document.body.classList.contains('home-active')) return true;
   const ids = [
     'tutorial-modal',
     'auth-modal',

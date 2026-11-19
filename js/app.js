@@ -185,21 +185,67 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ============================================================================
- * ANIMAÇÃO DE ENTRADA (INTRO SPLASH) E TEMA CLARO / ESCURO
+ * TELA HOME (ABERTURA DO SITE E REABERTA AO CLICAR NA LOGO) E TEMA CLARO / ESCURO
  * ========================================================================== */
 
 function initIntroSplash() {
-  setTimeout(() => {
-    dismissIntroSplash();
-  }, 1850);
+  const splash = document.getElementById('intro-splash');
+  if (!splash) return;
+
+  // Rolar para baixo (mouse wheel) transiciona da Home para a primeira aba
+  window.addEventListener('wheel', (e) => {
+    if (!document.body.classList.contains('home-active')) return;
+    if (e.deltaY > 12) {
+      dismissIntroSplash();
+    }
+  }, { passive: true });
+
+  // Deslize para cima no celular / touch
+  let touchStartY = null;
+  splash.addEventListener('touchstart', (e) => {
+    if (e.touches && e.touches.length === 1) touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  splash.addEventListener('touchmove', (e) => {
+    if (!document.body.classList.contains('home-active') || touchStartY === null) return;
+    if (e.touches && e.touches.length === 1 && touchStartY - e.touches[0].clientY > 36) {
+      touchStartY = null;
+      dismissIntroSplash();
+    }
+  }, { passive: true });
+
+  // Teclado: seta para baixo, PageDown, Enter ou Espaço
+  window.addEventListener('keydown', (e) => {
+    if (!document.body.classList.contains('home-active')) return;
+    if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      dismissIntroSplash();
+    }
+  });
+}
+
+function openHomeScreen() {
+  const splash = document.getElementById('intro-splash');
+  if (!splash) return;
+  splash.classList.remove('splash-hidden', 'splash-fade-out');
+  document.body.classList.add('home-active');
 }
 
 function dismissIntroSplash() {
   const splash = document.getElementById('intro-splash');
-  if (!splash || splash.classList.contains('splash-hidden')) return;
+  if (!splash || splash.classList.contains('splash-hidden')) {
+    document.body.classList.remove('home-active');
+    return;
+  }
+  document.body.classList.remove('home-active');
   splash.classList.add('splash-fade-out');
+  if (typeof switchMode === 'function' && AppState.mode !== 'production') {
+    switchMode('production');
+  }
   setTimeout(() => {
     splash.classList.add('splash-hidden');
+    if (typeof checkPendingPatchAutoCard === 'function') {
+      checkPendingPatchAutoCard();
+    }
   }, 480);
 }
 
@@ -767,9 +813,22 @@ function updateTopRightFloatingActions() {
   const container = document.getElementById('sidebar-action-section');
   if (!container) return;
 
+  const footerEl = document.getElementById('factory-status-footer');
+  const setFooterHtml = (html) => {
+    if (!footerEl) return;
+    if (html) {
+      footerEl.innerHTML = html;
+      footerEl.classList.remove('hidden');
+    } else {
+      footerEl.innerHTML = '';
+      footerEl.classList.add('hidden');
+    }
+  };
+
   if (AppState.mode === 'map' || AppState.mode === 'library' || AppState.mode === 'recipes' || AppState.mode === 'calculator' || AppState.mode === 'projects' || AppState.mode === 'reports') {
     container.classList.add('hidden');
     container.innerHTML = '';
+    setFooterHtml('');
     return;
   }
 
@@ -781,8 +840,8 @@ function updateTopRightFloatingActions() {
     const isReady = isPushReady || isPullReady;
     const isMounted = Boolean(AppState.production.mounted);
 
-    let summaryHtml = '';
-    if (isReady) {
+    let footerHtml = '';
+    if (isReady && isMounted) {
       let plan = null;
       if (isPushReady) {
         plan = Solver.calculatePushChain(AppState.push.inputs, AppState.push.targetItemId, AppState.push.recipeOverrides, AppState.push.stepSettings);
@@ -794,12 +853,11 @@ function updateTopRightFloatingActions() {
           minerSettings: AppState.pull.minerSettings
         });
       }
-      if (plan && plan.stages && plan.stages.length > 0) {
-        summaryHtml = typeof renderFactorySummaryPanel === 'function'
-          ? renderFactorySummaryPanel({ mode: 'production', plan, graph: AppState.canvas.lastGraph })
-          : '';
+      if (plan && plan.stages && plan.stages.length > 0 && typeof renderFactorySummaryPanel === 'function') {
+        footerHtml = renderFactorySummaryPanel({ mode: 'production', plan, graph: AppState.canvas.lastGraph });
       }
     }
+    setFooterHtml(footerHtml);
 
     const saveActionsHtml = (isReady && typeof renderSaveProjectButtonsHtml === 'function')
       ? renderSaveProjectButtonsHtml('production')
@@ -814,9 +872,9 @@ function updateTopRightFloatingActions() {
         ${isMounted ? '🔄 Atualizar Linha de Produção' : '⚡ Montar Linha de Produção'}
       </button>
       ${saveActionsHtml}
-      ${summaryHtml}
     `;
   } else if (AppState.mode === 'power') {
+    setFooterHtml('');
     const isReady = Boolean(AppState.power.generatorId && AppState.power.fuelItemId);
     const isMounted = Boolean(AppState.power.mounted);
     let summaryHtml = '';
@@ -845,26 +903,23 @@ function updateTopRightFloatingActions() {
   } else if (AppState.mode === 'free') {
     const blocks = AppState.free.blocks || [];
     const hasBlocks = blocks.length > 0;
-    let summaryHtml = '';
-    if (hasBlocks) {
-      summaryHtml = typeof renderFactorySummaryPanel === 'function'
-        ? renderFactorySummaryPanel({ mode: 'free', freeBlocks: blocks, freeEdges: AppState.free.customEdges, graph: AppState.canvas.lastGraph })
-        : '';
-    }
+    const footerHtml = (hasBlocks && typeof renderFactorySummaryPanel === 'function')
+      ? renderFactorySummaryPanel({ mode: 'free', freeBlocks: blocks, freeEdges: AppState.free.customEdges, graph: AppState.canvas.lastGraph })
+      : '';
+    setFooterHtml(footerHtml);
+
     const freeSaveHtml = (hasBlocks && typeof renderSaveProjectButtonsHtml === 'function')
       ? renderSaveProjectButtonsHtml('free')
       : '';
 
     container.innerHTML = `
       <button
-        class="btn-floating-primary sidebar-action-btn ${hasBlocks ? 'ready check-mode' : 'disabled'}"
-        ${!hasBlocks ? 'disabled title="Adicione máquinas no espaço antes de executar o diagnóstico"' : ''}
-        onclick="runFreeModeCheck()"
+        class="btn-floating-primary sidebar-action-btn ready"
+        onclick="openAddMachineModal()"
       >
-        🩺 Diagnóstico / Check
+        ➕ Adicionar Máquina / Item
       </button>
       ${freeSaveHtml}
-      ${summaryHtml}
     `;
   }
 }
@@ -1061,11 +1116,6 @@ function renderPushFlowInsideProduction(sidebarEl, emptyOverlay, autoFit) {
     ${recipesConfigHtml}
 
     <div class="sidebar-footer-actions">
-      ${isReady ? `
-        <button class="btn-mount-flow ready" onclick="fitCanvasToScreen()">
-          🎯 Centralizar Fluxo no Espaço
-        </button>
-      ` : ''}
       <button class="btn-clear-flow" onclick="clearCurrentFlow()">🗑️ Recomeçar / Limpar Tudo</button>
     </div>
   `;
@@ -1259,9 +1309,6 @@ function renderPullFlowInsideProduction(sidebarEl, emptyOverlay, autoFit) {
     ${stagesConfigHtml}
 
     <div class="sidebar-footer-actions">
-      <button class="btn-mount-flow ready" onclick="fitCanvasToScreen()">
-        🎯 Centralizar Fluxo no Espaço
-      </button>
       <button class="btn-clear-flow" onclick="clearCurrentFlow()">🗑️ Recomeçar / Limpar Tudo</button>
     </div>
   `;
@@ -1618,9 +1665,6 @@ function renderPowerMode(sidebarEl, emptyOverlay, autoFit) {
 
     <div class="sidebar-footer-actions">
       ${isReady ? `
-        <button class="btn-mount-flow ready" onclick="fitCanvasToScreen()">
-          🎯 Centralizar Fluxo no Espaço
-        </button>
         <button class="btn-clear-flow" onclick="clearCurrentFlow()">🗑️ Limpar Tudo</button>
       ` : ''}
     </div>
@@ -4224,11 +4268,16 @@ function positionFloatingMenu(menuEl, clientX, clientY) {
 
 function openCanvasContextMenu(clientX, clientY, worldPos) {
   closeCanvasMenus();
-  const menu = document.getElementById('canvas-context-menu');
-  if (!menu) return;
-
   const wx = Math.round(worldPos.x);
   const wy = Math.round(worldPos.y);
+
+  if (AppState.mode === 'free' && typeof openAddMachineModal === 'function') {
+    openAddMachineModal({ worldPos: { x: wx, y: wy } });
+    return;
+  }
+
+  const menu = document.getElementById('canvas-context-menu');
+  if (!menu) return;
 
   menu.innerHTML = `
     <div class="context-menu-header">Adicionar</div>

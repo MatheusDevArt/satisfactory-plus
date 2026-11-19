@@ -13,36 +13,68 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./styles.css?v=20" />
+  <link rel="stylesheet" href="./styles.css?v=22" />
 </head>
-<body class="theme-light">
-  <!-- ANIMAÇÃO DE ENTRADA (INTRO SPLASH) COM LOGO S+ E NOME SATISFACTORY+ -->
-  <div id="intro-splash" class="intro-splash" onclick="dismissIntroSplash()">
-    <div class="intro-splash-card">
-      <div class="intro-logo-stage">
-        <div class="intro-logo-ring"></div>
-        <div class="intro-logo-glow"></div>
-        <img src="./assets/logo-splus.jpg" alt="Satisfactory+ Logo" class="intro-logo-img" />
+<body class="theme-light home-active">
+  <!-- TELA HOME (ABERTURA DO SITE E REABERTA AO CLICAR NA LOGO) -->
+  <section id="intro-splash" class="intro-splash home-screen" aria-label="Tela inicial Satisfactory+">
+    <div class="home-center-stage">
+      <div class="home-conveyor-hub">
+        <!-- Esteira para CIMA -> Planeje -->
+        <div class="home-branch home-branch-top">
+          <div class="home-word-pill">Planeje</div>
+          <div class="home-belt home-belt-v">
+            <span class="home-belt-track"></span>
+          </div>
+        </div>
+
+        <!-- Linha central: Descubra <- Logo -> Crie -->
+        <div class="home-middle-row">
+          <div class="home-branch home-branch-left">
+            <div class="home-word-pill">Descubra</div>
+            <div class="home-belt home-belt-h home-belt-left">
+              <span class="home-belt-track"></span>
+            </div>
+          </div>
+
+          <div class="intro-logo-stage home-logo-stage">
+            <div class="intro-logo-ring"></div>
+            <div class="intro-logo-glow"></div>
+            <img src="./assets/logo-splus.jpg" alt="Satisfactory+ Logo" class="intro-logo-img home-logo-img" />
+          </div>
+
+          <div class="home-branch home-branch-right">
+            <div class="home-belt home-belt-h home-belt-right">
+              <span class="home-belt-track"></span>
+            </div>
+            <div class="home-word-pill">Crie</div>
+          </div>
+        </div>
       </div>
-      <h1 class="intro-title">Satisfactory<span>+</span></h1>
-      <p class="intro-subtitle">Planejador de Fábricas, Logística &amp; Mapa Interativo 1.0+</p>
-      <div class="intro-progress-track">
-        <div class="intro-progress-bar"></div>
-      </div>
+
+      <h1 class="intro-title home-title">Satisfactory<span>+</span></h1>
+      <p class="intro-subtitle home-subtitle">Tudo que você precisa para montar suas fábricas</p>
       <div class="splash-credit">Criado por Matheus Pinheiro</div>
     </div>
-  </div>
+
+    <button type="button" class="home-scroll-cue" onclick="dismissIntroSplash()" aria-label="Rolar para baixo para entrar">
+      <span>Role para baixo para começar</span>
+      <span class="home-scroll-arrow">↓</span>
+    </button>
+  </section>
 
   <div id="app-layout-root" class="app-layout-lr">
     <!-- PAINEL LATERAL À ESQUERDA -->
     <aside id="left-sidebar" class="left-sidebar">
       <!-- CABEÇALHO COM LOGO S+, TEMA CLARO/ESCURO E MINIMIZAR -->
       <div class="sidebar-brand">
-        <img src="./assets/logo-splus.jpg" alt="Satisfactory+" class="brand-logo-img" />
-        <div class="brand-text">
-          <h1>Satisfactory+</h1>
-          <span class="brand-subtitle">Planejador &amp; Mapa 1.0+</span>
-        </div>
+        <button type="button" class="brand-home-trigger" onclick="openHomeScreen()" title="Voltar para a tela Home">
+          <img src="./assets/logo-splus.jpg" alt="Satisfactory+" class="brand-logo-img" />
+          <div class="brand-text">
+            <h1>Satisfactory+</h1>
+            <span class="brand-subtitle">Planejador &amp; Mapa 1.0+</span>
+          </div>
+        </button>
         <div class="brand-header-actions">
           <button
             id="btn-theme-toggle"
@@ -174,13 +206,8 @@
         </div>
       </div>
 
-      <!-- BARRA INFERIOR ESQUERDA DO MODO LIVRE (ADICIONAR, DIVISOR, UNIFICADOR & JUNÇÃO DE TUBO) -->
-      <div id="free-logistics-toolbar" class="free-logistics-toolbar hidden">
-        <button class="hud-btn hud-btn-fit" onclick="openAddMachineModal()" title="Abrir catálogo completo de máquinas, receitas, contêineres e logística">➕ Adicionar Máquina</button>
-        <button class="hud-btn hud-btn-logistics" onclick="addFreeBlock('splitter')" title="Adicionar Divisor de Esteira ao espaço">🔀 + Divisor</button>
-        <button class="hud-btn hud-btn-logistics" onclick="addFreeBlock('merger')" title="Adicionar Unificador de Esteira ao espaço">🔗 + Unificador</button>
-        <button class="hud-btn hud-btn-logistics" onclick="addFreeBlock('pipe_junction')" title="Adicionar Junção de Tubulação (líquidos e gases)">🔩 + Junção de Tubo</button>
-      </div>
+      <!-- RODAPÉ DE STATUS / RESUMO DA LINHA DE PRODUÇÃO -->
+      <div id="factory-status-footer" class="factory-status-footer hidden"></div>
 
       <!-- CONTROLES FLUTUANTES DE ZOOM / VISÃO 3D / EXPANSÃO / ENQUADRAMENTO -->
       <div id="spaces-hud-controls" class="spaces-hud-controls">
@@ -337,15 +364,15 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="./js/elk.bundled.js?v=13"></script>
-  <script src="./data/satisfactory-data.js?v=20"></script>
-  <script src="./js/map-data.js?v=20"></script>
-  <script src="./js/library-data.js?v=20"></script>
-  <script src="./js/icons.js?v=20"></script>
-  <script src="./js/solver.js?v=20"></script>
-  <script src="./js/app.js?v=20"></script>
-  <script src="./js/factory-enhancements.js?v=21"></script>
-  <script src="./js/tutorial.js?v=20"></script>
-  <script src="./js/patch-notes.js?v=20"></script>
-  <script src="./js/account-features.js?v=20"></script>
+  <script src="./data/satisfactory-data.js?v=22"></script>
+  <script src="./js/map-data.js?v=22"></script>
+  <script src="./js/library-data.js?v=22"></script>
+  <script src="./js/icons.js?v=22"></script>
+  <script src="./js/solver.js?v=22"></script>
+  <script src="./js/app.js?v=22"></script>
+  <script src="./js/factory-enhancements.js?v=22"></script>
+  <script src="./js/tutorial.js?v=22"></script>
+  <script src="./js/patch-notes.js?v=22"></script>
+  <script src="./js/account-features.js?v=22"></script>
 </body>
 </html>

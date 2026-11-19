@@ -7,12 +7,14 @@ const FactoryUIState = {
   compactCards: false,
   powerMarginPercent: 10,
   showOtherGenerators: false,
+  activeFooterTab: null, // null = recolhido | 'visao' | 'energia' | 'entradas' | 'saidas' | 'faltando' | 'excesso' | 'construcoes' | 'materiais'
   collapsedSections: {
     materiais: true
   },
   addMachineModal: {
     isOpen: false,
     search: '',
+    quickFilter: 'all', // 'all' | 'logistica' | 'armazenamento' | 'destinos' | 'extratores' | 'geradores' | 'alternativas' | machineId
     filterItemId: null,
     fromNodeId: null,
     worldPos: null,
@@ -47,7 +49,12 @@ function toggleCompactCardMode() {
 }
 
 function toggleSummarySection(secId) {
-  FactoryUIState.collapsedSections[secId] = !FactoryUIState.collapsedSections[secId];
+  FactoryUIState.activeFooterTab = (FactoryUIState.activeFooterTab === secId) ? null : secId;
+  if (typeof renderSidebarActionSection === 'function') renderSidebarActionSection();
+}
+
+function closeSummaryFooterDrawer() {
+  FactoryUIState.activeFooterTab = null;
   if (typeof renderSidebarActionSection === 'function') renderSidebarActionSection();
 }
 
@@ -391,16 +398,40 @@ function renderFactorySummaryPanel({ mode, plan, freeBlocks, freeEdges, graph })
         }).join('')
     : '<div class="fs-row"><span>Sem custo de construção</span></div>';
 
+  const tabs = [
+    { id: 'visao', label: `Visão geral (${totalBuildings})`, body: overviewBody },
+    { id: 'energia', label: `Energia (${balanceMw >= 0 ? '+' : ''}${fmt(balanceMw, 0)} MW)`, body: energyBody, tone: balanceMw < 0 ? 'neg' : 'pos' },
+    { id: 'entradas', label: `Entradas (${inputsMap.size})`, body: inputsBody },
+    { id: 'saidas', label: `Saídas (${outputsMap.size})`, body: outputsBody },
+    ...(missingMap.size > 0 ? [{ id: 'faltando', label: `Não produzido (${missingMap.size})`, body: missingBody, tone: 'neg' }] : []),
+    { id: 'excesso', label: `Excesso (${excessList.length})`, body: excessBody, tone: excessList.length > 0 ? 'warn' : '' },
+    { id: 'construcoes', label: `Construções (${totalBuildings})`, body: buildingsBody },
+    { id: 'materiais', label: `Materiais (${materialsMap.size})`, body: materialsBody }
+  ];
+
+  const activeTabObj = tabs.find((t) => t.id === FactoryUIState.activeFooterTab) || null;
+
   return `
-    <div class="fs-panel">
-      ${renderSummarySectionHtml('visao', 'Visão geral', overviewBody)}
-      ${renderSummarySectionHtml('energia', 'Energia', energyBody)}
-      ${renderSummarySectionHtml('entradas', `Entradas (${inputsMap.size})`, inputsBody)}
-      ${renderSummarySectionHtml('saidas', `Saídas (${outputsMap.size})`, outputsBody)}
-      ${missingMap.size > 0 ? renderSummarySectionHtml('faltando', `Não produzido (${missingMap.size})`, missingBody) : ''}
-      ${renderSummarySectionHtml('excesso', `Excesso (${excessList.length})`, excessBody)}
-      ${renderSummarySectionHtml('construcoes', `Construções (${totalBuildings})`, buildingsBody)}
-      ${renderSummarySectionHtml('materiais', `Materiais usados (${materialsMap.size})`, materialsBody)}
+    ${activeTabObj ? `
+      <div class="fs-footer-drawer">
+        <div class="fs-footer-drawer-head">
+          <strong>${activeTabObj.label}</strong>
+          <button type="button" class="fs-drawer-close" onclick="closeSummaryFooterDrawer()" title="Fechar painel">✕</button>
+        </div>
+        <div class="fs-footer-drawer-body">${activeTabObj.body}</div>
+      </div>
+    ` : ''}
+    <div class="fs-footer-bar" role="tablist" aria-label="Status da linha de produção">
+      ${tabs.map((t) => `
+        <button
+          type="button"
+          class="fs-footer-tab ${FactoryUIState.activeFooterTab === t.id ? 'active' : ''} ${t.tone ? 'tone-' + t.tone : ''}"
+          onclick="toggleSummarySection('${t.id}')"
+        >
+          <span>${t.label}</span>
+          <span class="fs-tab-caret">${FactoryUIState.activeFooterTab === t.id ? '▾' : '▴'}</span>
+        </button>
+      `).join('')}
     </div>
   `;
 }
@@ -413,6 +444,7 @@ function openAddMachineModal(options = {}) {
   const st = FactoryUIState.addMachineModal;
   st.isOpen = true;
   st.search = '';
+  st.quickFilter = 'all';
   st.filterItemId = options.filterItemId || null;
   st.fromNodeId = options.fromNodeId || null;
   st.worldPos = options.worldPos || null;
@@ -427,6 +459,12 @@ function openAddMachineModal(options = {}) {
   }, 40);
 }
 
+function setAddMachineQuickFilter(filterKey) {
+  FactoryUIState.addMachineModal.quickFilter = filterKey;
+  FactoryUIState.addMachineModal.activeIndex = 0;
+  renderAddMachineModalBody();
+}
+
 function closeAddMachineModal() {
   FactoryUIState.addMachineModal.isOpen = false;
   const modal = document.getElementById('add-machine-modal');
@@ -436,22 +474,49 @@ function closeAddMachineModal() {
 function getFilteredAddMachineOptions() {
   const st = FactoryUIState.addMachineModal;
   const q = (st.search || '').trim().toLowerCase();
+  const qf = st.quickFilter || 'all';
   const itemsDb = (window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.items) || {};
   const machinesDb = (window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.machines) || {};
+  const extractorsDb = (window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.extractors) || {};
+  const generatorsDb = (window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.generators) || {};
   const logisticsDb = (window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.logistics) || {};
   const recipesDb = (window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.recipes) || {};
 
   const filterItem = st.filterItemId ? itemsDb[st.filterItemId] : null;
   const isFilterFluid = Boolean(filterItem && filterItem.isFluid);
 
-  const logistics = Object.values(logisticsDb).filter((l) => {
+  const showLogistics = qf === 'all' || qf === 'logistica' || qf === 'armazenamento' || qf === 'destinos';
+  const logistics = showLogistics ? Object.values(logisticsDb).filter((l) => {
     if (filterItem && l.isFluid !== isFilterFluid) return false;
+    if (qf === 'logistica' && l.category !== 'Esteiras' && l.category !== 'Tubulações') return false;
+    if (qf === 'armazenamento' && l.category !== 'Armazenamento') return false;
+    if (qf === 'destinos' && l.category !== 'Destinos Finais') return false;
     if (!q) return true;
     return (l.name || '').toLowerCase().includes(q) || (l.category || '').toLowerCase().includes(q);
-  });
+  }) : [];
 
-  const recipes = Object.values(recipesDb).filter((r) => {
+  const showExtractors = !filterItem && (qf === 'all' || qf === 'extratores');
+  const extractors = showExtractors ? Object.values(extractorsDb).filter((ex) => {
+    if (!q) return true;
+    return (ex.name || '').toLowerCase().includes(q);
+  }) : [];
+
+  const showGenerators = qf === 'all' || qf === 'geradores';
+  const generators = showGenerators ? Object.values(generatorsDb).filter((g) => {
+    if (filterItem) {
+      const acceptsFuel = (g.fuels || []).some((f) => f.item === filterItem.id);
+      const acceptsWater = filterItem.id === 'Desc_Water_C' && (g.waterPerMin || 0) > 0;
+      if (!acceptsFuel && !acceptsWater) return false;
+    }
+    if (!q) return true;
+    return (g.name || '').toLowerCase().includes(q);
+  }) : [];
+
+  const showRecipes = qf === 'all' || qf === 'alternativas' || qf.startsWith('Build_');
+  const recipes = showRecipes ? Object.values(recipesDb).filter((r) => {
     if (!r || !r.machine || !machinesDb[r.machine]) return false;
+    if (qf === 'alternativas' && !r.isAlternate) return false;
+    if (qf.startsWith('Build_') && r.machine !== qf) return false;
     if (st.filterItemId) {
       const accepts = (r.ingredients || []).some((ing) => ing.item === st.filterItemId);
       if (!accepts) return false;
@@ -466,9 +531,45 @@ function getFilteredAddMachineOptions() {
   }).sort((a, b) => {
     if (Boolean(a.isAlternate) !== Boolean(b.isAlternate)) return a.isAlternate ? 1 : -1;
     return (a.cleanName || a.name).localeCompare(b.cleanName || b.name, 'pt-BR');
-  });
+  }) : [];
 
-  return { logistics, recipes, filterItem };
+  return { logistics, extractors, generators, recipes, filterItem };
+}
+
+function pickExtractorFromModal(exId) {
+  const st = FactoryUIState.addMachineModal;
+  const pos = st.worldPos || {};
+  closeAddMachineModal();
+  if (typeof addFreeBlock !== 'function') return;
+  let itemId = 'Desc_OreIron_C';
+  let minerMark = 'mk1';
+  if (exId === 'Build_MinerMk2_C') minerMark = 'mk2';
+  else if (exId === 'Build_MinerMk3_C') minerMark = 'mk3';
+  else if (exId === 'Build_OilPump_C') itemId = 'Desc_LiquidOil_C';
+  else if (exId === 'Build_WaterPump_C') itemId = 'Desc_Water_C';
+  else if (exId === 'Build_FrackingExtractor_C') itemId = 'Desc_NitrogenGas_C';
+  addFreeBlock('extractor', { itemId, minerMark, x: pos.x, y: pos.y });
+}
+
+function pickGeneratorFromModal(genId) {
+  const st = FactoryUIState.addMachineModal;
+  const pos = st.worldPos || {};
+  const fromNodeId = st.fromNodeId;
+  const filterItemId = st.filterItemId;
+  closeAddMachineModal();
+  if (typeof addFreeBlock !== 'function') return;
+  const g = window.SATISFACTORY_DATA?.generators?.[genId];
+  const fuelItemId = (filterItemId && (g?.fuels || []).some((f) => f.item === filterItemId))
+    ? filterItemId
+    : (g?.fuels?.[0]?.item || null);
+  addFreeBlock('generator', {
+    generatorId: genId,
+    fuelItemId,
+    x: pos.x,
+    y: pos.y,
+    connectFromNodeId: fromNodeId || undefined,
+    itemId: filterItemId || undefined
+  });
 }
 
 function pickLogisticsFromModal(logisticsId) {
@@ -515,10 +616,39 @@ function renderAddMachineModalBody() {
   const st = FactoryUIState.addMachineModal;
   const itemsDb = (window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.items) || {};
   const machinesDb = (window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.machines) || {};
-  const { logistics, recipes, filterItem } = getFilteredAddMachineOptions();
+  const { logistics, extractors, generators, recipes, filterItem } = getFilteredAddMachineOptions();
 
-  const totalActions = logistics.length + recipes.length;
+  const totalActions = logistics.length + extractors.length + generators.length + Math.min(60, recipes.length);
   if (st.activeIndex >= totalActions) st.activeIndex = Math.max(0, totalActions - 1);
+
+  const quickFilters = [
+    { key: 'all', label: 'Todos' },
+    { key: 'logistica', label: 'Logística' },
+    { key: 'armazenamento', label: 'Contêineres / Tanques' },
+    { key: 'destinos', label: 'Destinos Finais' },
+    ...(!filterItem ? [{ key: 'extratores', label: 'Extratores' }] : []),
+    { key: 'geradores', label: 'Geradores' },
+    { key: 'Build_SmelterMk1_C', label: 'Fornalha' },
+    { key: 'Build_ConstructorMk1_C', label: 'Construtor' },
+    { key: 'Build_AssemblerMk1_C', label: 'Montadora' },
+    { key: 'Build_FoundryMk1_C', label: 'Fundição' },
+    { key: 'Build_OilRefinery_C', label: 'Refinaria' },
+    { key: 'Build_ManufacturerMk1_C', label: 'Fabricante' },
+    { key: 'Build_Blender_C', label: 'Misturador' },
+    { key: 'alternativas', label: 'ALT' }
+  ];
+
+  const quickFiltersHtml = `
+    <div class="am-quick-filters" role="tablist" aria-label="Filtros rápidos">
+      ${quickFilters.map((f) => `
+        <button
+          type="button"
+          class="am-qf-chip ${st.quickFilter === f.key ? 'active' : ''}"
+          onclick="setAddMachineQuickFilter('${f.key}')"
+        >${f.label}</button>
+      `).join('')}
+    </div>
+  `;
 
   const filterChipHtml = filterItem ? `
     <div class="am-filter-chip">
@@ -528,7 +658,7 @@ function renderAddMachineModalBody() {
   ` : '';
 
   const logisticsHtml = logistics.length > 0 ? `
-    <div class="am-section-title">Logística e Armazenamento</div>
+    <div class="am-section-title">Logística, Contêineres e Destinos (${logistics.length})</div>
     <div class="am-logistics-grid">
       ${logistics.map((l, idx) => `
         <button
@@ -543,11 +673,50 @@ function renderAddMachineModalBody() {
     </div>
   ` : '';
 
+  const extractorsHtml = extractors.length > 0 ? `
+    <div class="am-section-title">Extratores e Mineradoras (${extractors.length})</div>
+    <div class="am-logistics-grid">
+      ${extractors.map((ex, eIdx) => {
+        const gIdx = logistics.length + eIdx;
+        return `
+          <button
+            type="button"
+            class="am-log-btn ${gIdx === st.activeIndex ? 'is-active' : ''}"
+            onclick="pickExtractorFromModal('${ex.id}')"
+          >
+            ${ex.wikiImage ? `<img src="${ex.wikiImage}" alt="${escSummary(ex.name)}" loading="lazy" />` : '<span>⛏️</span>'}
+            <span>${escSummary(ex.name)}</span>
+          </button>
+        `;
+      }).join('')}
+    </div>
+  ` : '';
+
+  const generatorsHtml = generators.length > 0 ? `
+    <div class="am-section-title">Geradores de Energia (${generators.length})</div>
+    <div class="am-logistics-grid">
+      ${generators.map((g, genIdx) => {
+        const gIdx = logistics.length + extractors.length + genIdx;
+        return `
+          <button
+            type="button"
+            class="am-log-btn ${gIdx === st.activeIndex ? 'is-active' : ''}"
+            onclick="pickGeneratorFromModal('${g.id}')"
+          >
+            ${g.wikiImage ? `<img src="${g.wikiImage}" alt="${escSummary(g.name)}" loading="lazy" />` : '<span>⚡</span>'}
+            <span>${escSummary(g.name)}</span>
+          </button>
+        `;
+      }).join('')}
+    </div>
+  ` : '';
+
+  const recipesOffset = logistics.length + extractors.length + generators.length;
   const recipesHtml = recipes.length > 0 ? `
     <div class="am-section-title">Receitas (${recipes.length})</div>
     <div class="am-recipes-list">
       ${recipes.slice(0, 60).map((r, rIdx) => {
-        const globalIdx = logistics.length + rIdx;
+        const globalIdx = recipesOffset + rIdx;
         const mObj = machinesDb[r.machine];
         const mainProd = r.products?.[0] ? itemsDb[r.products[0].item] : null;
         const ingIcons = (r.ingredients || []).map((i) => {
@@ -579,7 +748,9 @@ function renderAddMachineModalBody() {
         `;
       }).join('')}
     </div>
-  ` : '<div class="picker-empty">Nenhuma receita compatível encontrada.</div>';
+  ` : (logistics.length === 0 && extractors.length === 0 && generators.length === 0
+    ? '<div class="picker-empty">Nenhum item encontrado para este filtro.</div>'
+    : '');
 
   body.innerHTML = `
     <input
@@ -590,11 +761,14 @@ function renderAddMachineModalBody() {
       placeholder="Buscar receita, item ou construção..."
       oninput="FactoryUIState.addMachineModal.search = this.value; FactoryUIState.addMachineModal.activeIndex = 0; renderAddMachineModalBody();"
     />
+    ${quickFiltersHtml}
     ${filterChipHtml}
     ${logisticsHtml}
+    ${extractorsHtml}
+    ${generatorsHtml}
     ${recipesHtml}
     <div class="am-footer">
-      <span>${recipes.length} receita(s) · ${logistics.length} logística</span>
+      <span>${recipes.length} receita(s) · ${logistics.length + extractors.length + generators.length} construções</span>
       <button type="button" class="btn-tutorial-nav" onclick="closeAddMachineModal()">Cancelar</button>
     </div>
   `;
