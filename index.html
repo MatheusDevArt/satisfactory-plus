@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./styles.css?v=14" />
+  <link rel="stylesheet" href="./styles.css?v=15" />
 </head>
 <body class="theme-light">
   <!-- ANIMAÇÃO DE ENTRADA (INTRO SPLASH) COM LOGO S+ E NOME SATISFACTORY+ -->
@@ -160,14 +160,14 @@
         <button id="btn-open-tutorial" class="btn-tutorial-pill" onclick="openTutorialModal()" title="Abrir Tutorial Interativo da Ferramenta">
           📖 Tutorial
         </button>
+        <button id="btn-open-report" class="btn-top-action btn-report-pill" onclick="handleReportButtonClick()" title="Reportar bug, enviar sugestão ou avaliação">
+          📣 Reportar
+        </button>
         <div id="auth-header-slot" class="auth-header-slot">
           <button id="btn-auth-login" class="btn-top-action" onclick="openAuthModal('login')" title="Entrar ou criar uma conta">
             👤 Entrar
           </button>
         </div>
-        <button id="btn-open-report" class="btn-top-action btn-report-pill" onclick="handleReportButtonClick()" title="Reportar bug, enviar sugestão ou avaliação">
-          📣 Reportar
-        </button>
       </div>
 
       <!-- BARRA INFERIOR ESQUERDA DO MODO LIVRE (DIVISOR, UNIFICADOR & JUNÇÃO DE TUBO) -->
@@ -302,6 +302,6 @@
   <script src="./js/icons.js?v=13"></script>
   <script src="./js/solver.js?v=13"></script>
   <script src="./js/app.js?v=14"></script>
-  <script src="./js/account-features.js?v=14"></script>
+  <script src="./js/account-features.js?v=15"></script>
 </body>
 </html>

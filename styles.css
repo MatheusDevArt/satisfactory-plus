@@ -3944,7 +3944,15 @@ body.theme-dark .mcard-box.final-product-box {
 }
 
 .btn-user-pill {
-  border-color: rgba(37, 99, 235, 0.45);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.btn-user-pill:hover {
+  background: #ea580c;
+  border-color: #ea580c;
+  color: #ffffff;
 }
 
 .user-menu-wrap {
@@ -3958,7 +3966,7 @@ body.theme-dark .mcard-box.final-product-box {
   text-transform: uppercase;
   padding: 2px 6px;
   border-radius: 999px;
-  background: var(--accent);
+  background: rgba(255, 255, 255, 0.24);
   color: #ffffff;
 }
 

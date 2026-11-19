@@ -736,17 +736,9 @@ function renderReportModalBody() {
   if (!body) return;
   const rm = AccountState.reportModal;
   const q = rm.quota;
-  const totalImgBytes = rm.images.reduce((s, i) => s + i.size, 0);
-
-  const quotaBanner = q ? `
-    <div class="report-quota-bar">
-      <span>📊 Restantes nas últimas 24h: <strong>${q.remaining24h}/${q.maxPer24h}</strong></span>
-      <span>🖼️ Cota de imagens: <strong>${fmtBytes(q.usedImageBytes)} / ${fmtBytes(q.maxImageQuotaBytes)}</strong></span>
-    </div>
-  ` : '';
 
   const limitReachedNote = (q && q.remaining24h === 0 && q.nextAvailableAt)
-    ? `<div class="form-alert warn">⏳ Você atingiu o limite de 10 reports em 24h. Poderá enviar novamente em <strong>${fmtDateBR(q.nextAvailableAt)}</strong>.</div>`
+    ? `<div class="form-alert warn">⏳ Limite de reports atingido. Tente novamente em <strong>${fmtDateBR(q.nextAvailableAt)}</strong>.</div>`
     : '';
 
   body.innerHTML = `
@@ -755,9 +747,6 @@ function renderReportModalBody() {
       <button type="button" class="mini-pill ${rm.tab === 'mine' ? 'active' : ''}" onclick="switchReportModalTab('mine')">📋 Meus reports (${rm.myReports.length})</button>
     </div>
 
-    <div class="report-expiry-notice">🗑️ Reports são apagados automaticamente após 14 dias.</div>
-    ${quotaBanner}
-
     ${rm.tab === 'new' ? `
       ${limitReachedNote}
       ${rm.error ? `<div class="form-alert error">⚠️ ${escText(rm.error)}</div>` : ''}
@@ -765,7 +754,7 @@ function renderReportModalBody() {
 
       <form onsubmit="submitNewReport(event)" class="account-form">
         <div class="field-group">
-          <label>Tipo do report</label>
+          <label>Tipo</label>
           <div class="btn-group-row">
             <button type="button" class="seg-btn ${rm.type === 'bug' ? 'active' : ''}" onclick="setReportType('bug')">🐛 Bug</button>
             <button type="button" class="seg-btn ${rm.type === 'suggestion' ? 'active' : ''}" onclick="setReportType('suggestion')">💡 Sugestão</button>
@@ -775,7 +764,7 @@ function renderReportModalBody() {
 
         ${rm.type === 'rating' ? `
           <div class="field-group">
-            <label>Nota (obrigatória — 1 a 5 estrelas)</label>
+            <label>Nota</label>
             <div class="rating-stars-row">
               ${[1, 2, 3, 4, 5].map((n) => `
                 <button type="button" class="star-btn ${n <= rm.rating ? 'active' : ''}" onclick="setReportRating(${n})">★</button>
@@ -786,7 +775,7 @@ function renderReportModalBody() {
         ` : ''}
 
         <div class="field-group">
-          <label for="rep-title">Título curto (opcional)</label>
+          <label for="rep-title">Título (opcional)</label>
           <input
             id="rep-title"
             type="text"
@@ -794,12 +783,12 @@ function renderReportModalBody() {
             maxlength="120"
             value="${escText(rm.title)}"
             oninput="AccountState.reportModal.title = this.value"
-            placeholder="Resumo rápido do assunto..."
+            placeholder="Resumo rápido..."
           />
         </div>
 
         <div class="field-group">
-          <label for="rep-message">Mensagem (obrigatória — 10 a 2000 caracteres)</label>
+          <label for="rep-message">Mensagem</label>
           <textarea
             id="rep-message"
             class="sidebar-input report-textarea"
@@ -808,18 +797,18 @@ function renderReportModalBody() {
             maxlength="2000"
             required
             oninput="AccountState.reportModal.message = this.value; const c=document.getElementById('rep-char-count'); if(c) c.textContent=this.value.length+'/2000';"
-            placeholder="Descreva o problema, sugestão ou avaliação com detalhes..."
+            placeholder="Descreva o problema, sugestão ou avaliação..."
           >${escText(rm.message)}</textarea>
           <div class="field-hint-row">
-            <span>${rm.type === 'bug' ? 'ℹ️ Para bugs, navegador, resolução da tela e aba atual são anexados automaticamente (sem dados pessoais).' : ''}</span>
+            <span></span>
             <span id="rep-char-count">${rm.message.length}/2000</span>
           </div>
         </div>
 
         <div class="field-group">
-          <label>Imagens (até 7 • PNG, JPG ou WEBP • máx. 3 MB total após compressão)</label>
+          <label>Imagens (até 7)</label>
           <label class="file-upload-btn">
-            <span>${rm.compressing ? '⏳ Comprimindo imagens...' : `📎 Selecionar imagens (${rm.images.length}/7 • ${fmtBytes(totalImgBytes)})`}</span>
+            <span>${rm.compressing ? '⏳ Processando...' : `📎 Selecionar imagens (${rm.images.length}/7)`}</span>
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
@@ -834,7 +823,6 @@ function renderReportModalBody() {
               ${rm.images.map((img) => `
                 <div class="report-thumb-card">
                   <img src="${img.previewUrl}" alt="Prévia" onclick="openImageLightbox('${img.previewUrl}')" />
-                  <small>${fmtBytes(img.size)}</small>
                   <button type="button" class="thumb-remove-btn" onclick="removeReportDraftImage('${img.id}')" title="Remover imagem">✕</button>
                 </div>
               `).join('')}
@@ -843,20 +831,20 @@ function renderReportModalBody() {
         </div>
 
         <button type="submit" class="btn-mount-flow ready" ${rm.loading || rm.compressing || (q && q.remaining24h === 0) ? 'disabled' : ''}>
-          ${rm.loading ? '⏳ Enviando report...' : '📣 Enviar Report'}
+          ${rm.loading ? '⏳ Enviando...' : '📣 Enviar Report'}
         </button>
       </form>
     ` : `
       <div class="my-reports-list">
-        ${!rm.myReportsLoaded ? '<div class="picker-empty">⏳ Carregando seus reports...</div>' : (
+        ${!rm.myReportsLoaded ? '<div class="picker-empty">⏳ Carregando...</div>' : (
           rm.myReports.length === 0
-            ? '<div class="picker-empty">Você ainda não enviou nenhum report nos últimos 14 dias.</div>'
+            ? '<div class="picker-empty">Nenhum report enviado.</div>'
             : rm.myReports.map((r) => `
               <div class="report-item-card">
                 <div class="report-card-head">
                   <span class="lib-badge">${reportTypeLabel(r.type)}</span>
                   ${r.rating ? `<span class="report-stars-tag">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)} (${r.rating}/5)</span>` : ''}
-                  <span class="report-date-tag">${fmtDateBR(r.createdAt)} • ⏳ Expira em ${r.daysRemaining} dia(s)</span>
+                  <span class="report-date-tag">${fmtDateBR(r.createdAt)}</span>
                 </div>
                 ${r.title ? `<strong class="report-card-title">${escText(r.title)}</strong>` : ''}
                 <p class="report-card-msg">${escText(r.message)}</p>
