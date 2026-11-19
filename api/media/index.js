@@ -56,7 +56,7 @@ module.exports = async function handler(req, res) {
     res.setHeader('Content-Type', contentType);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'none'");
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Cache-Control', 'private, no-store');
     res.end(buf);
   } catch (err) {
     console.error('[api/media] error:', err.message);
