@@ -12,7 +12,7 @@
 const AppState = {
   theme: 'light', // 'light' (padrão) | 'dark'
   mode: 'production', // 'production' | 'power' | 'free' | 'map'
-  orientation: 'TB', // 'TB' (Cima -> Baixo, padrão) | 'LR' (Esquerda -> Direita)
+  orientation: 'LR', // 'LR' (Esquerda -> Direita, padrão) | 'TB' (Cima -> Baixo)
   showAllMachines: true,
   sidebarCollapsed: false,
   tutorial: {
@@ -795,45 +795,9 @@ function updateTopRightFloatingActions() {
         });
       }
       if (plan && plan.stages && plan.stages.length > 0) {
-        const lastSt = plan.stages[plan.stages.length - 1];
-        const totalMach = plan.stages.reduce((s, x) => s + (x.intMachines || 0), 0);
-        const totalExt = (plan.extractionPlan || plan.extraction || []).reduce((s, x) => s + (x.intExtractors || 0), 0);
-        const totalMw = plan.totalPowerMw ?? plan.summary?.grandTotalPowerMw ?? plan.summary?.totalFactoryPowerMw ?? 0;
-        const excessList = (plan.allExcessItems || []).filter(ex => ex.item && ex.excessRate > 0.05);
-
-        const excessHtml = excessList.length > 0 ? `
-          <div class="fqs-excess-block">
-            <div class="fqs-excess-title">♻️ Excesso da Linha (${excessList.length})</div>
-            ${excessList.map(ex => `
-              <div class="fqs-excess-row">
-                <div class="fqs-excess-item">
-                  ${renderEntityIcon(ex.item, 22)}
-                  <div>
-                    <strong>${ex.item.name}</strong>
-                    <span>+${fmt(ex.excessRate, 1)} ${ex.item.unit || 'un'}/min</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  class="btn-excess-new-line"
-                  onclick="openExcessRecipeModal('${ex.item.id}', ${Number(ex.excessRate.toFixed(4))})"
-                  title="Escolher receita para aproveitar este excesso em uma nova linha de produção"
-                >
-                  ⚡ Gerar nova linha de produção
-                </button>
-              </div>
-            `).join('')}
-          </div>
-        ` : '';
-
-        summaryHtml = `
-          <div class="flow-quick-summary">
-            <div class="fqs-row"><span>🎯 Produto Final:</span><strong>${fmt(lastSt.actualProducedRate, 1)}/m ${lastSt.item?.name || ''}</strong></div>
-            <div class="fqs-row"><span>🏭 Máquinas / Nós:</span><strong>${totalMach} máq. • ${totalExt} nó(s)</strong></div>
-            <div class="fqs-row"><span>⚡ Consumo Total:</span><strong>${fmt(totalMw, 1)} MW</strong></div>
-            ${excessHtml}
-          </div>
-        `;
+        summaryHtml = typeof renderFactorySummaryPanel === 'function'
+          ? renderFactorySummaryPanel({ mode: 'production', plan, graph: AppState.canvas.lastGraph })
+          : '';
       }
     }
 
@@ -883,20 +847,9 @@ function updateTopRightFloatingActions() {
     const hasBlocks = blocks.length > 0;
     let summaryHtml = '';
     if (hasBlocks) {
-      let totalMach = 0, pwrUse = 0, pwrGen = 0;
-      blocks.forEach(b => {
-        const st = Solver.computeFreeBlockStats(b);
-        if (!st) return;
-        totalMach += st.count || 1;
-        pwrUse += st.totalPowerMw || 0;
-        pwrGen += st.powerProducedMw || 0;
-      });
-      summaryHtml = `
-        <div class="flow-quick-summary">
-          <div class="fqs-row"><span>🧱 Unidades no Espaço:</span><strong>${totalMach} (${blocks.length} bloco(s))</strong></div>
-          <div class="fqs-row"><span>⚡ Consumo / Geração:</span><strong>-${fmt(pwrUse, 1)} MW / +${fmt(pwrGen, 1)} MW</strong></div>
-        </div>
-      `;
+      summaryHtml = typeof renderFactorySummaryPanel === 'function'
+        ? renderFactorySummaryPanel({ mode: 'free', freeBlocks: blocks, freeEdges: AppState.free.customEdges, graph: AppState.canvas.lastGraph })
+        : '';
     }
     const freeSaveHtml = (hasBlocks && typeof renderSaveProjectButtonsHtml === 'function')
       ? renderSaveProjectButtonsHtml('free')
@@ -2487,6 +2440,16 @@ function renderCanvasGraph(graph, autoFit = false) {
       nodesHtml += renderMagnificNodeCard(box, isTB);
     }
     nodesEl.innerHTML = nodesHtml;
+    // Sincroniza dimensões reais dos cards no DOM antes de traçar as esteiras (garante encaixe exato nas portas)
+    for (const [nid, box] of nodeCoords.entries()) {
+      const cardEl = document.getElementById(nid);
+      if (cardEl) {
+        const ow = cardEl.offsetWidth;
+        const oh = cardEl.offsetHeight;
+        if (ow > 20) box.w = ow;
+        if (oh > 20) box.h = oh;
+      }
+    }
     renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl);
 
     if (autoFit) {
@@ -2619,6 +2582,16 @@ function renderCanvasGraph(graph, autoFit = false) {
       nodesHtml += renderMagnificNodeCard(box, isTB);
     }
     nodesEl.innerHTML = nodesHtml;
+    // Sincroniza dimensões reais dos cards no DOM antes de traçar as esteiras (garante encaixe exato nas portas)
+    for (const [nid, box] of nodeCoords.entries()) {
+      const cardEl = document.getElementById(nid);
+      if (cardEl) {
+        const ow = cardEl.offsetWidth;
+        const oh = cardEl.offsetHeight;
+        if (ow > 20) box.w = ow;
+        if (oh > 20) box.h = oh;
+      }
+    }
     renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl);
 
     if (autoFit) {
@@ -2729,29 +2702,32 @@ function renderCanvasGraph(graph, autoFit = false) {
 
 function computeEdgeGeometry(fromBox, toBox, isTB, edge) {
   let x1, y1, x2, y2, midX, midY, d, badgeX, badgeY;
-  const fromCompact = fromBox.node?.kind === 'splitter' || fromBox.node?.kind === 'merger' || fromBox.node?.kind === 'pipe_junction';
-  const toCompact = toBox.node?.kind === 'splitter' || toBox.node?.kind === 'merger' || toBox.node?.kind === 'pipe_junction';
+  // Usa as dimensões reais medidas do card para que toda esteira encoste exatamente na porta
+  const fh = fromBox.h || 260;
+  const th = toBox.h || 260;
+  const fw = fromBox.w || 270;
+  const tw = toBox.w || 270;
 
   if (!isTB) {
-    x1 = fromBox.x + fromBox.w;
-    y1 = fromBox.y + (fromCompact ? 78 : 132);
+    x1 = fromBox.x + fw;
+    y1 = fromBox.y + fh / 2;
     x2 = toBox.x;
-    y2 = toBox.y + (toCompact ? 78 : 132);
+    y2 = toBox.y + th / 2;
     midX = (x1 + x2) / 2;
     midY = (y1 + y2) / 2;
     d = buildRoundedOrthogonalPathLR(x1, y1, x2, y2, midX);
-    badgeX = midX;
-    badgeY = midY;
+    badgeX = x2 >= x1 + 24 ? midX : (x1 + x2) / 2;
+    badgeY = x2 >= x1 + 24 ? midY : Math.min(y1, y2) - Math.max(fh, th) / 2 - 26;
   } else {
-    x1 = fromBox.x + fromBox.w / 2;
-    y1 = fromBox.y + fromBox.h;
-    x2 = toBox.x + toBox.w / 2;
+    x1 = fromBox.x + fw / 2;
+    y1 = fromBox.y + fh;
+    x2 = toBox.x + tw / 2;
     y2 = toBox.y;
     midX = (x1 + x2) / 2;
     midY = (y1 + y2) / 2;
     d = buildRoundedOrthogonalPathTB(x1, y1, x2, y2, midY);
     badgeX = midX;
-    badgeY = midY;
+    badgeY = y2 >= y1 + 24 ? midY : (y1 + y2) / 2;
   }
   return { x1, y1, x2, y2, midX, midY, d, badgeX, badgeY };
 }
@@ -2772,7 +2748,7 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
     const isWrapJump = (typeof fromBox.wrapGroup === 'number' && typeof toBox.wrapGroup === 'number')
       && fromBox.wrapGroup !== toBox.wrapGroup;
     const isCycleBack = stageDiff <= 0;
-    const isOffPage = !edge.isCustom && (isWrapJump || stageDiff > 2 || isCycleBack);
+    const isOffPage = !edge.isCustom && (isWrapJump || stageDiff > 3 || isCycleBack);
     edge._isOffPage = isOffPage;
 
     const hitHandler = (edge.isCustom && edge.edgeId)
@@ -2780,27 +2756,29 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
       : '';
 
     if (isOffPage) {
-      // Conector curto de saída de página (não desenha linha gigante atravessando camadas ou colunas)
-      const fromCompact = fromBox.node?.kind === 'splitter' || fromBox.node?.kind === 'merger' || fromBox.node?.kind === 'pipe_junction';
-      const toCompact = toBox.node?.kind === 'splitter' || toBox.node?.kind === 'merger' || toBox.node?.kind === 'pipe_junction';
-      const STUB = 28;
+      // Conector curto ancorado na porta (nunca invade o card nem flutua solto)
+      const STUB = 34;
+      const fh = fromBox.h || 260;
+      const th = toBox.h || 260;
+      const fw = fromBox.w || 270;
+      const tw = toBox.w || 270;
 
       let sx1, sy1, sx2, sy2, tx1, ty1, tx2, ty2;
       if (!isTB) {
-        sx1 = fromBox.x + fromBox.w;
-        sy1 = fromBox.y + (fromCompact ? 78 : 132);
+        sx1 = fromBox.x + fw;
+        sy1 = fromBox.y + fh / 2;
         sx2 = sx1 + STUB;
         sy2 = sy1;
         tx2 = toBox.x;
-        ty2 = toBox.y + (toCompact ? 78 : 132);
+        ty2 = toBox.y + th / 2;
         tx1 = tx2 - STUB;
         ty1 = ty2;
       } else {
-        sx1 = fromBox.x + fromBox.w / 2;
-        sy1 = fromBox.y + fromBox.h;
+        sx1 = fromBox.x + fw / 2;
+        sy1 = fromBox.y + fh;
         sx2 = sx1;
         sy2 = sy1 + STUB;
-        tx2 = toBox.x + toBox.w / 2;
+        tx2 = toBox.x + tw / 2;
         ty2 = toBox.y;
         tx1 = tx2;
         ty1 = ty2 - STUB;
@@ -2832,12 +2810,14 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
         </g>
       `;
 
+      const outAnchorCls = isTB ? 'offpage-pill-out-tb' : 'offpage-pill-out-lr';
+      const inAnchorCls = isTB ? 'offpage-pill-in-tb' : 'offpage-pill-in-lr';
       badgesHtml += `
         <div
-          class="wire-belt-pill offpage-pill ${edge.isPipe ? 'pipe-pill' : 'belt-pill'}"
+          class="wire-belt-pill offpage-pill ${outAnchorCls} ${edge.isPipe ? 'pipe-pill' : 'belt-pill'}"
           data-from="${edge.from}"
           data-to="${edge.to}"
-          style="left:${sx2}px; top:${sy2 + (isTB ? 14 : 0)}px;"
+          style="left:${sx2}px; top:${sy2}px;"
           onmouseenter="highlightEdgePair('${edge.from}', '${edge.to}', true)"
           onmouseleave="highlightEdgePair('${edge.from}', '${edge.to}', false)"
           onclick="focusOnNode('${edge.to}')"
@@ -2846,10 +2826,10 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
           <span>→ ${toName}${ratePart}</span>
         </div>
         <div
-          class="wire-belt-pill offpage-pill ${edge.isPipe ? 'pipe-pill' : 'belt-pill'}"
+          class="wire-belt-pill offpage-pill ${inAnchorCls} ${edge.isPipe ? 'pipe-pill' : 'belt-pill'}"
           data-from="${edge.from}"
           data-to="${edge.to}"
-          style="left:${tx1}px; top:${ty1 - (isTB ? 14 : 0)}px;"
+          style="left:${tx1}px; top:${ty1}px;"
           onmouseenter="highlightEdgePair('${edge.from}', '${edge.to}', true)"
           onmouseleave="highlightEdgePair('${edge.from}', '${edge.to}', false)"
           onclick="focusOnNode('${edge.from}')"
@@ -2951,10 +2931,11 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
       const deletePillBtn = (edge.isCustom && edge.edgeId)
         ? `<button type="button" class="wire-pill-del" onclick="event.stopPropagation(); removeCustomEdge('${edge.edgeId}')" title="Excluir conexão">✕</button>`
         : '';
+      const bottleneckCls = edge.isBottleneck ? 'wire-bottleneck' : '';
       badgesHtml += `
         <div
           id="wire-pill-${idx}"
-          class="wire-belt-pill ${edge.isPipe ? 'pipe-pill' : 'belt-pill'} ${edge.isCustom ? 'clickable-belt-pill' : ''} ${isLift ? 'lift-pill' : ''}"
+          class="wire-belt-pill ${edge.isPipe ? 'pipe-pill' : 'belt-pill'} ${edge.isCustom ? 'clickable-belt-pill' : ''} ${isLift ? 'lift-pill' : ''} ${bottleneckCls}"
           data-from="${edge.from}"
           data-to="${edge.to}"
           style="left:${badgeX}px; top:${badgeY}px;"
@@ -3008,42 +2989,46 @@ function updateCanvasWiresOnly() {
 
 function buildRoundedOrthogonalPathLR(x1, y1, x2, y2, midX) {
   const dy = y2 - y1;
-  if (Math.abs(dy) < 4) {
-    return `M ${x1} ${y1} L ${x2} ${y2}`;
+  if (x2 >= x1 + 24) {
+    if (Math.abs(dy) < 4) return `M ${x1} ${y1} L ${x2} ${y2}`;
+    const r = Math.min(18, Math.abs(dy) / 2, Math.abs(midX - x1) / 2, Math.abs(x2 - midX) / 2);
+    const signY = dy > 0 ? 1 : -1;
+    return [
+      `M ${x1} ${y1}`,
+      `L ${midX - r} ${y1}`,
+      `Q ${midX} ${y1} ${midX} ${y1 + r * signY}`,
+      `L ${midX} ${y2 - r * signY}`,
+      `Q ${midX} ${y2} ${midX + r} ${y2}`,
+      `L ${x2} ${y2}`
+    ].join(' ');
   }
-  const r = Math.min(18, Math.abs(dy) / 2, Math.abs(midX - x1) / 2, Math.abs(x2 - midX) / 2);
-  const signY = dy > 0 ? 1 : -1;
-  const signX1 = midX >= x1 ? 1 : -1;
-  const signX2 = x2 >= midX ? 1 : -1;
-
-  return [
-    `M ${x1} ${y1}`,
-    `L ${midX - r * signX1} ${y1}`,
-    `Q ${midX} ${y1} ${midX} ${y1 + r * signY}`,
-    `L ${midX} ${y2 - r * signY}`,
-    `Q ${midX} ${y2} ${midX + r * signX2} ${y2}`,
-    `L ${x2} ${y2}`
-  ].join(' ');
+  // Destino à esquerda ou muito próximo: contorna por fora sem atravessar o card
+  const outX = x1 + 28;
+  const inX = x2 - 28;
+  const routeY = Math.min(y1, y2) - 165;
+  return `M ${x1} ${y1} L ${outX} ${y1} L ${outX} ${routeY} L ${inX} ${routeY} L ${inX} ${y2} L ${x2} ${y2}`;
 }
 
 function buildRoundedOrthogonalPathTB(x1, y1, x2, y2, midY) {
   const dx = x2 - x1;
-  if (Math.abs(dx) < 4) {
-    return `M ${x1} ${y1} L ${x2} ${y2}`;
+  if (y2 >= y1 + 24) {
+    if (Math.abs(dx) < 4) return `M ${x1} ${y1} L ${x2} ${y2}`;
+    const r = Math.min(18, Math.abs(dx) / 2, Math.abs(midY - y1) / 2, Math.abs(y2 - midY) / 2);
+    const signX = dx > 0 ? 1 : -1;
+    return [
+      `M ${x1} ${y1}`,
+      `L ${x1} ${midY - r}`,
+      `Q ${x1} ${midY} ${x1 + r * signX} ${midY}`,
+      `L ${x2 - r * signX} ${midY}`,
+      `Q ${x2} ${midY} ${x2} ${midY + r}`,
+      `L ${x2} ${y2}`
+    ].join(' ');
   }
-  const r = Math.min(18, Math.abs(dx) / 2, Math.abs(midY - y1) / 2, Math.abs(y2 - midY) / 2);
-  const signX = dx > 0 ? 1 : -1;
-  const signY1 = midY >= y1 ? 1 : -1;
-  const signY2 = y2 >= midY ? 1 : -1;
-
-  return [
-    `M ${x1} ${y1}`,
-    `L ${x1} ${midY - r * signY1}`,
-    `Q ${x1} ${midY} ${x1 + r * signX} ${midY}`,
-    `L ${x2 - r * signX} ${midY}`,
-    `Q ${x2} ${midY} ${x2} ${midY + r * signY2}`,
-    `L ${x2} ${y2}`
-  ].join(' ');
+  // Destino acima da origem: sai por baixo, desvia pelo corredor do meio e entra por cima sem ponta pendurada
+  const outY = y1 + 28;
+  const inY = y2 - 28;
+  const corridorX = Math.abs(dx) > 120 ? (x1 + x2) / 2 : (x1 + 170);
+  return `M ${x1} ${y1} L ${x1} ${outY} L ${corridorX} ${outY} L ${corridorX} ${inY} L ${x2} ${inY} L ${x2} ${y2}`;
 }
 
 function renderMagnificNodeCard(box, isTB) {
@@ -3154,8 +3139,16 @@ function renderMagnificNodeCard(box, isTB) {
     </div>
   ` : '';
 
-  const portInClass = isTB ? 'port-tb-in' : 'port-lr-in';
-  const portOutClass = isTB ? 'port-tb-out' : 'port-lr-out';
+  const isFluidNode = Boolean(
+    node.kind === 'pipe_junction' || node.kind === 'fluid_buffer_mk1' || node.kind === 'fluid_buffer_mk2' ||
+    node.kind === 'pipe_pump_mk1' || node.kind === 'pipe_pump_mk2' ||
+    (outputsList[0]?.item?.isFluid) || (inputsList[0]?.item?.isFluid)
+  );
+  const isSplitterLike = node.kind === 'splitter' || node.kind === 'merger' || node.kind === 'smart_splitter' || node.kind === 'programmable_splitter' || node.kind === 'priority_merger';
+  const portInType = isFluidNode ? 'port-fluid' : (isSplitterLike ? 'port-splitter' : 'port-in');
+  const portOutType = isFluidNode ? 'port-fluid' : (isSplitterLike ? 'port-splitter' : 'port-out');
+  const portInClass = `${isTB ? 'port-tb-in' : 'port-lr-in'} ${portInType}`;
+  const portOutClass = `${isTB ? 'port-tb-out' : 'port-lr-out'} ${portOutType}`;
 
   const floorNum = box.floor || node._effectiveFloor || 1;
   const floorBadgeHtml = (AppState.canvas.is3DView || floorNum > 1)
@@ -4128,10 +4121,14 @@ function addFreeBlock(blockType, options = {}) {
       pipeTierId: 'Build_Pipeline_C',
       ...posProps
     });
-  } else if (blockType === 'splitter' || blockType === 'merger' || blockType === 'pipe_junction') {
+  } else {
+    // Logística, Armazenamento e Destinos Finais oficiais (build CL-517554)
+    const logList = Object.values((window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.logistics) || {});
+    const logObj = logList.find(l => l.id === options.logisticsId || l.kind === blockType);
     AppState.free.blocks.push({
       id,
-      blockType,
+      blockType: logObj ? logObj.kind : blockType,
+      logisticsId: logObj ? logObj.id : (options.logisticsId || null),
       count: 1,
       clockPercent: 100,
       floor: 1,
@@ -4251,13 +4248,22 @@ function openCanvasContextMenu(clientX, clientY, worldPos) {
 
 function openWireDropMenu(clientX, clientY, fromNodeId, worldPos) {
   closeCanvasMenus();
-  const menu = document.getElementById('wire-drop-menu');
-  if (!menu) return;
-
   const fromBox = AppState.canvas.nodeMap.get(fromNodeId);
   const outItem = fromBox?.node?.outputsList?.[0]?.item || null;
   const wx = Math.round(worldPos.x);
   const wy = Math.round(worldPos.y - 120);
+
+  if (AppState.mode === 'free' && typeof openAddMachineModal === 'function') {
+    openAddMachineModal({
+      filterItemId: outItem?.id || null,
+      fromNodeId,
+      worldPos: { x: wx, y: wy }
+    });
+    return;
+  }
+
+  const menu = document.getElementById('wire-drop-menu');
+  if (!menu) return;
 
   if (AppState.mode !== 'free') {
     menu.innerHTML = `

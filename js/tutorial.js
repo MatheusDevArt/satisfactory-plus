@@ -81,28 +81,28 @@ const TUTORIAL_SLIDES = [
   {
     id: 'como-ler-fluxo',
     title: 'Como ler o fluxo da produção?',
-    oneLiner: 'O material sempre anda de cima para baixo: quem produz fica antes de quem usa.',
+    oneLiner: 'O material sempre anda da esquerda para a direita: quem produz fica antes de quem usa.',
     scenes: [
       {
         src: './assets/tutorial/tutorial-04-fluxo.webp',
-        alt: 'Fluxo de produção de Chapa de Ferro mostrando Nó de Minério de Ferro, Divisor, Fornalhas, Construtores e Produto Final.',
+        alt: 'Fluxo de produção de Chapa de Ferro da esquerda para a direita mostrando Nó de Minério de Ferro, Fornalha, Construtor e Produto Final.',
         markers: [
-          { n: 1, x: 35, y: 26 },
-          { n: 2, x: 35, y: 51 },
-          { n: 3, x: 35, y: 71 },
-          { n: 4, x: 65, y: 51 },
-          { n: 5, x: 65, y: 29 }
+          { n: 1, x: 34, y: 26 },
+          { n: 2, x: 50, y: 28 },
+          { n: 3, x: 66, y: 29 },
+          { n: 4, x: 50, y: 70 },
+          { n: 5, x: 34, y: 71 }
         ]
       }
     ],
     legend: [
       '<strong>Origem</strong>: o recurso sai do solo aqui e começa o caminho.',
-      '<strong>Esteira</strong>: linha laranja que leva o item de uma máquina para a próxima.',
+      '<strong>Esteira</strong>: linha laranja que sai da direita e entra na esquerda da próxima máquina.',
       '<strong>Máquina produtora</strong>: transforma o material (ex.: <strong>FORNALHA #1</strong>).',
       '<strong>Etiqueta no meio</strong>: mostra a versão da esteira e a vazão (itens por minuto).',
       '<strong>Máquina seguinte</strong>: recebe o item e continua a produção.'
     ],
-    tip: 'Prefere ler na horizontal? Clique em <strong>➡️ Esquerda ➔ Direita</strong> no topo da tela.'
+    tip: 'Prefere ler na vertical? Clique em <strong>⬇️ Cima ➔ Baixo</strong> no topo da tela.'
   },
   {
     id: 'etiquetas-esteiras',
@@ -207,22 +207,22 @@ const TUTORIAL_SLIDES = [
   },
   {
     id: 'status-excesso',
-    title: 'Como usar o Quadro de Status e o Excesso?',
-    oneLiner: 'Veja o resumo da fábrica e aproveite itens extras que sobram de certas receitas.',
+    title: 'Como usar o Resumo da Fábrica e o Excesso?',
+    oneLiner: 'Veja energia recomendada, materiais, entradas, saídas e aproveite itens em excesso.',
     scenes: [
       {
         src: './assets/tutorial/tutorial-09-excesso.webp',
-        alt: 'Painel esquerdo mostrando resumo de Combustível, seção Excesso da Linha com Resina de polímero e botão Gerar nova linha de produção.',
+        alt: 'Painel esquerdo mostrando o Resumo da Fábrica com Energia, Excesso e botão Gerar nova linha de produção.',
         markers: [
           { n: 1, x: 50, y: 26 },
-          { n: 2, x: 42, y: 39 },
-          { n: 3, x: 50, y: 44 }
+          { n: 2, x: 42, y: 46 },
+          { n: 3, x: 50, y: 54 }
         ]
       }
     ],
     legend: [
-      '<strong>Quadro de status</strong>: resume produto final, total de máquinas, nós e consumo em <strong>MW</strong>.',
-      '<strong>EXCESSO DA LINHA</strong>: mostra itens extras gerados que nenhuma máquina da linha usa (ex.: <strong>Resina de polímero</strong>).',
+      '<strong>Resumo da Fábrica</strong>: mostra energia (com gerador recomendado e folga %), construções e materiais usados.',
+      '<strong>Excesso</strong>: mostra itens extras gerados que nenhuma máquina da linha usa (ex.: <strong>Resina de polímero</strong>).',
       '<strong>⚡ Gerar nova linha de produção</strong>: abre receitas que usam esse excesso já preenchido.'
     ],
     commonMistake: 'Erro comum: confundir excesso com recurso extraído — minérios e itens consumidos nunca são excesso.'
@@ -230,22 +230,22 @@ const TUTORIAL_SLIDES = [
   {
     id: 'modo-livre',
     title: 'Como montar tudo do zero no modo Livre?',
-    oneLiner: 'Na aba Livre você posiciona cada máquina e puxa as esteiras manualmente.',
+    oneLiner: 'Posicione máquinas, contêineres e logística e puxe as esteiras manualmente.',
     scenes: [
       {
         src: './assets/tutorial/tutorial-10-modo-livre.webp',
-        alt: 'Aba Livre com um Nó de Minério de Ferro conectado a um Construtor e a barra inferior com Divisor, Unificador e Junção de Tubo.',
+        alt: 'Aba Livre com máquinas conectadas e barra inferior com Adicionar Máquina, Divisor, Unificador e Junção de Tubo.',
         markers: [
           { n: 1, x: 50, y: 45 },
           { n: 2, x: 50, y: 51 },
-          { n: 3, x: 22, y: 95 }
+          { n: 3, x: 16, y: 95 }
         ]
       }
     ],
     legend: [
-      '<strong>Bolinha de saída</strong>: clique e arraste até outra máquina para criar uma esteira ou tubo.',
+      '<strong>Porta de saída</strong>: arraste até outra máquina ou solte no vazio para abrir o modal <strong>Adicionar Máquina</strong> já filtrado pelo item.',
       '<strong>Etiqueta clicável</strong>: clique na etiqueta da esteira para trocar a versão ou remover a ligação.',
-      '<strong>Logística</strong>: use <strong>🔀 + Divisor</strong>, <strong>🔗 + Unificador</strong> e <strong>🔩 + Junção de Tubo</strong> para organizar fluxos.'
+      '<strong>➕ Adicionar Máquina</strong>: adicione receitas, contêineres, tanques, divisores, Triturador SUPIMPA e Elevador Espacial.'
     ],
     tip: 'Segure <strong>Alt</strong> enquanto arrasta um card para duplicar a máquina rapidamente.',
     tryAction: { label: 'Experimentar no modo Livre', mode: 'free' }

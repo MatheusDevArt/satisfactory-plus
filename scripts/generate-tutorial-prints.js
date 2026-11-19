@@ -199,7 +199,7 @@ async function run() {
     await cdp.eval(`(() => {
       const splash = document.getElementById('intro-splash');
       if (splash) splash.remove();
-      try { localStorage.setItem('splus_last_seen_patch_id', '2026-11-18-dados-mapa-patchnotes'); } catch {}
+      try { localStorage.setItem('splus_last_seen_patch_id', '2026-11-19-resumo-logistica-esteiras-lr'); } catch {}
       if (typeof closePatchAutoCard === 'function') closePatchAutoCard(true);
       document.body.classList.remove('theme-dark');
       document.body.classList.add('theme-light');
@@ -224,11 +224,11 @@ async function run() {
     await sleep(600);
     await cdp.captureWebp('tutorial-03-primeira-linha.webp', { x: 0, y: 0, width: 460, height: 640 }, 84);
 
-    // Monta linha de Chapa de Ferro 30/min (simples: Nó de Minério de Ferro -> Fundição -> Construtor Produto Final)
+    // Monta linha de Chapa de Ferro 20/min na orientação padrão Esquerda -> Direita (LR)
     await cdp.eval(`(() => {
       AppState.production.mounted = true;
       AppState.showAllMachines = true;
-      AppState.orientation = 'TB';
+      AppState.orientation = 'LR';
       renderAll(true);
     })()`);
     await sleep(1100);

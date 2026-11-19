@@ -276,7 +276,7 @@ html, body {
   height: 38px;
   border-radius: 10px;
   object-fit: cover;
-  box-shadow: 0 3px 10px rgba(255, 107, 0, 0.3);
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.16);
   flex-shrink: 0;
 }
 
@@ -416,7 +416,7 @@ html, body {
 .orient-btn.active {
   background: var(--accent);
   color: #ffffff;
-  box-shadow: 0 2px 8px rgba(255, 107, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.16);
 }
 
 /* Área Rolável de Passos da Sidebar */
@@ -896,12 +896,12 @@ html, body {
 .btn-mount-flow.ready {
   background: linear-gradient(135deg, #ff6b00, #e05300);
   color: #ffffff;
-  box-shadow: 0 6px 18px rgba(255, 107, 0, 0.3);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
 }
 
 .btn-mount-flow.ready:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 22px rgba(255, 107, 0, 0.45);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.16);
 }
 
 .btn-mount-flow.disabled {
@@ -981,7 +981,7 @@ html, body {
 .magnific-wire.wire-highlight {
   stroke-width: 4.5px !important;
   opacity: 1;
-  filter: drop-shadow(0 0 8px rgba(255, 107, 0, 0.65));
+  filter: drop-shadow(0 0 8px rgba(15, 23, 42, 0.16));
 }
 
 .spaces-nodes {
@@ -1023,7 +1023,6 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: transform 0.15s ease;
 }
 
 .magnific-card:hover {
@@ -1079,7 +1078,7 @@ html, body {
 
 .magnific-card:hover .mcard-box {
   border-color: var(--accent);
-  box-shadow: 0 18px 40px rgba(255, 107, 0, 0.18), 0 0 0 1.5px var(--accent);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16), 0 0 0 1.5px var(--accent);
 }
 
 .mcard-image-stage {
@@ -1349,9 +1348,9 @@ html, body {
 }
 
 .wire-belt-pill.pill-highlight {
-  transform: translate(-50%, -50%) scale(1.08);
   background: var(--accent);
   color: #ffffff;
+  border-color: var(--accent);
 }
 
 /* ============================================================================
@@ -1421,7 +1420,7 @@ html, body {
   font-size: 13.5px;
   font-weight: 800;
   cursor: pointer;
-  box-shadow: 0 6px 18px rgba(255, 107, 0, 0.3);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
   transition: all 0.15s ease;
 }
 
@@ -1660,7 +1659,7 @@ html, body {
 .leaflet-sprite-pin:hover,
 .leaflet-sprite-pin.selected {
   transform: scale(1.32);
-  filter: drop-shadow(0 0 8px rgba(255, 107, 0, 0.95));
+  filter: drop-shadow(0 0 8px rgba(15, 23, 42, 0.16));
 }
 
 .map-filter-grid {
@@ -2174,7 +2173,7 @@ img {
 .port-tb-out:hover {
   transform: scale(1.25);
   border-color: #f97316;
-  box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.25);
+  box-shadow: 0 0 0 4px rgba(15, 23, 42, 0.16);
 }
 
 .magnific-card.wire-target-compatible {
@@ -2191,7 +2190,7 @@ img {
   stroke-dasharray: 8 6;
   fill: none;
   pointer-events: none;
-  filter: drop-shadow(0 0 6px rgba(249, 115, 22, 0.6));
+  filter: drop-shadow(0 0 6px rgba(15, 23, 42, 0.16));
 }
 
 .free-logistics-toolbar {
@@ -2246,13 +2245,13 @@ img {
   font-weight: 800;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 10px 26px rgba(249, 115, 22, 0.35);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16);
   transition: transform 0.14s ease, box-shadow 0.14s ease, opacity 0.14s ease;
 }
 
 .btn-floating-primary:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 14px 32px rgba(249, 115, 22, 0.48);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.16);
 }
 
 .btn-floating-primary.check-mode {
@@ -2361,7 +2360,7 @@ img {
 }
 
 .spaces-viewport.view-3d .magnific-card {
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28), 0 4px 0 rgba(249, 115, 22, 0.22);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28), 0 4px 0 rgba(15, 23, 42, 0.16);
 }
 
 .spaces-viewport.view-3d .magnific-card.upper-floor-card {
@@ -2442,7 +2441,7 @@ img {
 
 .clickable-belt-pill:hover {
   transform: translateY(-1px) scale(1.05);
-  box-shadow: 0 4px 14px rgba(249, 115, 22, 0.45);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.16);
 }
 
 .lift-pill {
@@ -2650,7 +2649,7 @@ img {
 .lib-card.active {
   border-color: var(--accent);
   transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(249, 115, 22, 0.12);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16);
 }
 
 .lib-card-icon {
@@ -3149,7 +3148,7 @@ img {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.45);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.16);
   border: 2px solid #ffffff;
   z-index: 5;
 }
@@ -3454,7 +3453,7 @@ img {
   border-radius: 16px;
   background: #1e293b;
   border: 2.5px solid #f97316;
-  box-shadow: 0 14px 32px rgba(249, 115, 22, 0.28);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.16);
   color: #f8fafc;
 }
 
@@ -3469,7 +3468,7 @@ img {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 0 16px rgba(249, 115, 22, 0.65);
+  box-shadow: 0 0 16px rgba(15, 23, 42, 0.16);
 }
 
 .power-emblem-info {
@@ -3514,10 +3513,15 @@ img {
   animation-play-state: paused !important;
 }
 
+.magnific-card.is-dragging-node,
+.spaces-viewport.dragging-card .magnific-card {
+  transition: none !important;
+}
+
 .magnific-card.is-dragging-node {
   z-index: 50 !important;
   will-change: transform;
-  box-shadow: 0 22px 46px rgba(15, 23, 42, 0.28) !important;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.24) !important;
 }
 
 /* ============================================================================
@@ -3538,10 +3542,10 @@ body.theme-dark .resource-val {
 }
 
 .magnific-card.final-product-highlight .mcard-top-label.final-top-label {
-  background: linear-gradient(135deg, #ea580c, #c2410c);
+  background: #c2410c;
   padding: 6px 10px;
   border-radius: 10px;
-  box-shadow: 0 6px 16px rgba(234, 88, 12, 0.35);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.16);
 }
 
 .magnific-card.final-product-highlight .final-top-label .mcard-title {
@@ -3559,19 +3563,59 @@ body.theme-dark .resource-val {
   white-space: nowrap;
 }
 
-.mcard-box.final-product-box {
-  border: 3px solid #ea580c !important;
-  background: linear-gradient(180deg, rgba(255, 237, 213, 0.92) 0%, var(--bg-card) 58%) !important;
-  box-shadow: 0 16px 38px rgba(234, 88, 12, 0.32), 0 0 0 2px rgba(251, 146, 60, 0.45) !important;
-}
-
+.mcard-box.final-product-box,
 body.theme-dark .mcard-box.final-product-box {
-  background: linear-gradient(180deg, rgba(154, 52, 18, 0.55) 0%, var(--bg-card) 62%) !important;
+  border: 2.5px solid #9a3412 !important;
+  background: #ea580c !important;
+  color: #ffffff !important;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.22) !important;
 }
 
-.mcard-image-stage.final-product-stage {
-  background: linear-gradient(180deg, rgba(249, 115, 22, 0.16) 0%, rgba(251, 146, 60, 0.05) 100%) !important;
-  border-bottom: 1.5px solid rgba(234, 88, 12, 0.35) !important;
+.mcard-image-stage.final-product-stage,
+body.theme-dark .mcard-image-stage.final-product-stage {
+  background: #c2410c !important;
+  border-bottom: 1.5px solid #9a3412 !important;
+}
+
+.mcard-box.final-product-box .mcard-io-container {
+  background: #ea580c !important;
+}
+
+.mcard-box.final-product-box .io-box,
+.mcard-box.final-product-box .io-section,
+.mcard-box.final-product-box .io-output,
+.mcard-box.final-product-box .io-output-highlight {
+  background: #9a3412 !important;
+  border: 1.5px solid #7c2d12 !important;
+  color: #ffffff !important;
+}
+
+.mcard-box.final-product-box .io-section-title,
+.mcard-box.final-product-box .io-label,
+.mcard-box.final-product-box .io-name,
+.mcard-box.final-product-box .io-item-row,
+.mcard-box.final-product-box .io-item-name {
+  color: #ffffff !important;
+}
+
+.mcard-box.final-product-box .io-qty-badge,
+.mcard-box.final-product-box .io-qty-badge.out,
+.mcard-box.final-product-box .io-rate-badge,
+.mcard-box.final-product-box .mcard-meta-pill {
+  background: #7c2d12 !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+}
+
+.mcard-box.final-product-box .io-qty-badge small,
+.mcard-box.final-product-box .io-rate-badge small {
+  color: rgba(255, 255, 255, 0.88) !important;
+}
+
+.mcard-box.final-product-box .mcard-clock-badge {
+  background: #7c2d12 !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
+  color: #ffffff !important;
 }
 
 /* ============================================================================
@@ -4919,7 +4963,7 @@ body.theme-dark .report-type-pill.avaliacao {
 
 .tut-marker.is-highlighted {
   transform: translate(-50%, -50%) scale(1.25);
-  box-shadow: 0 0 0 5px rgba(255, 107, 0, 0.35), 0 4px 14px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 0 5px rgba(15, 23, 42, 0.16), 0 4px 14px rgba(0, 0, 0, 0.4);
   z-index: 5;
 }
 
@@ -5258,4 +5302,396 @@ body.theme-dark .pn-tag-correcao {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 6px;
+}
+
+
+/* ============================================================================
+ * PORTAS COLORIDAS, CONECTORES ANCORADOS, GARGALO & CARD COMPACTO OPCIONAL
+ * ========================================================================== */
+
+.mcard-port.port-in {
+  border-color: #2563eb !important;
+  background: #dbeafe !important;
+}
+
+.mcard-port.port-out {
+  border-color: #16a34a !important;
+  background: #dcfce7 !important;
+}
+
+.mcard-port.port-splitter {
+  border-color: #6366f1 !important;
+  background: #e0e7ff !important;
+}
+
+.mcard-port.port-fluid {
+  border-color: #0284c7 !important;
+  background: #e0f2fe !important;
+}
+
+.wire-belt-pill.offpage-pill-out-lr {
+  transform: translate(0, -50%) !important;
+}
+
+.wire-belt-pill.offpage-pill-in-lr {
+  transform: translate(-100%, -50%) !important;
+}
+
+.wire-belt-pill.offpage-pill-out-tb {
+  transform: translate(-50%, 0) !important;
+}
+
+.wire-belt-pill.offpage-pill-in-tb {
+  transform: translate(-50%, -100%) !important;
+}
+
+.wire-belt-pill.wire-bottleneck {
+  border-color: #dc2626 !important;
+  background: #fef2f2 !important;
+  color: #b91c1c !important;
+}
+
+body.theme-dark .wire-belt-pill.wire-bottleneck {
+  background: rgba(185, 28, 28, 0.25) !important;
+  color: #fca5a5 !important;
+}
+
+/* Modo de Card Compacto (opcional via botão na barra inferior) */
+.spaces-viewport.compact-cards-mode .magnific-card .mcard-image-stage {
+  display: none !important;
+}
+
+.spaces-viewport.compact-cards-mode .magnific-card .mcard-box {
+  min-height: 0 !important;
+}
+
+.spaces-viewport.compact-cards-mode .magnific-card .mcard-io-container {
+  padding: 7px 9px !important;
+  gap: 5px !important;
+}
+
+/* ============================================================================
+ * PAINEL RESUMO DA FÁBRICA (SEÇÕES RECOLHÍVEIS — PRODUÇÃO E LIVRE)
+ * ========================================================================== */
+
+.fs-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.fs-section {
+  border: 1px solid var(--border-card);
+  border-radius: 10px;
+  background: var(--bg-card-inner);
+  overflow: hidden;
+}
+
+.fs-section-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 11px;
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.fs-section-head:hover {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.fs-section-body {
+  padding: 0 11px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.fs-section.collapsed .fs-section-body {
+  display: none;
+}
+
+.fs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.fs-row strong {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-main);
+}
+
+.fs-row-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fs-row-item img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.fs-pos {
+  color: #16a34a !important;
+}
+
+.fs-neg {
+  color: #dc2626 !important;
+}
+
+body.theme-dark .fs-neg {
+  color: #f87171 !important;
+}
+
+.fs-gen-box {
+  margin-top: 4px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fs-gen-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.fs-margin-input {
+  width: 52px;
+  padding: 2px 5px;
+  border-radius: 6px;
+  border: 1px solid var(--border-card);
+  background: var(--bg-card-inner);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-align: right;
+}
+
+.fs-gen-alt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border-subtle);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* ============================================================================
+ * MODAL ADICIONAR MÁQUINA / LOGÍSTICA COMPLETO (MODO LIVRE)
+ * ========================================================================== */
+
+.add-machine-dialog {
+  width: 94vw !important;
+  max-width: 640px !important;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.add-machine-body {
+  padding: 14px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.am-search-input {
+  width: 100%;
+  padding: 10px 13px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border-card);
+  background: var(--bg-card-inner);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.am-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.am-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.am-section-title {
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.am-logistics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 8px;
+}
+
+.am-log-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 9px 6px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border-card);
+  background: var(--bg-card-inner);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+}
+
+.am-log-btn:hover,
+.am-log-btn.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.am-log-btn img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.am-recipes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.am-recipe-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border-card);
+  background: var(--bg-card-inner);
+  color: var(--text-main);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.am-recipe-row:hover,
+.am-recipe-row.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.am-recipe-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.am-recipe-left img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.am-recipe-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.am-recipe-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.am-recipe-sub {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.am-alt-badge {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.am-recipe-io {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.am-recipe-io img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.am-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 12px;
+  color: var(--text-muted);
 }

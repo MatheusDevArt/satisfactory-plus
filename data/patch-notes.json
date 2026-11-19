@@ -1,5 +1,18 @@
 [
   {
+    "id": "2026-11-19-resumo-logistica-esteiras-lr",
+    "date": "19/11/2026",
+    "title": "Resumo da fábrica, contêineres, esteiras corrigidas e fluxo Esquerda → Direita",
+    "items": [
+      { "tag": "Novo", "text": "Novo painel Resumo da Fábrica com energia recomendada (e folga %), entradas, saídas, faltas, excesso, construções e materiais usados." },
+      { "tag": "Novo", "text": "Contêineres, tanques de fluido, divisores inteligente/programável, bombas de tubo, Triturador SUPIMPA, Depósito Dimensional e Elevador Espacial no modo Livre." },
+      { "tag": "Novo", "text": "Modal Adicionar Máquina completo ao puxar uma esteira no modo Livre, com busca e filtro automático pelo item." },
+      { "tag": "Novo", "text": "Modo de card compacto opcional na barra inferior para fábricas grandes." },
+      { "tag": "Melhoria", "text": "Orientação padrão alterada para Esquerda → Direita, card do produto final inteiro em laranja e remoção das sombras laranja." },
+      { "tag": "Correção", "text": "Arrasto de cards voltou a ser fluido a 60 fps e esteiras agora encostam exatamente nas portas sem pontas soltas." }
+    ]
+  },
+  {
     "id": "2026-11-18-dados-mapa-patchnotes",
     "date": "18/11/2026",
     "title": "Dados oficiais do jogo, mapa sem bordas e Patch notes",

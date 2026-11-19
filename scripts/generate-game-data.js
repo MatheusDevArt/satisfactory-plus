@@ -350,6 +350,76 @@ function run() {
     };
   }
 
+  // 7. Extrai custos de construção oficiais (buildCost) e catálogo oficial de Logística/Armazenamento/Destinos
+  const buildCostByClass = {};
+  for (const r of (ptMap.FGRecipe || [])) {
+    const prods = parseItemAmounts(r.mProduct);
+    if (prods.length === 1 && String(prods[0].item).startsWith('Desc_')) {
+      const descName = prods[0].item;
+      const buildId = descName.replace(/^Desc_/, 'Build_');
+      const ings = parseItemAmounts(r.mIngredients);
+      if (ings.length > 0) {
+        buildCostByClass[buildId] = ings;
+        buildCostByClass[descName] = ings;
+      }
+    }
+  }
+
+  // Garante buildCost atualizado em máquinas e extratores
+  for (const [id, m] of Object.entries(newMachines)) {
+    if ((!m.buildCost || m.buildCost.length === 0) && buildCostByClass[id]) {
+      m.buildCost = buildCostByClass[id];
+    }
+  }
+  for (const [id, ex] of Object.entries(newExtractors)) {
+    if ((!ex.buildCost || ex.buildCost.length === 0) && buildCostByClass[id]) {
+      ex.buildCost = buildCostByClass[id];
+    }
+  }
+
+  const ptAllByClass = {};
+  for (const list of Object.values(ptMap)) {
+    for (const obj of list) if (obj.ClassName) ptAllByClass[obj.ClassName] = obj;
+  }
+
+  const LOGISTICS_SPECS = [
+    { id: 'Build_ConveyorAttachmentSplitter_C', kind: 'splitter', category: 'Esteiras', isFluid: false, inPorts: 1, outPorts: 3, icon: 'https://satisfactory.wiki.gg/images/2/2c/Conveyor_Splitter.png' },
+    { id: 'Build_ConveyorAttachmentMerger_C', kind: 'merger', category: 'Esteiras', isFluid: false, inPorts: 3, outPorts: 1, icon: 'https://satisfactory.wiki.gg/images/a/aa/Conveyor_Merger.png' },
+    { id: 'Build_ConveyorAttachmentSplitterSmart_C', kind: 'smart_splitter', category: 'Esteiras', isFluid: false, inPorts: 1, outPorts: 3, icon: 'https://satisfactory.wiki.gg/images/3/3c/Smart_Splitter.png' },
+    { id: 'Build_ConveyorAttachmentSplitterProgrammable_C', kind: 'programmable_splitter', category: 'Esteiras', isFluid: false, inPorts: 1, outPorts: 3, icon: 'https://satisfactory.wiki.gg/images/2/2f/Programmable_Splitter.png' },
+    { id: 'Build_ConveyorAttachmentMergerPriority_C', kind: 'priority_merger', category: 'Esteiras', isFluid: false, inPorts: 3, outPorts: 1, icon: 'https://satisfactory.wiki.gg/images/a/aa/Conveyor_Merger.png' },
+    { id: 'Build_PipelineJunction_Cross_C', kind: 'pipe_junction', category: 'Tubulações', isFluid: true, inPorts: 2, outPorts: 2, icon: 'https://satisfactory.wiki.gg/images/9/9e/Pipeline_Junction_Cross.png' },
+    { id: 'Build_PipelinePump_C', kind: 'pipe_pump_mk1', category: 'Tubulações', isFluid: true, inPorts: 1, outPorts: 1, icon: 'https://satisfactory.wiki.gg/images/0/08/Pipeline_Pump_Mk.1.png' },
+    { id: 'Build_PipelinePumpMk2_C', kind: 'pipe_pump_mk2', category: 'Tubulações', isFluid: true, inPorts: 1, outPorts: 1, icon: 'https://satisfactory.wiki.gg/images/e/e5/Pipeline_Pump_Mk.2.png' },
+    { id: 'Build_StorageContainerMk1_C', kind: 'storage_mk1', category: 'Armazenamento', isFluid: false, inPorts: 1, outPorts: 1, icon: 'https://satisfactory.wiki.gg/images/0/0b/Storage_Container.png' },
+    { id: 'Build_StorageContainerMk2_C', kind: 'storage_mk2', category: 'Armazenamento', isFluid: false, inPorts: 2, outPorts: 2, icon: 'https://satisfactory.wiki.gg/images/1/17/Industrial_Storage_Container.png' },
+    { id: 'Build_PipeStorageTank_C', kind: 'fluid_buffer_mk1', category: 'Armazenamento', isFluid: true, inPorts: 1, outPorts: 1, icon: 'https://satisfactory.wiki.gg/images/2/26/Fluid_Buffer.png' },
+    { id: 'Build_IndustrialTank_C', kind: 'fluid_buffer_mk2', category: 'Armazenamento', isFluid: true, inPorts: 1, outPorts: 1, icon: 'https://satisfactory.wiki.gg/images/e/e8/Industrial_Fluid_Buffer.png' },
+    { id: 'Build_ResourceSink_C', kind: 'awesome_sink', category: 'Destinos Finais', isFluid: false, inPorts: 1, outPorts: 0, icon: 'https://satisfactory.wiki.gg/images/3/3e/AWESOME_Sink.png' },
+    { id: 'Build_CentralStorage_C', kind: 'dimensional_depot', category: 'Destinos Finais', isFluid: false, inPorts: 1, outPorts: 0, icon: 'https://satisfactory.wiki.gg/images/7/75/Dimensional_Depot_Uploader.png' },
+    { id: 'Build_SpaceElevator_C', kind: 'space_elevator', category: 'Destinos Finais', isFluid: false, inPorts: 6, outPorts: 0, icon: 'https://satisfactory.wiki.gg/images/3/34/Space_Elevator.png' }
+  ];
+
+  const newLogistics = {};
+  for (const spec of LOGISTICS_SPECS) {
+    const pt = ptAllByClass[spec.id];
+    const en = enByClass[spec.id];
+    if (!pt) continue; // Nunca inventar construção que não existe no build
+    newLogistics[spec.id] = {
+      id: spec.id,
+      kind: spec.kind,
+      name: pt.mDisplayName,
+      nameEn: en?.mDisplayName || pt.mDisplayName,
+      category: spec.category,
+      isFluid: spec.isFluid,
+      powerMw: round4(Number(pt.mPowerConsumption || 0)),
+      inPorts: spec.inPorts,
+      outPorts: spec.outPorts,
+      buildCost: buildCostByClass[spec.id] || [],
+      wikiImage: spec.icon
+    };
+  }
+
   const finalData = {
     version: '1.0+ (CL-517554)',
     gameBuild: '++FactoryGame+rel-main-multiplayer-patch-CL-517554',
@@ -366,7 +436,8 @@ function run() {
     recipes: newRecipes,
     belts: newBelts,
     pipes: newPipes,
-    generators: newGenerators
+    generators: newGenerators,
+    logistics: newLogistics
   };
 
   fs.writeFileSync(OUT_JS_PATH, `window.SATISFACTORY_DATA = ${JSON.stringify(finalData)};\n`, 'utf8');

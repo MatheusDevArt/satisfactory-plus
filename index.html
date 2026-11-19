@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Satisfactory+ — Planejador Visual &amp; Mapa Interativo 1.0+</title>
+  <title>Satisfactory+</title>
   <meta name="description" content="Planejador visual de fábricas, logística de divisores/esteiras, geradores de energia, mapa interativo MASSAGE-2(A-B)b e enciclopédia completa do Satisfactory 1.0+ em português." />
   <meta property="og:title" content="Satisfactory+ — Planejador Visual &amp; Mapa Interativo 1.0+" />
   <meta property="og:description" content="Planejador de fábricas no espaço infinito, cálculo de máquinas inteiras e divisores, diagnóstico livre e mapa interativo 1.0+ completo." />
@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./styles.css?v=18" />
+  <link rel="stylesheet" href="./styles.css?v=20" />
 </head>
 <body class="theme-light">
   <!-- ANIMAÇÃO DE ENTRADA (INTRO SPLASH) COM LOGO S+ E NOME SATISFACTORY+ -->
@@ -150,11 +150,11 @@
       <!-- ORIENTAÇÃO DO FLUXO, TUTORIAL, CONTA E REPORTAR NO CANTO SUPERIOR DIREITO -->
       <div id="top-right-floating-actions" class="top-right-floating-actions">
         <div class="floating-orient-pill" id="orient-pill-wrap">
-          <button id="orient-tb" class="orient-btn active" onclick="setFlowOrientation('TB')" title="Fluxo de Cima para Baixo (Padrão)">
-            ⬇️ Cima ➔ Baixo
-          </button>
-          <button id="orient-lr" class="orient-btn" onclick="setFlowOrientation('LR')" title="Fluxo da Esquerda para a Direita">
+          <button id="orient-lr" class="orient-btn active" onclick="setFlowOrientation('LR')" title="Fluxo da Esquerda para a Direita (Padrão)">
             ➡️ Esquerda ➔ Direita
+          </button>
+          <button id="orient-tb" class="orient-btn" onclick="setFlowOrientation('TB')" title="Fluxo de Cima para Baixo">
+            ⬇️ Cima ➔ Baixo
           </button>
         </div>
         <button id="btn-open-tutorial" class="btn-tutorial-pill" onclick="openTutorialModal()" title="Abrir Tutorial Interativo da Ferramenta">
@@ -174,8 +174,9 @@
         </div>
       </div>
 
-      <!-- BARRA INFERIOR ESQUERDA DO MODO LIVRE (DIVISOR, UNIFICADOR & JUNÇÃO DE TUBO) -->
+      <!-- BARRA INFERIOR ESQUERDA DO MODO LIVRE (ADICIONAR, DIVISOR, UNIFICADOR & JUNÇÃO DE TUBO) -->
       <div id="free-logistics-toolbar" class="free-logistics-toolbar hidden">
+        <button class="hud-btn hud-btn-fit" onclick="openAddMachineModal()" title="Abrir catálogo completo de máquinas, receitas, contêineres e logística">➕ Adicionar Máquina</button>
         <button class="hud-btn hud-btn-logistics" onclick="addFreeBlock('splitter')" title="Adicionar Divisor de Esteira ao espaço">🔀 + Divisor</button>
         <button class="hud-btn hud-btn-logistics" onclick="addFreeBlock('merger')" title="Adicionar Unificador de Esteira ao espaço">🔗 + Unificador</button>
         <button class="hud-btn hud-btn-logistics" onclick="addFreeBlock('pipe_junction')" title="Adicionar Junção de Tubulação (líquidos e gases)">🔩 + Junção de Tubo</button>
@@ -191,6 +192,9 @@
         </button>
         <button id="btn-toggle-expand" class="hud-btn hud-btn-toggle active" onclick="toggleShowAllMachines()" title="Alternar entre mostrar cada máquina individualmente ou agrupar por etapa">
           🏭 Todas Máquinas: SIM
+        </button>
+        <button id="btn-toggle-compact" class="hud-btn hud-btn-toggle" onclick="toggleCompactCardMode()" title="Alternar entre cards completos e cards compactos">
+          🧩 Compacto: NÃO
         </button>
         <button class="hud-btn hud-btn-fit" onclick="fitCanvasToScreen()" title="Centralizar e Enquadrar Fluxo">🎯 Centralizar</button>
       </div>
@@ -290,6 +294,17 @@
     </div>
   </div>
 
+  <!-- MODAL COMPLETO ADICIONAR MÁQUINA / LOGÍSTICA (MODO LIVRE) -->
+  <div id="add-machine-modal" class="modal-backdrop hidden" onclick="if(event.target===this) closeAddMachineModal()">
+    <div class="modal-dialog add-machine-dialog" role="dialog" aria-modal="true" aria-labelledby="add-machine-title">
+      <div class="modal-header">
+        <h3 id="add-machine-title">➕ Adicionar Máquina</h3>
+        <button class="icon-close" onclick="closeAddMachineModal()" aria-label="Fechar">✕</button>
+      </div>
+      <div id="add-machine-body" class="add-machine-body"></div>
+    </div>
+  </div>
+
   <!-- MODAL DE PATCH NOTES (LINHA DO TEMPO — 7 ÚLTIMAS) -->
   <div id="patch-notes-modal" class="modal-backdrop hidden" onclick="if(event.target===this) closePatchNotesModal()">
     <div class="modal-dialog pn-dialog" role="dialog" aria-modal="true" aria-labelledby="patch-notes-title">
@@ -322,14 +337,15 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="./js/elk.bundled.js?v=13"></script>
-  <script src="./data/satisfactory-data.js?v=18"></script>
-  <script src="./js/map-data.js?v=18"></script>
-  <script src="./js/library-data.js?v=18"></script>
-  <script src="./js/icons.js?v=18"></script>
-  <script src="./js/solver.js?v=18"></script>
-  <script src="./js/app.js?v=19"></script>
-  <script src="./js/tutorial.js?v=18"></script>
-  <script src="./js/patch-notes.js?v=18"></script>
-  <script src="./js/account-features.js?v=18"></script>
+  <script src="./data/satisfactory-data.js?v=20"></script>
+  <script src="./js/map-data.js?v=20"></script>
+  <script src="./js/library-data.js?v=20"></script>
+  <script src="./js/icons.js?v=20"></script>
+  <script src="./js/solver.js?v=20"></script>
+  <script src="./js/app.js?v=20"></script>
+  <script src="./js/factory-enhancements.js?v=20"></script>
+  <script src="./js/tutorial.js?v=20"></script>
+  <script src="./js/patch-notes.js?v=20"></script>
+  <script src="./js/account-features.js?v=20"></script>
 </body>
 </html>

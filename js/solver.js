@@ -2712,6 +2712,33 @@
         };
       }
 
+      // Qualquer construção oficial de Logística, Armazenamento ou Destino Final (CL-517554)
+      const logList = Object.values(DATA.logistics || {});
+      const logObj = logList.find((l) => l.id === block.logisticsId || l.kind === block.blockType);
+      if (logObj) {
+        const inItem = block.itemId ? DATA.items[block.itemId] : null;
+        const outRate = Number(block.manualRate) || 0;
+        const tr = logObj.isFluid ? chosenPipe : chosenBelt;
+        const portDesc = logObj.outPorts === 0
+          ? `Destino final (${logObj.inPorts} entrada${logObj.inPorts > 1 ? 's' : ''})`
+          : `${logObj.inPorts} ent. → ${logObj.outPorts} saí.`;
+        return {
+          blockId: block.id,
+          blockType: logObj.kind,
+          entity: { id: logObj.id, name: logObj.name, icon: logObj.wikiImage, wikiImage: logObj.wikiImage },
+          title: logObj.name,
+          subtitle: portDesc,
+          count,
+          clockPercent: 100,
+          powerPerMachineMw: logObj.powerMw || 0,
+          totalPowerMw: (logObj.powerMw || 0) * count,
+          powerProducedMw: 0,
+          transportUsed: tr,
+          inputs: inItem ? [{ item: inItem, perMachineRate: outRate, totalRate: outRate * count, unit: inItem.unit, transportUsed: tr, idealLogi: getLogisticsInfo(outRate, logObj.isFluid) }] : [],
+          outputs: (inItem && logObj.outPorts > 0) ? [{ item: inItem, perMachineRate: outRate, totalRate: outRate * count, unit: inItem.unit, transportUsed: tr, idealLogi: getLogisticsInfo(outRate, logObj.isFluid) }] : []
+        };
+      }
+
       return null;
     },
 
