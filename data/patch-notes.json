@@ -1,5 +1,18 @@
 [
   {
+    "id": "2026-11-20-home-receitas-barra-vertical-filtros",
+    "date": "20/11/2026",
+    "title": "Nova Home, aba Receitas reformulada, barra vertical compacta e busca corrigida",
+    "items": [
+      { "tag": "Novo", "text": "Nova tela inicial (Home) com novo fundo, logo industrial S+ e saída com rolagem suave." },
+      { "tag": "Novo", "text": "Aba Receitas reformulada no padrão da Biblioteca: filtros consistentes (Todos, Com alternativas, Evento FICSMAS), categorias com ícones reais, chips de máquinas com múltipla seleção, modos grade/lista/tabela, comparador de receitas com custo em recursos brutos, subprodutos indexados e favoritos." },
+      { "tag": "Novo", "text": "Aba Produção agora oferece 3 caminhos iniciais: Recursos, Máquinas e Produtos." },
+      { "tag": "Melhoria", "text": "Barra vertical de ações à direita reduzida apenas para ícones SVG individuais em preto acinzentado." },
+      { "tag": "Melhoria", "text": "Filtros por categoria no modal Adicionar Máquina (Máquinas, Produtos, Logística, Armazenamento, Destinos, Extratores, Energia, ALT)." },
+      { "tag": "Correção", "text": "Corrigida a perda de foco ao digitar na busca de itens, cintilação das esteiras em zoom distante e cadeias longas de divisores no modo agrupado." }
+    ]
+  },
+  {
     "id": "2026-11-19-direcao-biblioteca-reports-ea580c",
     "date": "19/11/2026",
     "title": "4 direções de linha, nova Biblioteca, respostas em Reports e correções de esteiras",

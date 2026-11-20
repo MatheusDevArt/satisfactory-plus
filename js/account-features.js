@@ -1796,13 +1796,13 @@ async function openSavedProjectInSpaces(projectId) {
   const vp = document.getElementById('spaces-viewport');
   if (btn3d) {
     btn3d.classList.toggle('active', AppState.canvas.is3DView);
-    btn3d.textContent = AppState.canvas.is3DView ? '🏢 3D: SIM' : '🏢 3D: NÃO';
+    btn3d.title = AppState.canvas.is3DView ? 'Visão 3D em Andares: SIM' : 'Visão 3D em Andares: NÃO';
   }
   if (vp) vp.classList.toggle('view-3d', AppState.canvas.is3DView);
   const btnExp = document.getElementById('btn-toggle-expand');
   if (btnExp) {
     btnExp.classList.toggle('active', AppState.showAllMachines);
-    btnExp.textContent = AppState.showAllMachines ? '🏭 Todas: SIM' : '📦 Todas: NÃO';
+    btnExp.title = AppState.showAllMachines ? 'Todas as Máquinas: SIM' : 'Todas as Máquinas: NÃO';
   }
 
   AccountState.projects.activeProjectId = proj.id;

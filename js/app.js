@@ -116,8 +116,18 @@ const AppState = {
 
   // Aba 6: Receitas (Banco completo Satisfactory 1.0+)
   recipes: {
-    filter: 'all', // 'all' | 'standard' | 'alternate' | 'ficsmas'
-    machineFilter: 'all',
+    filter: 'all', // 'all' | 'alternate' | 'ficsmas'
+    category: 'all',
+    machineFilters: [], // multi-seleção de IDs de máquina
+    filtersOpen: false,
+    byproductOnly: false,
+    favOnly: false,
+    viewMode: 'grid', // 'grid' | 'list' | 'table'
+    cardSize: 'md', // 'sm' | 'md' | 'lg'
+    sortBy: 'progression', // 'progression' | 'az' | 'alternates'
+    collapsedSections: {},
+    compareMode: false,
+    detailHistory: [],
     searchQuery: '',
     selectedId: null
   },
@@ -367,9 +377,9 @@ function toggleShowAllMachines() {
   const btn = document.getElementById('btn-toggle-expand');
   if (btn) {
     btn.classList.toggle('active', AppState.showAllMachines);
-    btn.textContent = AppState.showAllMachines
-      ? '🏭 Todas: SIM'
-      : '📦 Todas: NÃO';
+    btn.title = AppState.showAllMachines
+      ? 'Todas as Máquinas: SIM'
+      : 'Todas as Máquinas: NÃO';
   }
   renderAll(true);
 }
@@ -380,9 +390,9 @@ function toggle3DView() {
   const viewport = document.getElementById('spaces-viewport');
   if (btn) {
     btn.classList.toggle('active', AppState.canvas.is3DView);
-    btn.textContent = AppState.canvas.is3DView
-      ? '🏢 3D: SIM'
-      : '🏢 3D: NÃO';
+    btn.title = AppState.canvas.is3DView
+      ? 'Visão 3D em Andares: SIM'
+      : 'Visão 3D em Andares: NÃO';
   }
   if (viewport) {
     viewport.classList.toggle('view-3d', AppState.canvas.is3DView);
@@ -845,11 +855,15 @@ function initInfiniteCanvasEvents() {
 
 function applyCanvasTransform() {
   const world = document.getElementById('spaces-world');
+  const viewport = document.getElementById('spaces-viewport');
   const gridBg = document.getElementById('spaces-grid-bg');
   const readout = document.getElementById('zoom-readout');
 
   if (world) {
-    world.style.transform = `translate(${AppState.canvas.x}px, ${AppState.canvas.y}px) scale(${AppState.canvas.scale})`;
+    world.style.transform = `translate3d(${AppState.canvas.x}px, ${AppState.canvas.y}px, 0) scale(${AppState.canvas.scale})`;
+  }
+  if (viewport) {
+    viewport.classList.toggle('zoom-far', AppState.canvas.scale < 0.45);
   }
   if (gridBg) {
     const gridSize = 32 * AppState.canvas.scale;
@@ -1122,28 +1136,36 @@ function renderProductionMode(sidebarEl, emptyOverlay, autoFit) {
 
   const driver = AppState.production.driver;
 
-  // ESTADO INICIAL: Usuário escolhe o que colocar primeiro
+  // ESTADO INICIAL: 3 opções (Recursos, Máquinas, Produtos)
   if (!driver) {
     sidebarEl.innerHTML = `
       <div class="sidebar-step-block">
         <div class="step-header-row">
           <span class="step-badge">PRODUÇÃO</span>
-          <h4>Como deseja começar?</h4>
+          <h4>Como começar?</h4>
         </div>
 
         <button class="empty-step-cta" onclick="openPushAddInputModal()">
           <span class="cta-plus">⛏️</span>
           <div>
-            <strong>Começar com Recurso / Máquina</strong>
-            <span>Escolha o nó ou mineradora para ver tudo o que pode fabricar</span>
+            <strong>Recursos</strong>
+            <span>Comece pelo recurso ou mineradora</span>
+          </div>
+        </button>
+
+        <button class="empty-step-cta" style="margin-top:6px;" onclick="openProductionMachinePicker()">
+          <span class="cta-plus">🏭</span>
+          <div>
+            <strong>Máquinas</strong>
+            <span>Escolha a máquina e a receita</span>
           </div>
         </button>
 
         <button class="empty-step-cta" style="margin-top:6px;" onclick="openPullAddTargetModal()">
           <span class="cta-plus">🎯</span>
           <div>
-            <strong>Começar com Produto Final</strong>
-            <span>Escolha a peça e a meta por minuto para calcular toda a fábrica</span>
+            <strong>Produtos</strong>
+            <span>Escolha o produto final e a meta/min</span>
           </div>
         </button>
       </div>
@@ -3026,6 +3048,16 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, orientOrIsTB, wiresEl, no
     }
   });
 
+  // Ajusta o tamanho real do SVG ao bounding box do grafo para evitar cintilação/culling em zoom distante
+  let svgMaxX = 2400;
+  let svgMaxY = 1800;
+  for (const [, b] of nodeCoords.entries()) {
+    svgMaxX = Math.max(svgMaxX, (b.x || 0) + (b.w || 330) + 400);
+    svgMaxY = Math.max(svgMaxY, (b.y || 0) + (b.h || 400) + 400);
+  }
+  wiresEl.style.width = `${Math.ceil(svgMaxX)}px`;
+  wiresEl.style.height = `${Math.ceil(svgMaxY)}px`;
+
   wiresEl.innerHTML = pathsHtml;
   nodesEl.querySelectorAll('.wire-belt-pill').forEach(el => el.remove());
   nodesEl.insertAdjacentHTML('beforeend', badgesHtml);
@@ -4777,7 +4809,8 @@ function initPickerEvents() {
       if (AppState.inspector.isOpen) closeMachineInspector();
       if (AppState.library.selectedId) {
         AppState.library.selectedId = null;
-        renderLibraryWorkspace();
+        if (AppState.mode === 'recipes') renderRecipesWorkspace();
+  else renderLibraryWorkspace();
       }
       if (AppState.recipes.selectedId) {
         AppState.recipes.selectedId = null;
@@ -5000,7 +5033,8 @@ function toggleLibraryFavorite(event, entryId) {
   if (typeof saveAccountPreferences === 'function') {
     saveAccountPreferences({ libraryFavorites: AppState.library.favorites });
   }
-  renderLibraryWorkspace();
+  if (AppState.mode === 'recipes') renderRecipesWorkspace();
+  else renderLibraryWorkspace();
 }
 
 function pushLibraryRecent(entryId) {
@@ -5233,7 +5267,8 @@ function setLibrarySearch(q) {
   _libSearchDebounce = setTimeout(() => {
     if (AppState.mode === 'library') {
       updateLibrarySidebarCounts();
-      renderLibraryWorkspace();
+      if (AppState.mode === 'recipes') renderRecipesWorkspace();
+  else renderLibraryWorkspace();
     }
   }, 100);
 }
@@ -5263,22 +5298,26 @@ function setLibraryFilter(field, val) {
 
 function setLibraryViewMode(mode) {
   AppState.library.viewMode = mode;
-  renderLibraryWorkspace();
+  if (AppState.mode === 'recipes') renderRecipesWorkspace();
+  else renderLibraryWorkspace();
 }
 
 function setLibraryCardSize(sz) {
   AppState.library.cardSize = sz;
-  renderLibraryWorkspace();
+  if (AppState.mode === 'recipes') renderRecipesWorkspace();
+  else renderLibraryWorkspace();
 }
 
 function setLibrarySort(sortBy) {
   AppState.library.sortBy = sortBy;
-  renderLibraryWorkspace();
+  if (AppState.mode === 'recipes') renderRecipesWorkspace();
+  else renderLibraryWorkspace();
 }
 
 function toggleLibrarySection(secKey) {
   AppState.library.collapsedSections[secKey] = !AppState.library.collapsedSections[secKey];
-  renderLibraryWorkspace();
+  if (AppState.mode === 'recipes') renderRecipesWorkspace();
+  else renderLibraryWorkspace();
 }
 
 function selectLibraryEntry(entryId, fromHistory = false) {
@@ -5294,7 +5333,8 @@ function selectLibraryEntry(entryId, fromHistory = false) {
     st.selectedId = entryId;
     pushLibraryRecent(entryId);
   }
-  renderLibraryWorkspace();
+  if (AppState.mode === 'recipes') renderRecipesWorkspace();
+  else renderLibraryWorkspace();
 }
 
 function navigateLibraryDetailBack() {
@@ -5305,7 +5345,8 @@ function navigateLibraryDetailBack() {
   } else {
     st.selectedId = null;
   }
-  renderLibraryWorkspace();
+  if (AppState.mode === 'recipes') renderRecipesWorkspace();
+  else renderLibraryWorkspace();
 }
 
 function navigateLibraryToRawId(rawId) {
@@ -5345,11 +5386,104 @@ function planItemFromLibrary(itemId, isRaw) {
   switchMode('production');
 }
 
-function planRecipeFromRecipesTab(itemId, recipeId) {
+function openProductionMachinePicker() {
+  const modal = document.getElementById('picker-modal');
+  const titleEl = document.getElementById('picker-title');
+  const searchEl = document.getElementById('picker-search');
+  const catsEl = document.getElementById('picker-categories');
+  const gridEl = document.getElementById('picker-grid');
+  if (!modal || !gridEl) return;
+
+  AppState.picker.isOpen = true;
+  if (titleEl) titleEl.textContent = 'Escolher Máquina';
+  if (searchEl) searchEl.value = '';
+  if (catsEl) catsEl.innerHTML = '';
+
+  const machines = Solver.getProductionMachines();
+  const renderMachines = (q = '') => {
+    const nq = Solver.normalizeText(q);
+    const list = machines.filter(m => !nq || Solver.normalizeText(`${m.name} ${m.nameEn || ''}`).includes(nq));
+    gridEl.innerHTML = list.map(m => {
+      const recs = Solver.getRecipesByMachine(m.id);
+      return `
+        <button type="button" class="picker-item-card" onclick="openRecipesForSelectedMachine('${m.id}')">
+          ${renderEntityIcon(m, 48)}
+          <div class="picker-item-info">
+            <strong>${m.name}</strong>
+            <span>${recs.length} receita(s)</span>
+          </div>
+        </button>
+      `;
+    }).join('') || '<div class="picker-empty">Nenhuma máquina encontrada.</div>';
+  };
+
+  if (searchEl) {
+    searchEl.oninput = (e) => renderMachines(e.target.value);
+  }
+  renderMachines('');
+  modal.classList.remove('hidden');
+  if (searchEl) setTimeout(() => searchEl.focus(), 40);
+}
+
+function openRecipesForSelectedMachine(machineId) {
+  const titleEl = document.getElementById('picker-title');
+  const searchEl = document.getElementById('picker-search');
+  const catsEl = document.getElementById('picker-categories');
+  const gridEl = document.getElementById('picker-grid');
+  const mach = Solver.getMachine(machineId);
+  if (!gridEl) return;
+
+  if (titleEl) titleEl.textContent = `Receitas — ${mach ? mach.name : 'Máquina'}`;
+  if (searchEl) searchEl.value = '';
+  if (catsEl) {
+    catsEl.innerHTML = `<button type="button" class="picker-cat-chip" onclick="openProductionMachinePicker()">← Máquinas</button>`;
+  }
+
+  const recs = Solver.getRecipesByMachine(machineId).filter(r => !r.isFicsmas);
+  const renderRecs = (q = '') => {
+    const nq = Solver.normalizeText(q);
+    const list = recs.filter(r => !nq || Solver.normalizeText(`${r.cleanName || r.name} ${r.nameEn || ''}`).includes(nq));
+    gridEl.innerHTML = list.map(r => {
+      const mainProd = r.products?.[0];
+      const item = mainProd ? Solver.getItem(mainProd.item) : null;
+      const baseRate = mainProd ? (Number(mainProd.ratePerMin) || 30) : 30;
+      return `
+        <button type="button" class="picker-item-card" onclick="selectMachineRecipeForProduction('${mainProd ? mainProd.item : ''}', '${r.id}', ${baseRate})">
+          ${item ? renderEntityIcon(item, 44) : ''}
+          <div class="picker-item-info">
+            <strong>${r.cleanName || r.name}${r.isAlternate ? ' ★' : ''}</strong>
+            <span>${fmt(baseRate, 1)}/min</span>
+          </div>
+        </button>
+      `;
+    }).join('') || '<div class="picker-empty">Nenhuma receita encontrada.</div>';
+  };
+
+  if (searchEl) {
+    searchEl.oninput = (e) => renderRecs(e.target.value);
+  }
+  renderRecs('');
+}
+
+function selectMachineRecipeForProduction(itemId, recipeId, baseRate) {
+  closePickerModal();
+  const searchEl = document.getElementById('picker-search');
+  if (searchEl) searchEl.oninput = null;
+  if (!itemId) return;
+  planRecipeFromRecipesTab(itemId, recipeId, baseRate);
+}
+
+function planRecipeFromRecipesTab(itemId, recipeId, baseRate = null) {
   AppState.recipes.selectedId = null;
   AppState.production.driver = 'product';
   AppState.production.mounted = true;
-  AppState.pull.targets = [{ id: uid(), itemId, rate: 30 }];
+  let rate = Number(baseRate);
+  if (!rate || rate <= 0) {
+    const rec = recipeId ? window.SATISFACTORY_DATA?.recipes?.[recipeId] : null;
+    const prod = rec ? ((rec.products || []).find(p => p.item === itemId) || rec.products?.[0]) : null;
+    rate = prod ? (Number(prod.ratePerMin) || 30) : 30;
+  }
+  AppState.pull.targets = [{ id: uid(), itemId, rate }];
   if (recipeId) {
     AppState.pull.recipeOverrides[itemId] = recipeId;
   }
@@ -5833,7 +5967,8 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     AppState.library.selectedId = null;
     AppState.library.detailHistory = [];
-    renderLibraryWorkspace();
+    if (AppState.mode === 'recipes') renderRecipesWorkspace();
+  else renderLibraryWorkspace();
     return;
   }
   if (isTyping || _lastRenderedLibFlatIds.length === 0) return;
@@ -5841,12 +5976,14 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
     e.preventDefault();
     AppState.library.focusedIndex = (AppState.library.focusedIndex + 1) % _lastRenderedLibFlatIds.length;
-    renderLibraryWorkspace();
+    if (AppState.mode === 'recipes') renderRecipesWorkspace();
+  else renderLibraryWorkspace();
   } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
     e.preventDefault();
     const len = _lastRenderedLibFlatIds.length;
     AppState.library.focusedIndex = (AppState.library.focusedIndex - 1 + len) % len;
-    renderLibraryWorkspace();
+    if (AppState.mode === 'recipes') renderRecipesWorkspace();
+  else renderLibraryWorkspace();
   } else if (e.key === 'Enter' && AppState.library.focusedIndex >= 0) {
     e.preventDefault();
     const id = _lastRenderedLibFlatIds[AppState.library.focusedIndex];
@@ -5855,8 +5992,103 @@ document.addEventListener('keydown', (e) => {
 });
 
 /* ============================================================================
- * ABA 6: 📜 RECEITAS (TODAS AS RECEITAS OFICIAIS SATISFACTORY 1.0+ EM PT-BR)
+ * ABA 6: 📜 RECEITAS (REAPROVEITA COMPONENTES E PREFERÊNCIAS DA BIBLIOTECA)
  * ========================================================================== */
+
+let _recipeGroupsCache = null;
+let _lastRenderedRecipeIds = [];
+let _recipeSearchDebounce = null;
+
+function getGroupedRecipeProducts(allRecipes) {
+  if (_recipeGroupsCache && !allRecipes) return _recipeGroupsCache;
+  const recs = allRecipes || Object.values(window.SATISFACTORY_DATA?.recipes || {});
+  const groupsMap = new Map();
+
+  recs.forEach((r) => {
+    const prods = r.products || [];
+    prods.forEach((prod, pIdx) => {
+      if (!prod || !prod.item) return;
+      const item = Solver.getItem(prod.item);
+      if (!item) return;
+      const isByproduct = pIdx > 0;
+
+      if (!groupsMap.has(item.id)) {
+        const sub = item.category || 'Peças & Componentes';
+        groupsMap.set(item.id, {
+          id: item.id,
+          favKey: `item_${item.id}`,
+          item,
+          category: sub,
+          color: LIB_CATEGORY_COLORS[sub] || '#2563EB',
+          progressionRank: LIB_PROGRESSION_ORDER[sub] || 8,
+          baseRecipes: [],
+          alternates: [],
+          byproductRecipes: [],
+          allRecipes: [],
+          isFicsmasOnly: true,
+          hasByproductSource: false,
+          machinesSet: new Set()
+        });
+      }
+      const g = groupsMap.get(item.id);
+      if (!r.isFicsmas) g.isFicsmasOnly = false;
+      if (!g.allRecipes.some(x => x.id === r.id)) {
+        g.allRecipes.push(r);
+        if (r.machine) g.machinesSet.add(r.machine);
+        if (isByproduct) {
+          g.hasByproductSource = true;
+          g.byproductRecipes.push(r);
+        }
+        if (r.isAlternate) g.alternates.push(r);
+        else g.baseRecipes.push(r);
+      }
+    });
+  });
+
+  const list = [...groupsMap.values()].map(g => {
+    const recTexts = g.allRecipes.map(r => {
+      const m = Solver.getMachine(r.machine);
+      const io = [...(r.ingredients || []), ...(r.products || [])].map(x => {
+        const it = Solver.getItem(x.item);
+        return it ? `${it.name} ${it.nameEn || ''}` : '';
+      }).join(' ');
+      return `${r.cleanName || r.name} ${r.nameEn || ''} ${m ? `${m.name} ${m.nameEn || ''}` : ''} ${io}`;
+    }).join(' ');
+    g.searchBlob = Solver.normalizeText(`${g.item.name} ${g.item.nameEn || ''} ${g.category} ${recTexts}`);
+    g.machines = [...g.machinesSet];
+    return g;
+  });
+
+  if (!allRecipes) _recipeGroupsCache = list;
+  return list;
+}
+
+function getFilteredRecipeGroups(allGroups, opts = {}) {
+  const st = AppState.recipes;
+  const q = Solver.normalizeText(st.searchQuery || '');
+  const favSet = new Set(AppState.library.favorites || []);
+
+  return allGroups.filter(g => {
+    // Critério consistente: "Todos" e "Com alternativas" excluem produtos exclusivos de Evento (FICSMAS);
+    // "Evento (FICSMAS)" exibe exclusivamente os produtos FICSMAS.
+    if (!opts.ignoreFilter) {
+      if (st.filter === 'ficsmas') {
+        if (!g.isFicsmasOnly) return false;
+      } else {
+        if (g.isFicsmasOnly) return false;
+        if (st.filter === 'alternate' && g.alternates.length === 0) return false;
+      }
+    }
+    if (!opts.ignoreCategory && st.category !== 'all' && g.category !== st.category) return false;
+    if (!opts.ignoreMachine && Array.isArray(st.machineFilters) && st.machineFilters.length > 0) {
+      if (!g.machines.some(mId => st.machineFilters.includes(mId))) return false;
+    }
+    if (st.byproductOnly && !g.hasByproductSource) return false;
+    if (st.favOnly && !favSet.has(g.favKey)) return false;
+    if (q && !g.searchBlob.includes(q)) return false;
+    return true;
+  });
+}
 
 function setRecipeFilter(f) {
   AppState.recipes.filter = f;
@@ -5864,224 +6096,659 @@ function setRecipeFilter(f) {
   renderAll(false);
 }
 
-function setRecipeMachineFilter(mId) {
-  AppState.recipes.machineFilter = mId;
+function setRecipeCategory(cat) {
+  AppState.recipes.category = cat;
+  renderAll(false);
+}
+
+function toggleRecipeMachineFilter(mId) {
+  const arr = AppState.recipes.machineFilters || [];
+  const idx = arr.indexOf(mId);
+  if (idx >= 0) arr.splice(idx, 1);
+  else arr.push(mId);
+  AppState.recipes.machineFilters = arr;
+  renderAll(false);
+}
+
+function clearRecipeMachineFilters() {
+  AppState.recipes.machineFilters = [];
+  renderAll(false);
+}
+
+function toggleRecipeFiltersOpen() {
+  AppState.recipes.filtersOpen = !AppState.recipes.filtersOpen;
+  renderAll(false);
+}
+
+function setRecipeFlag(field, val) {
+  AppState.recipes[field] = val;
+  renderAll(false);
+}
+
+function setRecipeViewMode(mode) {
+  AppState.recipes.viewMode = mode;
+  renderRecipesWorkspace();
+}
+
+function setRecipeCardSize(sz) {
+  AppState.recipes.cardSize = sz;
+  renderRecipesWorkspace();
+}
+
+function setRecipeSort(sortBy) {
+  AppState.recipes.sortBy = sortBy;
+  renderRecipesWorkspace();
+}
+
+function toggleRecipeSection(secKey) {
+  AppState.recipes.collapsedSections[secKey] = !AppState.recipes.collapsedSections[secKey];
+  renderRecipesWorkspace();
+}
+
+function toggleRecipeCompareMode() {
+  AppState.recipes.compareMode = !AppState.recipes.compareMode;
   renderRecipesWorkspace();
 }
 
 function setRecipeSearch(q) {
   AppState.recipes.searchQuery = q;
+  if (_recipeSearchDebounce) clearTimeout(_recipeSearchDebounce);
+  _recipeSearchDebounce = setTimeout(() => {
+    if (AppState.mode === 'recipes') {
+      updateRecipeSidebarCounts();
+      renderRecipesWorkspace();
+    }
+  }, 100);
+}
+
+function selectRecipeEntry(itemId, fromHistory = false) {
+  const st = AppState.recipes;
+  if (!itemId || st.selectedId === itemId) {
+    st.selectedId = null;
+    st.detailHistory = [];
+    st.compareMode = false;
+  } else {
+    if (!fromHistory && st.selectedId && st.selectedId !== itemId) {
+      st.detailHistory.push(st.selectedId);
+      if (st.detailHistory.length > 25) st.detailHistory.shift();
+    }
+    st.selectedId = itemId;
+    st.compareMode = false;
+    pushLibraryRecent(`item_${itemId}`);
+  }
   renderRecipesWorkspace();
 }
 
-function selectRecipeEntry(recId) {
-  AppState.recipes.selectedId = AppState.recipes.selectedId === recId ? null : recId;
+function navigateRecipeDetailBack() {
+  const st = AppState.recipes;
+  const prev = st.detailHistory.pop();
+  st.selectedId = prev || null;
+  st.compareMode = false;
   renderRecipesWorkspace();
+}
+
+function navigateRecipeAdjacent(delta) {
+  if (!_lastRenderedRecipeIds.length || !AppState.recipes.selectedId) return;
+  const idx = _lastRenderedRecipeIds.indexOf(AppState.recipes.selectedId);
+  if (idx === -1) return;
+  const nextIdx = (idx + delta + _lastRenderedRecipeIds.length) % _lastRenderedRecipeIds.length;
+  selectRecipeEntry(_lastRenderedRecipeIds[nextIdx]);
+}
+
+function openLibraryFromRecipes(itemId) {
+  const all = getLibraryEntries();
+  const target = all.find(e => e.rawId === itemId);
+  if (target) {
+    AppState.library.selectedId = target.id;
+    pushLibraryRecent(target.id);
+  }
+  switchMode('library');
+}
+
+function updateRecipeSidebarCounts() {
+  const allGroups = getGroupedRecipeProducts();
+  const baseMatched = getFilteredRecipeGroups(allGroups, { ignoreFilter: true, ignoreCategory: true, ignoreMachine: true });
+  const nonFics = baseMatched.filter(g => !g.isFicsmasOnly);
+  const fics = baseMatched.filter(g => g.isFicsmasOnly);
+  const altMatched = nonFics.filter(g => g.alternates.length > 0);
+  const activeScope = getFilteredRecipeGroups(allGroups, { ignoreCategory: true, ignoreMachine: true });
+
+  const setCnt = (key, val) => {
+    const el = document.querySelector(`[data-rec-count="${key}"]`);
+    if (el) {
+      el.textContent = String(val);
+      const btn = el.closest('button');
+      if (btn) btn.classList.toggle('is-empty', val === 0);
+    }
+  };
+  setCnt('filter:all', nonFics.length);
+  setCnt('filter:alternate', altMatched.length);
+  setCnt('filter:ficsmas', fics.length);
+  setCnt('cat:all', activeScope.length);
+
+  document.querySelectorAll('[data-rec-count^="cat:"]').forEach(el => {
+    const key = el.getAttribute('data-rec-count');
+    if (key === 'cat:all') return;
+    const catName = key.slice(4);
+    const c = activeScope.filter(g => g.category === catName).length;
+    el.textContent = String(c);
+    const btn = el.closest('button');
+    if (btn) btn.classList.toggle('is-empty', c === 0);
+  });
+  document.querySelectorAll('[data-rec-count^="mach:"]').forEach(el => {
+    const mId = el.getAttribute('data-rec-count').slice(5);
+    const c = activeScope.filter(g => g.machines.includes(mId)).length;
+    el.textContent = String(c);
+    const btn = el.closest('button');
+    if (btn) btn.classList.toggle('is-empty', c === 0);
+  });
 }
 
 function renderRecipesMode(sidebarEl, emptyOverlay) {
   emptyOverlay.classList.add('hidden');
   emptyOverlay.innerHTML = '';
 
-  const allRecipes = Object.values(window.SATISFACTORY_DATA?.recipes || {});
-  const productGroups = getGroupedRecipeProducts(allRecipes);
-  const withAltCount = productGroups.filter(g => g.alternates.length > 0).length;
-  const ficsCount = productGroups.filter(g => g.isFicsmasOnly).length;
+  const st = AppState.recipes;
+  const allGroups = getGroupedRecipeProducts();
+  const baseMatched = getFilteredRecipeGroups(allGroups, { ignoreFilter: true, ignoreCategory: true, ignoreMachine: true });
+  const nonFicsCount = baseMatched.filter(g => !g.isFicsmasOnly).length;
+  const withAltCount = baseMatched.filter(g => !g.isFicsmasOnly && g.alternates.length > 0).length;
+  const ficsCount = baseMatched.filter(g => g.isFicsmasOnly).length;
+
+  const activeScope = getFilteredRecipeGroups(allGroups, { ignoreCategory: true, ignoreMachine: true });
+  const catNames = [...new Set(allGroups.map(g => g.category))]
+    .sort((a, b) => (LIB_PROGRESSION_ORDER[a] || 99) - (LIB_PROGRESSION_ORDER[b] || 99));
   const machines = Solver.getProductionMachines();
+  const activeExtraCount = (st.byproductOnly ? 1 : 0) + (st.favOnly ? 1 : 0);
 
   sidebarEl.innerHTML = `
-    <div class="sidebar-step-block">
-      <div class="step-header-row">
-        <span class="step-badge">RECEITAS</span>
-        <h4>Produtos &amp; Variações</h4>
-      </div>
+    <div class="sidebar-step-block lib-sidebar-search-block">
       <input
+        id="rec-search-input"
         type="text"
         class="sidebar-input"
-        placeholder="🔍 Buscar produto, receita ou máquina..."
-        value="${AppState.recipes.searchQuery}"
+        placeholder="Buscar produto, receita ou máquina... [/]"
+        value="${libEsc(st.searchQuery)}"
         oninput="setRecipeSearch(this.value)"
       />
+      <button type="button" class="lib-filters-toggle ${st.filtersOpen || activeExtraCount > 0 ? 'active' : ''}" onclick="toggleRecipeFiltersOpen()">
+        <span>Filtros${activeExtraCount > 0 ? ` (${activeExtraCount})` : ''}</span>
+        <span>${st.filtersOpen ? '▾' : '▸'}</span>
+      </button>
+      ${st.filtersOpen ? `
+        <div class="lib-filter-chips">
+          <button type="button" class="am-qf-chip ${st.byproductOnly ? 'active' : ''}" onclick="setRecipeFlag('byproductOnly', ${!st.byproductOnly})">Subprodutos</button>
+          <button type="button" class="am-qf-chip ${st.favOnly ? 'active' : ''}" onclick="setRecipeFlag('favOnly', ${!st.favOnly})">★ Favoritos</button>
+        </div>
+      ` : ''}
     </div>
 
-    <div class="sidebar-step-block">
-      <div class="step-header-row">
-        <span class="step-badge">FILTRO</span>
-        <h4>Exibir</h4>
-      </div>
-      <div class="library-cat-list">
-        <button type="button" class="library-cat-btn ${AppState.recipes.filter === 'all' ? 'active' : ''}" onclick="setRecipeFilter('all')">
-          <span>🌐 Todos os Produtos</span><span class="library-cat-count">${productGroups.length}</span>
-        </button>
-        <button type="button" class="library-cat-btn ${AppState.recipes.filter === 'alternate' ? 'active' : ''}" onclick="setRecipeFilter('alternate')">
-          <span>⭐ Com Alternativas</span><span class="library-cat-count">${withAltCount}</span>
-        </button>
-        <button type="button" class="library-cat-btn ${AppState.recipes.filter === 'ficsmas' ? 'active' : ''}" onclick="setRecipeFilter('ficsmas')">
-          <span>🎄 FICSMAS</span><span class="library-cat-count">${ficsCount}</span>
-        </button>
-      </div>
+    <div class="library-cat-list">
+      <button type="button" class="library-cat-btn ${st.filter === 'all' ? 'active' : ''} ${nonFicsCount === 0 ? 'is-empty' : ''}" onclick="setRecipeFilter('all')">
+        <span class="lib-cat-left"><span>Todos</span></span>
+        <span class="library-cat-count" data-rec-count="filter:all">${nonFicsCount}</span>
+      </button>
+      <button type="button" class="library-cat-btn ${st.filter === 'alternate' ? 'active' : ''} ${withAltCount === 0 ? 'is-empty' : ''}" onclick="setRecipeFilter('alternate')">
+        <span class="lib-cat-left"><span>Com alternativas</span></span>
+        <span class="library-cat-count" data-rec-count="filter:alternate">${withAltCount}</span>
+      </button>
+      <button type="button" class="library-cat-btn ${st.filter === 'ficsmas' ? 'active' : ''} ${ficsCount === 0 ? 'is-empty' : ''}" onclick="setRecipeFilter('ficsmas')">
+        <span class="lib-cat-left"><span>Evento (FICSMAS)</span></span>
+        <span class="library-cat-count" data-rec-count="filter:ficsmas">${ficsCount}</span>
+      </button>
     </div>
 
-    <div class="sidebar-step-block">
-      <div class="step-header-row">
-        <span class="step-badge">MÁQUINA</span>
-        <h4>Filtrar por Máquina</h4>
+    <div class="rec-sidebar-divider"></div>
+
+    <div class="library-cat-list">
+      <button type="button" class="library-cat-btn ${st.category === 'all' ? 'active' : ''}" onclick="setRecipeCategory('all')">
+        <span class="lib-cat-left"><span>Todas as categorias</span></span>
+        <span class="library-cat-count" data-rec-count="cat:all">${activeScope.length}</span>
+      </button>
+      ${catNames.map(cat => {
+        const cnt = activeScope.filter(g => g.category === cat).length;
+        const color = LIB_CATEGORY_COLORS[cat] || '#2563EB';
+        const sampleItem = allGroups.find(g => g.category === cat)?.item;
+        return `
+          <button type="button" class="library-cat-btn library-subcat-btn ${st.category === cat ? 'active' : ''} ${cnt === 0 ? 'is-empty' : ''}" onclick="setRecipeCategory('${libEsc(cat)}')">
+            <span class="lib-cat-left">
+              <span class="lib-cat-dot" style="background:${color};"></span>
+              ${sampleItem?.wikiImage ? `<img class="lib-cat-img" src="${sampleItem.wikiImage}" alt="" loading="lazy" />` : ''}
+              <span>${libEsc(cat)}</span>
+            </span>
+            <span class="library-cat-count" data-rec-count="cat:${libEsc(cat)}">${cnt}</span>
+          </button>
+        `;
+      }).join('')}
+    </div>
+
+    <div class="rec-sidebar-divider"></div>
+
+    <div class="rec-machine-chips-wrap">
+      ${st.machineFilters.length > 0 ? `<button type="button" class="rec-clear-mach-btn" onclick="clearRecipeMachineFilters()">Limpar máquinas (${st.machineFilters.length})</button>` : ''}
+      <div class="rec-machine-chips">
+        ${machines.map(m => {
+          const cnt = activeScope.filter(g => g.machines.includes(m.id)).length;
+          const active = st.machineFilters.includes(m.id);
+          return `
+            <button type="button" class="rec-mach-chip ${active ? 'active' : ''} ${cnt === 0 ? 'is-empty' : ''}" onclick="toggleRecipeMachineFilter('${m.id}')" title="${libEsc(m.name)}">
+              ${m.wikiImage ? `<img src="${m.wikiImage}" alt="" loading="lazy" />` : ''}
+              <span>${libEsc(m.name)}</span>
+              <small data-rec-count="mach:${m.id}">${cnt}</small>
+            </button>
+          `;
+        }).join('')}
       </div>
-      <select class="sidebar-select" onchange="setRecipeMachineFilter(this.value)">
-        <option value="all" ${AppState.recipes.machineFilter === 'all' ? 'selected' : ''}>Todas as Máquinas</option>
-        ${machines.map(m => `<option value="${m.id}" ${AppState.recipes.machineFilter === m.id ? 'selected' : ''}>${m.name}</option>`).join('')}
-      </select>
     </div>
   `;
 
-  renderRecipesWorkspace(productGroups);
+  renderRecipesWorkspace(allGroups);
 }
 
-function getGroupedRecipeProducts(allRecipes) {
-  const groupsMap = new Map();
-  allRecipes.forEach((r) => {
-    const prods = r.products || [];
-    const mainProd = prods[0];
-    if (!mainProd) return;
-    const item = Solver.getItem(mainProd.item);
-    if (!item) return;
+function renderRecipeBadgesHtml(g) {
+  const parts = [];
+  if (g.baseRecipes.length > 0) parts.push('<span class="rec-pill-std">Padrão</span>');
+  if (g.alternates.length > 0) parts.push(`<span class="rec-pill-alt">ALT ×${g.alternates.length}</span>`);
+  return parts.join('');
+}
 
-    if (!groupsMap.has(item.id)) {
-      groupsMap.set(item.id, {
-        id: item.id,
-        item,
-        baseRecipes: [],
-        alternates: [],
-        allRecipes: [],
-        isFicsmasOnly: true
-      });
+function computeRawCostPerUnitForRecipe(itemId, recipeId) {
+  try {
+    const plan = Solver.solveProductionChain({
+      targets: [{ itemId, rate: 10 }],
+      recipeOverrides: { [itemId]: recipeId }
+    });
+    if (!plan || !Array.isArray(plan.rawResources)) return null;
+    return plan.rawResources
+      .filter(r => r.requiredRate > 0)
+      .map(r => `${r.item?.name || r.itemId}: ${fmt(r.requiredRate / 10, 2)}`)
+      .join(', ');
+  } catch {
+    return null;
+  }
+}
+
+function renderRecipeDetailPanel(g) {
+  if (!g) return '';
+  const st = AppState.recipes;
+  const favSet = new Set(AppState.library.favorites || []);
+  const isFav = favSet.has(g.favKey);
+  const orderedRecs = [...g.baseRecipes, ...g.alternates];
+
+  const usedInRecs = Object.values(window.SATISFACTORY_DATA?.recipes || {})
+    .filter(r => !r.isFicsmas && (r.ingredients || []).some(i => i.item === g.id));
+
+  const clickableItem = (itemId) => {
+    const it = Solver.getItem(itemId);
+    if (!it) return libEsc(itemId);
+    const hasRecGroup = getGroupedRecipeProducts().some(x => x.id === itemId);
+    if (hasRecGroup) {
+      return `<button type="button" class="lib-link-chip" onclick="selectRecipeEntry('${itemId}')">${renderEntityIcon(it, 18)}<span>${libEsc(it.name)}</span></button>`;
     }
-    const g = groupsMap.get(item.id);
-    if (!r.isFicsmas) g.isFicsmasOnly = false;
-    g.allRecipes.push(r);
-    if (r.isAlternate) g.alternates.push(r);
-    else g.baseRecipes.push(r);
-  });
+    return `<button type="button" class="lib-link-chip" onclick="openLibraryFromRecipes('${itemId}')">${renderEntityIcon(it, 18)}<span>${libEsc(it.name)}</span></button>`;
+  };
 
-  return [...groupsMap.values()].sort((a, b) => a.item.name.localeCompare(b.item.name, 'pt-BR'));
+  let bodyHtml = '';
+  if (st.compareMode && orderedRecs.length > 1) {
+    const rows = orderedRecs.map(r => {
+      const m = Solver.getMachine(r.machine);
+      const prodEntry = (r.products || []).find(p => p.item === g.id) || r.products?.[0];
+      const outRate = prodEntry ? Number(prodEntry.ratePerMin || 0) : 0;
+      const mw = Number(r.avgPowerMw ?? m?.powerConsumption ?? 0);
+      const mwPerItem = outRate > 0 ? mw / outRate : Infinity;
+      const rawCost = computeRawCostPerUnitForRecipe(g.id, r.id);
+      return { r, m, outRate, mw, mwPerItem, rawCost };
+    });
+    const bestOut = Math.max(...rows.map(x => x.outRate));
+    const bestMw = Math.min(...rows.map(x => x.mwPerItem));
+
+    bodyHtml = `
+      <div class="rec-compare-wrap">
+        <table class="rec-compare-table">
+          <thead>
+            <tr>
+              <th>Receita</th>
+              <th>Entradas (/min)</th>
+              <th>Saída</th>
+              <th>Energia</th>
+              <th>Brutos / un</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(x => `
+              <tr>
+                <td>
+                  <strong>${libEsc(x.r.cleanName || x.r.name)}</strong>
+                  ${x.r.isAlternate ? '<span class="am-alt-badge">ALT</span>' : ''}
+                  <div class="rec-tbl-sub">${libEsc(x.m?.name || '')}</div>
+                </td>
+                <td>${(x.r.ingredients || []).map(i => `${libEsc(Solver.getItem(i.item)?.name || i.item)} <strong>${fmt(i.ratePerMin, 1)}/min</strong>`).join('<br/>')}</td>
+                <td class="${x.outRate === bestOut ? 'rec-best-metric' : ''}"><strong>${fmt(x.outRate, 1)}/min</strong></td>
+                <td class="${x.mwPerItem === bestMw ? 'rec-best-metric' : ''}"><strong>${fmt(x.mw, 1)} MW</strong></td>
+                <td>${x.rawCost ? libEsc(x.rawCost) : '—'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } else {
+    bodyHtml = orderedRecs.map(r => {
+      const m = Solver.getMachine(r.machine);
+      const avgMw = Number(r.avgPowerMw ?? m?.powerConsumption ?? 0);
+      const prodEntry = (r.products || []).find(p => p.item === g.id) || r.products?.[0];
+      const baseRate = prodEntry ? Number(prodEntry.ratePerMin || 30) : 30;
+      const isByprodForThis = (r.products || []).findIndex(p => p.item === g.id) > 0;
+
+      const inCards = (r.ingredients || []).map(i => {
+        const it = Solver.getItem(i.item);
+        return `
+          <div class="rec-flow-io-card">
+            ${clickableItem(i.item)}
+            <div class="rec-flow-io-meta">${i.amount ? `${i.amount}× ciclo · ` : ''}<strong>${fmt(i.ratePerMin, 1)}/min</strong></div>
+          </div>
+        `;
+      }).join('');
+
+      const outCards = (r.products || []).map((p, pIdx) => {
+        return `
+          <div class="rec-flow-io-card out">
+            ${clickableItem(p.item)}
+            <div class="rec-flow-io-meta">
+              ${p.amount ? `${p.amount}× ciclo · ` : ''}<strong>${fmt(p.ratePerMin, 1)}/min</strong>
+              ${pIdx > 0 ? '<span class="rec-byprod-tag">Subproduto</span>' : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="rec-detail-variant ${r.isAlternate ? 'is-alt' : ''}">
+          <div class="rec-detail-var-head">
+            <div class="rec-detail-var-title">
+              ${r.isAlternate ? '<span class="am-alt-badge">ALT</span>' : '<span class="rec-pill-std">Padrão</span>'}
+              ${isByprodForThis ? '<span class="rec-byprod-tag">Subproduto</span>' : ''}
+              <strong>${libEsc(r.cleanName || r.name)}</strong>
+            </div>
+            <button type="button" class="btn-small-accent" onclick="planRecipeFromRecipesTab('${g.id}', '${r.id}', ${baseRate})">Planejar</button>
+          </div>
+          <div class="rec-visual-flow">
+            <div class="rec-flow-col">${inCards}</div>
+            <div class="rec-flow-mach">
+              ${m ? renderEntityIcon(m, 34) : ''}
+              <strong>${libEsc(m?.name || 'Bancada')}</strong>
+              <small>${r.duration || 1}s · ${fmt(avgMw, 1)} MW</small>
+            </div>
+            <div class="rec-flow-col">${outCards}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  return `
+    <aside class="lib-side-detail rec-side-detail" aria-label="Detalhes da receita">
+      <div class="lib-side-detail-top">
+        <div class="lib-side-top-left">
+          ${st.detailHistory.length > 0 ? `<button type="button" class="btn-icon-action" onclick="navigateRecipeDetailBack()">← Voltar</button>` : ''}
+          <button type="button" class="btn-icon-action" onclick="navigateRecipeAdjacent(-1)" title="Produto anterior">‹</button>
+          <button type="button" class="btn-icon-action" onclick="navigateRecipeAdjacent(1)" title="Próximo produto">›</button>
+        </div>
+        <div class="lib-side-top-right">
+          <button type="button" class="lib-fav-btn ${isFav ? 'active' : ''}" onclick="toggleLibraryFavorite(event, '${g.favKey}')" title="Favoritar">${isFav ? '★' : '☆'}</button>
+          <button type="button" class="icon-close" onclick="selectRecipeEntry('${g.id}')" aria-label="Fechar">✕</button>
+        </div>
+      </div>
+
+      <div class="lib-side-hero">
+        ${renderShowcaseImage(g.item, 84)}
+        <div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span class="lib-cat-dot" style="background:${g.color};"></span>
+            <span class="lib-side-cat">${libEsc(g.category)}</span>
+          </div>
+          <h3>${libEsc(g.item.name)}</h3>
+          ${g.item.nameEn && g.item.nameEn.toLowerCase() !== g.item.name.toLowerCase() ? `<div class="lib-name-en">${libEsc(g.item.nameEn)}</div>` : ''}
+          <div class="rec-badges-row" style="margin-top:6px;">${renderRecipeBadgesHtml(g)}</div>
+        </div>
+      </div>
+
+      <div class="lib-detail-actions" style="padding:0 16px 12px;">
+        ${orderedRecs.length > 1 ? `
+          <button type="button" class="btn-icon-action ${st.compareMode ? 'is-selected' : ''}" onclick="toggleRecipeCompareMode()">
+            ${st.compareMode ? 'Ver receitas' : 'Comparar'}
+          </button>
+        ` : ''}
+        <button type="button" class="btn-icon-action" onclick="openLibraryFromRecipes('${g.id}')">Biblioteca</button>
+      </div>
+
+      <div class="lib-side-body">
+        ${bodyHtml}
+        <div class="lib-detail-sec">
+          <h4>Usado em (${usedInRecs.length})</h4>
+          ${usedInRecs.length > 0 ? `
+            <div class="lib-rec-tags">
+              ${usedInRecs.slice(0, 20).map(r => {
+                const p0 = r.products?.[0]?.item;
+                return p0
+                  ? `<button type="button" class="lib-link-chip" onclick="selectRecipeEntry('${p0}')">${libEsc(r.cleanName || r.name)}${r.isAlternate ? ' ★' : ''}</button>`
+                  : `<span class="lib-tag-pill">${libEsc(r.cleanName || r.name)}</span>`;
+              }).join('')}
+            </div>
+          ` : '<div class="lib-empty-note">Produto final / uso direto.</div>'}
+        </div>
+      </div>
+    </aside>
+  `;
 }
 
 function renderRecipesWorkspace(cachedGroups = null) {
   const view = document.getElementById('recipes-workspace-view');
   if (!view) return;
 
-  const allRecipes = Object.values(window.SATISFACTORY_DATA?.recipes || {});
-  const allGroups = cachedGroups || getGroupedRecipeProducts(allRecipes);
-  const f = AppState.recipes.filter;
-  const mf = AppState.recipes.machineFilter;
-  const q = Solver.normalizeText(AppState.recipes.searchQuery || '');
+  const st = AppState.recipes;
+  const allGroups = cachedGroups || getGroupedRecipeProducts();
+  let filtered = getFilteredRecipeGroups(allGroups);
 
-  const filtered = allGroups.filter(g => {
-    if (f === 'alternate' && g.alternates.length === 0) return false;
-    if (f === 'ficsmas' && !g.isFicsmasOnly) return false;
-    if (f !== 'ficsmas' && g.isFicsmasOnly && !q) return false;
-    if (mf !== 'all' && !g.allRecipes.some(r => r.machine === mf)) return false;
-    if (q) {
-      const recNames = g.allRecipes.map(r => `${r.cleanName || r.name} ${r.nameEn || ''} ${Solver.getMachine(r.machine)?.name || ''}`).join(' ');
-      const hay = Solver.normalizeText(`${g.item.name} ${g.item.nameEn || ''} ${recNames}`);
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  });
+  if (st.sortBy === 'az') {
+    filtered = [...filtered].sort((a, b) => a.item.name.localeCompare(b.item.name, 'pt-BR'));
+  } else if (st.sortBy === 'alternates') {
+    filtered = [...filtered].sort((a, b) => (b.alternates.length - a.alternates.length) || a.item.name.localeCompare(b.item.name, 'pt-BR'));
+  } else {
+    filtered = [...filtered].sort((a, b) => (a.progressionRank - b.progressionRank) || a.item.name.localeCompare(b.item.name, 'pt-BR'));
+  }
 
-  const selectedGroup = AppState.recipes.selectedId
-    ? allGroups.find(g => g.id === AppState.recipes.selectedId)
-    : null;
+  _lastRenderedRecipeIds = filtered.map(g => g.id);
+  const favSet = new Set(AppState.library.favorites || []);
+  const selectedGroup = st.selectedId ? allGroups.find(g => g.id === st.selectedId) : null;
 
-  let detailHtml = '';
-  if (selectedGroup) {
-    const orderedRecs = [...selectedGroup.baseRecipes, ...selectedGroup.alternates];
-    const recipesListHtml = orderedRecs.map((r) => {
-      const m = Solver.getMachine(r.machine);
-      const avgMw = r.avgPowerMw ?? m?.powerConsumption ?? 0;
-      const ingsHtml = (r.ingredients || []).map(i => {
-        const it = Solver.getItem(i.item);
-        return `<div class="rec-io-pill">${it ? renderEntityIcon(it, 22) : ''} <strong>${fmt(i.ratePerMin, 2)}/m</strong> ${it ? it.name : i.item}</div>`;
-      }).join('');
-      const prodsHtml = (r.products || []).map(p => {
-        const it = Solver.getItem(p.item);
-        return `<div class="rec-io-pill out">${it ? renderEntityIcon(it, 22) : ''} <strong>${fmt(p.ratePerMin, 2)}/m</strong> ${it ? it.name : p.item}</div>`;
-      }).join('');
+  const renderCard = (g) => {
+    const mainRec = g.baseRecipes[0] || g.alternates[0];
+    const mainMach = mainRec ? Solver.getMachine(mainRec.machine) : null;
+    const extraMachCount = Math.max(0, g.machines.length - 1);
+    const ings = mainRec ? (mainRec.ingredients || []) : [];
+    const shownIngs = ings.slice(0, 4);
+    const extraIngCount = Math.max(0, ings.length - 4);
+    const isFav = favSet.has(g.favKey);
+    const isSel = st.selectedId === g.id;
+    const imgSize = st.viewMode === 'list' ? 28 : (st.cardSize === 'sm' ? 40 : (st.cardSize === 'lg' ? 66 : 50));
+    const nameHtml = highlightLibMatch(g.item.name, st.searchQuery);
 
+    if (st.viewMode === 'list') {
       return `
-        <div class="recipe-variant-box ${r.isAlternate ? 'is-alt' : ''}">
-          <div class="recipe-variant-head">
-            <div>
-              <span class="lib-badge">${r.isAlternate ? '⭐ Alternativa' : (r.isFicsmas ? '🎄 FICSMAS' : (m ? m.name : 'Receita'))}</span>
-              <h4>${r.cleanName || r.name}</h4>
-            </div>
-            <div style="display:flex; align-items:center; gap:10px;">
-              <small>${m ? m.name : 'Bancada'} • Ciclo ${r.duration || 1}s • ⚡ ${fmt(avgMw, 1)} MW</small>
-              <button type="button" class="btn-small-accent" onclick="planRecipeFromRecipesTab('${selectedGroup.id}', '${r.id}')">🏭 Planejar</button>
-            </div>
-          </div>
-          <div class="recipe-variant-io">
-            <div><span class="rec-io-lbl">ENTRADA</span><div class="rec-io-wrap">${ingsHtml || 'Nenhuma'}</div></div>
-            <div><span class="rec-io-lbl">SAÍDA</span><div class="rec-io-wrap">${prodsHtml || 'Nenhuma'}</div></div>
-          </div>
+        <div class="lib-list-row ${isSel ? 'active' : ''}" style="--lib-cat-color:${g.color};" onclick="selectRecipeEntry('${g.id}')">
+          <span class="lib-cat-dot" style="background:${g.color};"></span>
+          ${renderEntityIcon(g.item, imgSize)}
+          <strong class="lib-list-name">${nameHtml}</strong>
+          <div class="rec-badges-row">${renderRecipeBadgesHtml(g)}</div>
+          <span class="lib-list-cat">${libEsc(mainMach?.name || '')}${extraMachCount > 0 ? ` +${extraMachCount}` : ''}</span>
+          <button type="button" class="lib-fav-btn ${isFav ? 'active' : ''}" onclick="toggleLibraryFavorite(event, '${g.favKey}')" title="Favoritar">${isFav ? '★' : '☆'}</button>
         </div>
       `;
-    }).join('');
+    }
 
-    detailHtml = `
-      <div class="workspace-detail-backdrop" onclick="if(event.target===this) selectRecipeEntry('${selectedGroup.id}')">
-        <div class="workspace-detail-modal wide">
-          <div class="lib-detail-head">
-            <div class="lib-detail-icon">${renderShowcaseImage(selectedGroup.item, 68)}</div>
-            <div style="flex:1;">
-              <span class="lib-badge">${selectedGroup.baseRecipes.length} receita(s) + ${selectedGroup.alternates.length} alternativa(s)</span>
-              <h3>${selectedGroup.item.name}</h3>
-              <p>${selectedGroup.item.category || 'Produto'}</p>
-            </div>
-            <button type="button" class="icon-close" onclick="selectRecipeEntry('${selectedGroup.id}')">✕</button>
-          </div>
-          <div class="recipe-variants-stack">
-            ${recipesListHtml}
-          </div>
+    return `
+      <div
+        role="button"
+        tabindex="0"
+        class="lib-card rec-clean-card lib-size-${st.cardSize} ${isSel ? 'active' : ''}"
+        style="--lib-cat-color:${g.color};"
+        onclick="selectRecipeEntry('${g.id}')"
+        onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectRecipeEntry('${g.id}');}"
+      >
+        <div class="lib-card-strip" style="background:${g.color};"></div>
+        <button type="button" class="lib-fav-btn lib-card-fav ${isFav ? 'active' : ''}" onclick="toggleLibraryFavorite(event, '${g.favKey}')" title="Favoritar">${isFav ? '★' : '☆'}</button>
+        <div class="lib-card-icon">${renderEntityIcon(g.item, imgSize)}</div>
+        <strong class="lib-card-name">${nameHtml}</strong>
+        <div class="rec-card-meta-icons">
+          ${mainMach ? `<span class="rec-mini-mach" title="${libEsc(mainMach.name)}">${renderEntityIcon(mainMach, 18)}${extraMachCount > 0 ? `<small>+${extraMachCount}</small>` : ''}</span>` : ''}
+          <span class="rec-mini-ings">
+            ${shownIngs.map(i => {
+              const it = Solver.getItem(i.item);
+              return it ? `<span title="${libEsc(it.name)}">${renderEntityIcon(it, 18)}</span>` : '';
+            }).join('')}
+            ${extraIngCount > 0 ? `<small>+${extraIngCount}</small>` : ''}
+          </span>
         </div>
+        <div class="rec-badges-row">${renderRecipeBadgesHtml(g)}</div>
       </div>
+    `;
+  };
+
+  let contentHtml = '';
+  const recentGroups = (!st.searchQuery && st.category === 'all' && !st.favOnly && (AppState.library.recents || []).length > 0)
+    ? AppState.library.recents
+        .filter(id => id.startsWith('item_'))
+        .map(id => allGroups.find(g => g.id === id.slice(5)))
+        .filter(Boolean)
+        .slice(0, 6)
+    : [];
+
+  if (recentGroups.length > 0 && st.viewMode !== 'table') {
+    const collapsed = Boolean(st.collapsedSections['__recents']);
+    contentHtml += `
+      <section class="lib-section">
+        <button type="button" class="lib-section-head" onclick="toggleRecipeSection('__recents')">
+          <span class="lib-sec-title">Recentes <small>(${recentGroups.length})</small></span>
+          <span>${collapsed ? '▸' : '▾'}</span>
+        </button>
+        ${!collapsed ? `<div class="lib-items-container lib-view-${st.viewMode === 'list' ? 'list' : 'cards'} lib-size-${st.cardSize}">${recentGroups.map(renderCard).join('')}</div>` : ''}
+      </section>
     `;
   }
 
-  view.innerHTML = `
-    <div class="lib-workspace-header">
-      <div>
-        <h2>📜 Receitas do Satisfactory</h2>
-        <span>${filtered.length} produto(s) • Clique para ver a receita e suas alternativas</span>
+  if (filtered.length === 0) {
+    contentHtml += '<div class="picker-empty">Nenhuma receita encontrada.</div>';
+  } else if (st.viewMode === 'table') {
+    contentHtml += `
+      <div class="rec-table-wrap">
+        <table class="rec-compare-table">
+          <thead>
+            <tr>
+              <th>Produto</th>
+              <th>Máquina</th>
+              <th>Entradas</th>
+              <th>Saída/min</th>
+              <th>Ciclo</th>
+              <th>Energia</th>
+              <th>ALT</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filtered.map(g => {
+              const mainRec = g.baseRecipes[0] || g.alternates[0];
+              const m = mainRec ? Solver.getMachine(mainRec.machine) : null;
+              const prodEntry = mainRec ? ((mainRec.products || []).find(p => p.item === g.id) || mainRec.products?.[0]) : null;
+              const mw = mainRec ? Number(mainRec.avgPowerMw ?? m?.powerConsumption ?? 0) : 0;
+              return `
+                <tr class="rec-table-row ${st.selectedId === g.id ? 'active' : ''}" onclick="selectRecipeEntry('${g.id}')">
+                  <td><div class="rec-tbl-prod">${renderEntityIcon(g.item, 22)}<strong>${highlightLibMatch(g.item.name, st.searchQuery)}</strong></div></td>
+                  <td>${libEsc(m?.name || '—')}</td>
+                  <td>${mainRec ? (mainRec.ingredients || []).map(i => `${libEsc(Solver.getItem(i.item)?.name || i.item)} (${fmt(i.ratePerMin, 1)}/min)`).join(', ') : '—'}</td>
+                  <td><strong>${prodEntry ? `${fmt(prodEntry.ratePerMin, 1)}/min` : '—'}</strong></td>
+                  <td>${mainRec ? `${mainRec.duration || 1}s` : '—'}</td>
+                  <td>${fmt(mw, 1)} MW</td>
+                  <td>${g.alternates.length > 0 ? `<span class="rec-pill-alt">ALT ×${g.alternates.length}</span>` : '—'}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
       </div>
-    </div>
-    ${detailHtml}
-    <div class="lib-cards-grid">
-      ${filtered.map(g => {
-        const mainRec = g.baseRecipes[0] || g.alternates[0];
-        const m = mainRec ? Solver.getMachine(mainRec.machine) : null;
-        const altTag = g.alternates.length > 0 ? ` + ${g.alternates.length} alt.` : '';
-        return `
-          <button
-            type="button"
-            class="lib-card ${AppState.recipes.selectedId === g.id ? 'active' : ''}"
-            onclick="selectRecipeEntry('${g.id}')"
-          >
-            <div class="lib-card-icon">
-              ${renderEntityIcon(g.item, 48)}
-            </div>
-            <div class="lib-card-body">
-              <span class="lib-badge">${g.baseRecipes.length} rec.${altTag}</span>
-              <strong>${g.item.name}</strong>
-              <small>${m ? m.name : 'Produção'}${mainRec ? ` • ${(mainRec.ingredients || []).map(i => Solver.getItem(i.item)?.name || '').join(' + ')}` : ''}</small>
-            </div>
+    `;
+  } else if (st.category === 'all' && st.sortBy !== 'az') {
+    const groupsByCat = new Map();
+    filtered.forEach(g => {
+      if (!groupsByCat.has(g.category)) groupsByCat.set(g.category, { color: g.color, items: [] });
+      groupsByCat.get(g.category).items.push(g);
+    });
+    for (const [cName, cData] of groupsByCat.entries()) {
+      const collapsed = Boolean(st.collapsedSections[cName]);
+      contentHtml += `
+        <section class="lib-section">
+          <button type="button" class="lib-section-head" onclick="toggleRecipeSection('${libEsc(cName)}')">
+            <span class="lib-sec-title">
+              <span class="lib-cat-dot" style="background:${cData.color};"></span>
+              ${libEsc(cName)} <small>(${cData.items.length})</small>
+            </span>
+            <span>${collapsed ? '▸' : '▾'}</span>
           </button>
-        `;
-      }).join('')}
-      ${filtered.length === 0 ? `<div class="picker-empty">Nenhuma receita encontrada.</div>` : ''}
+          ${!collapsed ? `<div class="lib-items-container lib-view-${st.viewMode === 'list' ? 'list' : 'cards'} lib-size-${st.cardSize}">${cData.items.map(renderCard).join('')}</div>` : ''}
+        </section>
+      `;
+    }
+  } else {
+    contentHtml += `<div class="lib-items-container lib-view-${st.viewMode === 'list' ? 'list' : 'cards'} lib-size-${st.cardSize}">${filtered.map(renderCard).join('')}</div>`;
+  }
+
+  view.innerHTML = `
+    <div class="lib-shell ${selectedGroup ? 'has-detail' : ''}">
+      <div class="lib-main-col">
+        <div class="lib-toolbar">
+          <span class="lib-count-label">${filtered.length} produto(s)</span>
+          <div class="lib-toolbar-controls">
+            <select class="lib-sort-select" onchange="setRecipeSort(this.value)" aria-label="Ordenar">
+              <option value="progression" ${st.sortBy === 'progression' ? 'selected' : ''}>Progressão</option>
+              <option value="az" ${st.sortBy === 'az' ? 'selected' : ''}>A–Z</option>
+              <option value="alternates" ${st.sortBy === 'alternates' ? 'selected' : ''}>Mais alternativas</option>
+            </select>
+            <div class="lib-seg-group" role="group" aria-label="Visualização">
+              <button type="button" class="lib-seg-btn ${st.viewMode === 'grid' ? 'active' : ''}" onclick="setRecipeViewMode('grid')" title="Grade">⊞</button>
+              <button type="button" class="lib-seg-btn ${st.viewMode === 'list' ? 'active' : ''}" onclick="setRecipeViewMode('list')" title="Lista">☰</button>
+              <button type="button" class="lib-seg-btn ${st.viewMode === 'table' ? 'active' : ''}" onclick="setRecipeViewMode('table')" title="Tabela">▦</button>
+            </div>
+            ${st.viewMode === 'grid' ? `
+              <div class="lib-seg-group" role="group" aria-label="Tamanho">
+                <button type="button" class="lib-seg-btn ${st.cardSize === 'sm' ? 'active' : ''}" onclick="setRecipeCardSize('sm')" title="Pequeno">P</button>
+                <button type="button" class="lib-seg-btn ${st.cardSize === 'md' ? 'active' : ''}" onclick="setRecipeCardSize('md')" title="Médio">M</button>
+                <button type="button" class="lib-seg-btn ${st.cardSize === 'lg' ? 'active' : ''}" onclick="setRecipeCardSize('lg')" title="Grande">G</button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+        <div class="lib-scroll-area">${contentHtml}</div>
+      </div>
+      ${renderRecipeDetailPanel(selectedGroup)}
     </div>
   `;
 }
+
+// Atalhos de teclado da aba Receitas: "/" busca, ESC fecha detalhe
+document.addEventListener('keydown', (e) => {
+  if (AppState.mode !== 'recipes') return;
+  const tag = (e.target && e.target.tagName || '').toLowerCase();
+  const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select';
+  if (e.key === '/' && !isTyping) {
+    e.preventDefault();
+    const inp = document.getElementById('rec-search-input');
+    if (inp) { inp.focus(); inp.select(); }
+  } else if (e.key === 'Escape' && AppState.recipes.selectedId) {
+    e.preventDefault();
+    AppState.recipes.selectedId = null;
+    AppState.recipes.detailHistory = [];
+    renderRecipesWorkspace();
+  }
+});
 
 /* ============================================================================
  * ABA 7: 🧮 CALCULADORA NO SPACES (CONTAS NORMAIS + CÁLCULOS RÁPIDOS DO JOGO)

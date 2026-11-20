@@ -1755,6 +1755,24 @@
     const mergerEntity = isFluid ? PIPE_JUNCTION_ENTITY : MERGER_ENTITY;
 
     // -------------------------------------------------------------------------
+    // 0. Modo agrupado (Todas as Máquinas: NÃO): liga diretamente 1→1 com a vazão total
+    //    sem criar longas cadeias de divisores/unificadores desnecessários
+    // -------------------------------------------------------------------------
+    if (!expandIndividual && S_cards === 1 && T_cards === 1) {
+      const logi = getLogisticsInfo(totalFlow, isFluid, maxBeltId);
+      connections.push({
+        fromNodeId: sourceNodes[0].id,
+        toNodeId: targetNodes[0].id,
+        rate: totalFlow,
+        unit,
+        item,
+        logistics: logi,
+        splitLabel: formatCompactWireLabel(logi, totalFlow, isFluid)
+      });
+      return;
+    }
+
+    // -------------------------------------------------------------------------
     // 1. Direct 1-to-1 connection when S_real === T_real
     // -------------------------------------------------------------------------
     if (S_real === T_real) {

