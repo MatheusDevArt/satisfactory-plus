@@ -1613,7 +1613,8 @@
         id: `col_stage_${stIdx}`,
         title: `Etapa ${stIdx + 1}: ${st.item.name} (${count}x ${st.machine.name})`,
         stageData: st,
-        nodes: stageMachineNodes
+        nodes: stageMachineNodes,
+        sectorColor: Solver.getAcuSector(st.machine.name)
       });
 
       nodeGroupsByItem[st.itemId] = stageMachineNodes;
