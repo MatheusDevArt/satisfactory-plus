@@ -1622,6 +1622,20 @@
         perMachineOutRate: st.ratePerMachine,
         totalOutRate: st.actualProducedRate
       };
+
+      // Registra subprodutos produzidos nesta etapa para que etapas futuras possam puxar esteira deles
+      if (st.recipe && Array.isArray(st.recipe.products)) {
+        st.recipe.products.forEach((p) => {
+          if (p.item && p.item !== st.itemId && !nodeGroupsByItem[p.item]) {
+            nodeGroupsByItem[p.item] = stageMachineNodes;
+            stageMetaByItem[p.item] = {
+              realCount: count,
+              perMachineOutRate: (p.ratePerMin || 0) * (st.clockPercent || 100) / 100,
+              totalOutRate: ((p.ratePerMin || 0) * (st.clockPercent || 100) / 100) * count
+            };
+          }
+        });
+      }
     });
 
     // 3. Final Output Product Card(s) — todos os produtos finais recebem destaque laranja "PRODUTO FINAL"
@@ -1689,12 +1703,18 @@
       from: c.fromNodeId,
       to: c.toNodeId,
       label: c.splitLabel,
+      itemId: c.item ? c.item.id : null,
+      rate: Number(c.rate) || 0,
       isPipe: c.item ? Boolean(c.item.isFluid) : false,
       isPowerLine: Boolean(c.isPowerLine),
       isExcessLine: false
     }));
 
-    return { columns, connections, edges };
+    const graph = { columns, connections, edges };
+    if (typeof window !== 'undefined' && window.Solver && typeof window.Solver.validateGraphConnections === 'function') {
+      graph.validation = window.Solver.validateGraphConnections(graph);
+    }
+    return graph;
   }
 
   /**
@@ -2774,8 +2794,25 @@
 
       const extractors = blocks.filter((b) => b.blockType === 'extractor');
       const machines = blocks.filter((b) => b.blockType === 'machine');
-      const logistics = blocks.filter((b) => b.blockType === 'splitter' || b.blockType === 'merger' || b.blockType === 'pipe_junction');
       const generators = blocks.filter((b) => b.blockType === 'generator');
+      const logDb = Object.values(DATA.logistics || {});
+      const isFinalDestType = (b) => {
+        const l = logDb.find((x) => x.id === b.logisticsId || x.kind === b.blockType);
+        return Boolean(l && l.outPorts === 0);
+      };
+      const isStorageType = (b) => {
+        const l = logDb.find((x) => x.id === b.logisticsId || x.kind === b.blockType);
+        return Boolean(l && l.category === 'Armazenamento');
+      };
+      const finalDestBlocks = blocks.filter((b) =>
+        b.blockType !== 'extractor' && b.blockType !== 'machine' && b.blockType !== 'generator' && isFinalDestType(b)
+      );
+      const storageBlocks = blocks.filter((b) =>
+        b.blockType !== 'extractor' && b.blockType !== 'machine' && b.blockType !== 'generator' && !isFinalDestType(b) && isStorageType(b)
+      );
+      const logistics = blocks.filter((b) =>
+        b.blockType !== 'extractor' && b.blockType !== 'machine' && b.blockType !== 'generator' && !isFinalDestType(b) && !isStorageType(b)
+      );
       const customEdges = freeState?.customEdges || [];
 
       const MAX_INDIV = expandIndividual ? 60 : 1;
@@ -2931,8 +2968,33 @@
         logistics.forEach((b) => createNodesForBlock(b, logiNodes));
         columns.push({
           id: 'free_col_logistics',
-          title: '🔀 Divisores & Unificadores',
+          title: '🔀 Divisores & Logística',
           nodes: logiNodes
+        });
+      }
+
+      if (storageBlocks.length > 0) {
+        const storNodes = [];
+        storageBlocks.forEach((b) => createNodesForBlock(b, storNodes));
+        columns.push({
+          id: 'free_col_storage',
+          title: '📦 Armazenamento',
+          nodes: storNodes
+        });
+      }
+
+      if (finalDestBlocks.length > 0) {
+        const destNodes = [];
+        finalDestBlocks.forEach((b) => {
+          const created = createNodesForBlock(b, destNodes);
+          (created?.nodes || []).forEach((n) => {
+            n.outPorts = 0;
+          });
+        });
+        columns.push({
+          id: 'free_col_destinations',
+          title: '🎯 Destinos Finais',
+          nodes: destNodes
         });
       }
 
@@ -2975,10 +3037,22 @@
         return list.find(x => x.id === chosenId) || list[0] || { id: chosenId, name: isFluid ? 'Tubulação' : 'Esteira', ratePerMin: isFluid ? 300 : 270 };
       };
 
-      // Multi-pass propagation so Splitter -> Merger -> Machine chains compute live rates
-      for (let pass = 0; pass < 4; pass++) {
+      const PASSTHROUGH_KINDS = new Set([
+        'splitter', 'smart_splitter', 'programmable_splitter',
+        'merger', 'priority_merger',
+        'pipe_junction', 'pipe_pump_mk1', 'pipe_pump_mk2',
+        'storage_mk1', 'storage_mk2', 'fluid_buffer_mk1', 'fluid_buffer_mk2',
+        'awesome_sink', 'dimensional_depot', 'space_elevator'
+      ]);
+      const DIVIDING_KINDS = new Set([
+        'splitter', 'smart_splitter', 'programmable_splitter', 'pipe_junction',
+        'storage_mk1', 'storage_mk2', 'fluid_buffer_mk1', 'fluid_buffer_mk2'
+      ]);
+
+      // Multi-pass propagation so Splitter -> Merger -> Storage -> Machine chains compute live rates
+      for (let pass = 0; pass < 6; pass++) {
         allCreatedNodes.forEach((n) => {
-          if (n.kind === 'splitter' || n.kind === 'merger' || n.kind === 'pipe_junction') {
+          if (PASSTHROUGH_KINDS.has(n.kind)) {
             n._liveInRate = 0;
           }
         });
@@ -2990,10 +3064,7 @@
           let srcItem = fn._liveOutItem;
           let srcRate = fn._liveOutRate;
 
-          if (fn.kind === 'splitter' || fn.kind === 'pipe_junction') {
-            srcItem = fn._liveInItem || fn._liveOutItem;
-            srcRate = fn._liveInRate / outCount;
-          } else if (fn.kind === 'merger') {
+          if (PASSTHROUGH_KINDS.has(fn.kind)) {
             srcItem = fn._liveInItem || fn._liveOutItem;
             srcRate = fn._liveInRate / outCount;
           } else {
@@ -3014,20 +3085,20 @@
           re.beltObj = beltObj;
           re.isBottlenecked = srcRate > beltCap + 1e-4;
 
-          if (tn.kind === 'splitter' || tn.kind === 'merger' || tn.kind === 'pipe_junction') {
+          if (PASSTHROUGH_KINDS.has(tn.kind)) {
             if (srcItem && !tn._liveInItem) tn._liveInItem = srcItem;
             tn._liveInRate += actualRate;
           }
         });
       }
 
-      // Update Splitter, Merger & Pipe Junction cards to show the live flowing item & rate
+      // Update Splitter, Merger, Storage, Pipe Junction & Destination cards to show the live flowing item & rate
       allCreatedNodes.forEach((n) => {
-        if ((n.kind === 'splitter' || n.kind === 'merger' || n.kind === 'pipe_junction') && n._liveInItem) {
+        if (PASSTHROUGH_KINDS.has(n.kind) && n._liveInItem) {
           const item = n._liveInItem;
           const inRate = n._liveInRate;
           const outCount = (outgoingByNode[n.id] || []).length || 1;
-          const outRate = (n.kind === 'splitter' || n.kind === 'pipe_junction') ? (inRate / outCount) : inRate;
+          const outRate = DIVIDING_KINDS.has(n.kind) ? (inRate / outCount) : inRate;
           const unit = item.unit || 'un';
           n.inputsList = [{
             item,
@@ -3035,12 +3106,16 @@
             unit,
             beltText: 'Entrada Conectada'
           }];
-          n.outputsList = [{
-            item,
-            rate: outRate,
-            unit,
-            beltText: n.kind === 'merger' ? 'Saída Unificada' : `${outCount} saída(s) ativa(s)`
-          }];
+          if (n.outPorts !== 0) {
+            n.outputsList = [{
+              item,
+              rate: outRate,
+              unit,
+              beltText: (n.kind === 'merger' || n.kind === 'priority_merger') ? 'Saída Unificada' : `${outCount} saída(s) ativa(s)`
+            }];
+          } else {
+            n.outputsList = [];
+          }
         }
       });
 
@@ -3084,6 +3159,62 @@
       }));
 
       return { columns, connections, edges };
+    },
+
+    /**
+     * Validação automática de conexões do grafo:
+     * Verifica que toda entrada de toda máquina possui ao menos uma esteira/tubo
+     * conectada a um fornecedor válido e que não existem arestas órfãs.
+     */
+    validateGraphConnections(graph) {
+      const nodeMap = new Map();
+      (graph?.columns || []).forEach((col) => {
+        (col.nodes || []).forEach((n) => nodeMap.set(n.id, n));
+      });
+      const incomingByNode = new Map();
+      const orphanEdges = [];
+      (graph?.edges || []).forEach((e) => {
+        if (!nodeMap.has(e.from) || !nodeMap.has(e.to)) {
+          orphanEdges.push(e);
+          return;
+        }
+        if (!incomingByNode.has(e.to)) incomingByNode.set(e.to, []);
+        incomingByNode.get(e.to).push(e);
+      });
+
+      const missingInputsByNode = {};
+      nodeMap.forEach((node, nodeId) => {
+        node._missingInputs = [];
+        if (node.kind === 'extractor' || node.kind === 'power_emblem') return;
+        const incoming = incomingByNode.get(nodeId) || [];
+        const requiredInputs = (node.inputsList || []).filter((i) => i && i.item && Number(i.rate) > 0);
+        if (node.kind === 'final_product') {
+          if (incoming.length === 0) {
+            node._missingInputs = ['Produto final sem conexão'];
+            missingInputsByNode[nodeId] = node._missingInputs;
+          }
+          return;
+        }
+        requiredInputs.forEach((inp) => {
+          const hasSupplier = incoming.some((e) => !e.itemId || e.itemId === inp.item.id);
+          if (!hasSupplier) {
+            node._missingInputs.push(inp.item.name || inp.item.id);
+          }
+        });
+        if (node._missingInputs.length > 0) {
+          missingInputsByNode[nodeId] = node._missingInputs;
+        }
+      });
+
+      const missingCount = Object.keys(missingInputsByNode).length;
+      return {
+        valid: missingCount === 0 && orphanEdges.length === 0,
+        missingCount,
+        missingInputsByNode,
+        orphanEdges,
+        totalNodes: nodeMap.size,
+        totalEdges: (graph?.edges || []).length
+      };
     },
 
     /**

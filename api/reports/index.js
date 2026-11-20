@@ -15,17 +15,46 @@ const {
   sendJson,
   readRequestBody,
   getAuthenticatedUser,
-  detectImageType
+  detectImageType,
+  checkRateLimit,
+  recordRateLimitHit
 } = require('../_lib/store');
 
 const VALID_TYPES = new Set(['bug', 'suggestion', 'rating']);
+const VALID_STATUSES = new Set(['novo', 'lido', 'feito']);
+const MAX_ADMIN_REPLY_CHARS = 1000;
+const ADMIN_ACTION_LIMIT = 120;
+const ADMIN_ACTION_WINDOW_MS = 10 * 60 * 1000;
 
 function computeDaysRemaining(expiresAt) {
   const diff = new Date(expiresAt).getTime() - Date.now();
   return Math.max(0, Math.ceil(diff / (24 * 60 * 60 * 1000)));
 }
 
+function getLatestAdminUpdateMs(rep) {
+  let latest = 0;
+  if (rep.status && rep.status !== 'novo' && rep.statusUpdatedAt) {
+    latest = Math.max(latest, new Date(rep.statusUpdatedAt).getTime() || 0);
+  }
+  if (rep.adminReply && (rep.adminReply.updatedAt || rep.adminReply.createdAt)) {
+    latest = Math.max(latest, new Date(rep.adminReply.updatedAt || rep.adminReply.createdAt).getTime() || 0);
+  }
+  return latest;
+}
+
 function formatReportForClient(rep) {
+  const status = VALID_STATUSES.has(rep.status) ? rep.status : 'novo';
+  const adminReply = (rep.adminReply && typeof rep.adminReply.text === 'string' && rep.adminReply.text.trim())
+    ? {
+        text: rep.adminReply.text,
+        createdAt: rep.adminReply.createdAt || null,
+        updatedAt: rep.adminReply.updatedAt || rep.adminReply.createdAt || null
+      }
+    : null;
+  const latestAdminMs = getLatestAdminUpdateMs({ ...rep, status, adminReply });
+  const seenMs = rep.userSeenAt ? (new Date(rep.userSeenAt).getTime() || 0) : 0;
+  const hasUnreadUpdate = latestAdminMs > 0 && latestAdminMs > seenMs;
+
   return {
     id: rep.id,
     userId: rep.userId,
@@ -35,6 +64,11 @@ function formatReportForClient(rep) {
     message: rep.message,
     rating: rep.rating || null,
     techInfo: rep.techInfo || null,
+    status,
+    statusUpdatedAt: rep.statusUpdatedAt || null,
+    adminReply,
+    userSeenAt: rep.userSeenAt || null,
+    hasUnreadUpdate,
     images: (rep.images || []).map((img) => ({
       id: img.id,
       url: img.proxyUrl || img.blobUrl,
@@ -104,9 +138,12 @@ module.exports = async function handler(req, res) {
         if (auth.user.role !== 'admin') {
           return sendJson(res, 403, { error: 'Acesso negado. Apenas administradores podem visualizar todos os reports.' });
         }
+        const formatted = allActive.map((x) => formatReportForClient(x.rep));
+        const newCount = formatted.filter((r) => r.status === 'novo').length;
         return sendJson(res, 200, {
-          reports: allActive.map((x) => formatReportForClient(x.rep)),
-          total: allActive.length
+          reports: formatted,
+          total: formatted.length,
+          newCount
         });
       }
 
@@ -127,8 +164,12 @@ module.exports = async function handler(req, res) {
         0
       );
 
+      const formattedMine = mine.map((x) => formatReportForClient(x.rep));
+      const unreadCount = formattedMine.filter((r) => r.hasUnreadUpdate).length;
+
       return sendJson(res, 200, {
-        reports: mine.map((x) => formatReportForClient(x.rep)),
+        reports: formattedMine,
+        unreadCount,
         quota: {
           maxPer24h: MAX_REPORTS_24H,
           used24h: recent24h.length,
@@ -259,6 +300,10 @@ module.exports = async function handler(req, res) {
         message,
         rating,
         techInfo,
+        status: 'novo',
+        statusUpdatedAt: null,
+        adminReply: null,
+        userSeenAt: createdAt,
         images: uploadedImages,
         createdAt,
         expiresAt
@@ -266,6 +311,111 @@ module.exports = async function handler(req, res) {
 
       await writeJsonBlob(`db/reports/${reportId}.json`, reportObj);
       return sendJson(res, 201, { ok: true, report: formatReportForClient(reportObj) });
+    }
+
+    // PATCH /api/reports (Ações do usuário: mark-seen | Ações somente admin: set-status, set-reply, delete-reply, mark-all-read)
+    if (req.method === 'PATCH') {
+      const body = await readRequestBody(req, 64 * 1024);
+      const action = String(body.action || '').trim();
+      const nowIso = new Date().toISOString();
+
+      // Usuário comum marca seus próprios reports como vistos
+      if (action === 'mark-seen') {
+        const allActive = await loadAllValidReportsAndCleanup();
+        const mine = allActive.filter((x) => x.rep.userId === auth.user.id);
+        let updated = 0;
+        for (const entry of mine) {
+          const formatted = formatReportForClient(entry.rep);
+          if (formatted.hasUnreadUpdate) {
+            entry.rep.userSeenAt = nowIso;
+            await writeJsonBlob(`db/reports/${entry.rep.id}.json`, entry.rep);
+            updated++;
+          }
+        }
+        return sendJson(res, 200, { ok: true, updated });
+      }
+
+      // Demais ações são estritamente de administrador
+      if (auth.user.role !== 'admin') {
+        return sendJson(res, 403, { error: 'Acesso negado. Apenas administradores podem executar esta ação.' });
+      }
+
+      const rlKey = `admin_report_action:${auth.user.id}`;
+      const rl = await checkRateLimit(rlKey, ADMIN_ACTION_LIMIT, ADMIN_ACTION_WINDOW_MS);
+      if (rl.blocked) {
+        return sendJson(res, 429, { error: 'Muitas ações em sequência. Aguarde alguns instantes.' });
+      }
+      await recordRateLimitHit(rlKey, ADMIN_ACTION_WINDOW_MS);
+
+      if (action === 'mark-all-read') {
+        const allActive = await loadAllValidReportsAndCleanup();
+        let count = 0;
+        for (const entry of allActive) {
+          const curStatus = VALID_STATUSES.has(entry.rep.status) ? entry.rep.status : 'novo';
+          if (curStatus === 'novo') {
+            entry.rep.status = 'lido';
+            entry.rep.statusUpdatedAt = nowIso;
+            await writeJsonBlob(`db/reports/${entry.rep.id}.json`, entry.rep);
+            count++;
+          }
+        }
+        return sendJson(res, 200, { ok: true, updated: count });
+      }
+
+      const id = String(body.id || '').trim();
+      if (!id || !/^rep_[a-z0-9_]+$/i.test(id)) {
+        return sendJson(res, 400, { error: 'ID de report inválido.' });
+      }
+      const blobs = await listJsonBlobs(`db/reports/${id}.json`);
+      const targetBlob = blobs.find((b) => b.pathname === `db/reports/${id}.json`);
+      if (!targetBlob) {
+        return sendJson(res, 404, { error: 'Report não encontrado.' });
+      }
+      const rep = await fetchJsonFromBlobUrl(targetBlob.url);
+      if (!rep) {
+        return sendJson(res, 404, { error: 'Report não encontrado.' });
+      }
+
+      if (action === 'set-status') {
+        const status = String(body.status || '').trim().toLowerCase();
+        if (!VALID_STATUSES.has(status)) {
+          return sendJson(res, 400, { error: 'Status inválido. Use novo, lido ou feito.' });
+        }
+        rep.status = status;
+        rep.statusUpdatedAt = nowIso;
+        await writeJsonBlob(`db/reports/${id}.json`, rep);
+        return sendJson(res, 200, { ok: true, report: formatReportForClient(rep) });
+      }
+
+      if (action === 'set-reply') {
+        const text = String(body.text || '').trim();
+        if (!text) {
+          return sendJson(res, 400, { error: 'Escreva uma resposta antes de enviar.' });
+        }
+        if (text.length > MAX_ADMIN_REPLY_CHARS) {
+          return sendJson(res, 400, { error: `A resposta deve ter no máximo ${MAX_ADMIN_REPLY_CHARS} caracteres.` });
+        }
+        const prevCreated = rep.adminReply?.createdAt || nowIso;
+        rep.adminReply = {
+          text,
+          createdAt: prevCreated,
+          updatedAt: nowIso
+        };
+        if (!rep.status || rep.status === 'novo') {
+          rep.status = 'lido';
+          rep.statusUpdatedAt = nowIso;
+        }
+        await writeJsonBlob(`db/reports/${id}.json`, rep);
+        return sendJson(res, 200, { ok: true, report: formatReportForClient(rep) });
+      }
+
+      if (action === 'delete-reply') {
+        rep.adminReply = null;
+        await writeJsonBlob(`db/reports/${id}.json`, rep);
+        return sendJson(res, 200, { ok: true, report: formatReportForClient(rep) });
+      }
+
+      return sendJson(res, 400, { error: 'Ação inválida.' });
     }
 
     // DELETE /api/reports?id=rep_xxx (Somente admin)

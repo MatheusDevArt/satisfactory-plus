@@ -5,6 +5,7 @@
 
 const FactoryUIState = {
   compactCards: false,
+  statsCollapsed: false,
   powerMarginPercent: 10,
   showOtherGenerators: false,
   activeFooterTab: null, // null = recolhido | 'visao' | 'energia' | 'entradas' | 'saidas' | 'faltando' | 'excesso' | 'construcoes' | 'materiais'
@@ -48,7 +49,17 @@ function toggleCompactCardMode() {
   }
 }
 
+function toggleSummaryStatsCollapsed() {
+  FactoryUIState.statsCollapsed = !FactoryUIState.statsCollapsed;
+  if (FactoryUIState.statsCollapsed) FactoryUIState.activeFooterTab = null;
+  try {
+    localStorage.setItem('splus_stats_collapsed', FactoryUIState.statsCollapsed ? '1' : '0');
+  } catch {}
+  if (typeof updateTopRightFloatingActions === 'function') updateTopRightFloatingActions();
+}
+
 function toggleSummarySection(secId) {
+  if (FactoryUIState.statsCollapsed) FactoryUIState.statsCollapsed = false;
   FactoryUIState.activeFooterTab = (FactoryUIState.activeFooterTab === secId) ? null : secId;
   if (typeof updateTopRightFloatingActions === 'function') updateTopRightFloatingActions();
 }
@@ -409,29 +420,42 @@ function renderFactorySummaryPanel({ mode, plan, freeBlocks, freeEdges, graph })
     { id: 'materiais', label: `Materiais (${materialsMap.size})`, body: materialsBody }
   ];
 
-  const activeTabObj = tabs.find((t) => t.id === FactoryUIState.activeFooterTab) || null;
+  const activeTabObj = !FactoryUIState.statsCollapsed
+    ? (tabs.find((t) => t.id === FactoryUIState.activeFooterTab) || null)
+    : null;
 
   return `
     ${activeTabObj ? `
       <div class="fs-footer-drawer">
         <div class="fs-footer-drawer-head">
           <strong>${activeTabObj.label}</strong>
-          <button type="button" class="fs-drawer-close" onclick="closeSummaryFooterDrawer()" title="Fechar painel">✕</button>
+          <button type="button" class="fs-drawer-close" onclick="closeSummaryFooterDrawer()" title="Fechar">✕</button>
         </div>
         <div class="fs-footer-drawer-body">${activeTabObj.body}</div>
       </div>
     ` : ''}
-    <div class="fs-footer-bar" role="tablist" aria-label="Status da linha de produção">
-      ${tabs.map((t) => `
-        <button
-          type="button"
-          class="fs-footer-tab ${FactoryUIState.activeFooterTab === t.id ? 'active' : ''} ${t.tone ? 'tone-' + t.tone : ''}"
-          onclick="toggleSummarySection('${t.id}')"
-        >
-          <span>${t.label}</span>
-          <span class="fs-tab-caret">${FactoryUIState.activeFooterTab === t.id ? '▾' : '▴'}</span>
+    <div class="fs-dock-stats ${FactoryUIState.statsCollapsed ? 'is-collapsed' : ''}">
+      <div class="fs-dock-head">
+        <button type="button" class="fs-dock-toggle" onclick="toggleSummaryStatsCollapsed()" title="${FactoryUIState.statsCollapsed ? 'Expandir resumo' : 'Recolher resumo'}">
+          <span>📊 Resumo</span>
+          <span class="fs-dock-meta">${totalBuildings} · ${balanceMw >= 0 ? '+' : ''}${fmt(balanceMw, 0)} MW</span>
+          <span class="fs-tab-caret">${FactoryUIState.statsCollapsed ? '▴' : '▾'}</span>
         </button>
-      `).join('')}
+      </div>
+      ${!FactoryUIState.statsCollapsed ? `
+        <div class="fs-footer-bar" role="tablist" aria-label="Resumo da linha">
+          ${tabs.map((t) => `
+            <button
+              type="button"
+              class="fs-footer-tab ${FactoryUIState.activeFooterTab === t.id ? 'active' : ''} ${t.tone ? 'tone-' + t.tone : ''}"
+              onclick="toggleSummarySection('${t.id}')"
+            >
+              <span>${t.label}</span>
+              <span class="fs-tab-caret">${FactoryUIState.activeFooterTab === t.id ? '▾' : '▴'}</span>
+            </button>
+          `).join('')}
+        </div>
+      ` : ''}
     </div>
   `;
 }

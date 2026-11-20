@@ -1,5 +1,19 @@
 [
   {
+    "id": "2026-11-19-direcao-biblioteca-reports-ea580c",
+    "date": "19/11/2026",
+    "title": "4 direções de linha, nova Biblioteca, respostas em Reports e correções de esteiras",
+    "items": [
+      { "tag": "Novo", "text": "Direção da linha em 4 sentidos (Esquerda → Direita, Direita → Esquerda, Cima → Baixo e Baixo → Cima) no topo da área de trabalho." },
+      { "tag": "Novo", "text": "Botão Editar no Livre para levar fábricas prontas ao Modo Livre e opção Inserir Divisor no meio ao clicar em qualquer esteira ou tubo." },
+      { "tag": "Novo", "text": "Biblioteca reformulada com subcategorias expansíveis, ícones reais do jogo, cores por categoria, busca em português/inglês sem acento, painel lateral com receitas clicáveis, favoritos e recentes." },
+      { "tag": "Novo", "text": "Status (Novo, Lido, Feito) e respostas da equipe visíveis diretamente em Meus reports, com aviso discreto quando há atualização." },
+      { "tag": "Melhoria", "text": "Resumo da fábrica e barra de ferramentas unificados à direita, botão Limpar padronizado com Desfazer e tema claro/escuro salvo na conta." },
+      { "tag": "Melhoria", "text": "Identidade visual padronizada na cor laranja única #EA580C." },
+      { "tag": "Correção", "text": "Corrigidas esteiras que ficavam invisíveis entre máquinas ou ao ligar ao Produto Final, além de contêineres, divisores inteligentes e destinos finais no Modo Livre." }
+    ]
+  },
+  {
     "id": "2026-11-19-home-rodape-filtros-ff6b00",
     "date": "19/11/2026",
     "title": "Nova tela Home, rodapé de status, filtros rápidos e laranja #FF6B00",

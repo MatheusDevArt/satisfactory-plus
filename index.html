@@ -13,9 +13,28 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./styles.css?v=22" />
+  <link rel="stylesheet" href="./styles.css?v=24" />
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('splus_theme');
+        if (saved === 'dark' || saved === 'light') {
+          document.documentElement.dataset.theme = saved;
+        }
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body class="theme-light home-active">
+  <script>
+    (function () {
+      var t = document.documentElement.dataset.theme;
+      if (t === 'dark') {
+        document.body.classList.remove('theme-light');
+        document.body.classList.add('theme-dark');
+      }
+    })();
+  </script>
   <!-- TELA HOME (ABERTURA DO SITE E REABERTA AO CLICAR NA LOGO) -->
   <section id="intro-splash" class="intro-splash home-screen" aria-label="Tela inicial Satisfactory+">
     <div class="home-center-stage">
@@ -181,12 +200,18 @@
 
       <!-- ORIENTAÇÃO DO FLUXO, TUTORIAL, CONTA E REPORTAR NO CANTO SUPERIOR DIREITO -->
       <div id="top-right-floating-actions" class="top-right-floating-actions">
-        <div class="floating-orient-pill" id="orient-pill-wrap">
-          <button id="orient-lr" class="orient-btn active" onclick="setFlowOrientation('LR')" title="Fluxo da Esquerda para a Direita (Padrão)">
-            ➡️ Esquerda ➔ Direita
+        <div class="floating-orient-pill" id="orient-pill-wrap" role="group" aria-label="Direção do fluxo">
+          <button id="orient-lr" class="orient-btn active" onclick="setFlowOrientation('LR')" title="Esquerda → Direita">
+            →
           </button>
-          <button id="orient-tb" class="orient-btn" onclick="setFlowOrientation('TB')" title="Fluxo de Cima para Baixo">
-            ⬇️ Cima ➔ Baixo
+          <button id="orient-rl" class="orient-btn" onclick="setFlowOrientation('RL')" title="Direita → Esquerda">
+            ←
+          </button>
+          <button id="orient-tb" class="orient-btn" onclick="setFlowOrientation('TB')" title="Cima → Baixo">
+            ↓
+          </button>
+          <button id="orient-bt" class="orient-btn" onclick="setFlowOrientation('BT')" title="Baixo → Cima">
+            ↑
           </button>
         </div>
         <button id="btn-open-tutorial" class="btn-tutorial-pill" onclick="openTutorialModal()" title="Abrir Tutorial Interativo da Ferramenta">
@@ -198,6 +223,7 @@
         </button>
         <button id="btn-open-report" class="btn-top-action btn-report-pill" onclick="handleReportButtonClick()" title="Reportar bug, enviar sugestão ou avaliação">
           📣 Reportar
+          <span id="report-unread-dot" class="pn-unread-dot hidden" aria-hidden="true"></span>
         </button>
         <div id="auth-header-slot" class="auth-header-slot">
           <button id="btn-auth-login" class="btn-top-action" onclick="openAuthModal('login')" title="Entrar ou criar uma conta">
@@ -206,25 +232,29 @@
         </div>
       </div>
 
-      <!-- RODAPÉ DE STATUS / RESUMO DA LINHA DE PRODUÇÃO -->
-      <div id="factory-status-footer" class="factory-status-footer hidden"></div>
+      <!-- DOCK DIREITO UNIFICADO: ESTATÍSTICAS EM CIMA + FERRAMENTAS EMBAIXO -->
+      <div id="spaces-right-dock" class="spaces-right-dock">
+        <div id="factory-status-footer" class="factory-status-footer hidden"></div>
 
-      <!-- CONTROLES FLUTUANTES DE ZOOM / VISÃO 3D / EXPANSÃO / ENQUADRAMENTO -->
-      <div id="spaces-hud-controls" class="spaces-hud-controls">
-        <button class="hud-btn" onclick="zoomCanvas(-0.15)" title="Diminuir Zoom">➖</button>
-        <span id="zoom-readout" class="zoom-readout" onclick="resetCanvasView()" title="Resetar Zoom para 100%">100%</span>
-        <button class="hud-btn" onclick="zoomCanvas(0.15)" title="Aumentar Zoom">➕</button>
-        <button id="btn-toggle-3d" class="hud-btn hud-btn-toggle" onclick="toggle3DView()" title="Alternar para Visão 3D em Andares (layout vertical)">
-          🏢 Visão 3D: NÃO
-        </button>
-        <button id="btn-toggle-expand" class="hud-btn hud-btn-toggle active" onclick="toggleShowAllMachines()" title="Alternar entre mostrar cada máquina individualmente ou agrupar por etapa">
-          🏭 Todas Máquinas: SIM
-        </button>
-        <button id="btn-toggle-compact" class="hud-btn hud-btn-toggle" onclick="toggleCompactCardMode()" title="Alternar entre cards completos e cards compactos">
-          🧩 Compacto: NÃO
-        </button>
-        <button class="hud-btn hud-btn-fit" onclick="fitCanvasToScreen()" title="Centralizar e Enquadrar Fluxo">🎯 Centralizar</button>
+        <div id="spaces-hud-controls" class="spaces-hud-controls">
+          <button class="hud-btn" onclick="zoomCanvas(-0.15)" title="Diminuir Zoom">➖</button>
+          <span id="zoom-readout" class="zoom-readout" onclick="resetCanvasView()" title="Resetar Zoom para 100%">100%</span>
+          <button class="hud-btn" onclick="zoomCanvas(0.15)" title="Aumentar Zoom">➕</button>
+          <button id="btn-toggle-3d" class="hud-btn hud-btn-toggle" onclick="toggle3DView()" title="Alternar para Visão 3D em Andares (layout vertical)">
+            🏢 3D: NÃO
+          </button>
+          <button id="btn-toggle-expand" class="hud-btn hud-btn-toggle active" onclick="toggleShowAllMachines()" title="Alternar entre mostrar cada máquina individualmente ou agrupar por etapa">
+            🏭 Todas: SIM
+          </button>
+          <button id="btn-toggle-compact" class="hud-btn hud-btn-toggle" onclick="toggleCompactCardMode()" title="Alternar entre cards completos e cards compactos">
+            🧩 Compacto: NÃO
+          </button>
+          <button class="hud-btn hud-btn-fit" onclick="fitCanvasToScreen()" title="Centralizar e Enquadrar Fluxo">🎯 Centralizar</button>
+        </div>
       </div>
+
+      <!-- AVISO DESFAZER LIMPEZA -->
+      <div id="undo-clear-toast" class="undo-clear-toast hidden" role="status" aria-live="polite"></div>
 
       <!-- MENU DE CONTEXTO (BOTÃO DIREITO NO MODO LIVRE) -->
       <div id="canvas-context-menu" class="canvas-context-menu hidden"></div>
@@ -364,15 +394,15 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="./js/elk.bundled.js?v=13"></script>
-  <script src="./data/satisfactory-data.js?v=22"></script>
-  <script src="./js/map-data.js?v=22"></script>
-  <script src="./js/library-data.js?v=22"></script>
-  <script src="./js/icons.js?v=22"></script>
-  <script src="./js/solver.js?v=22"></script>
-  <script src="./js/app.js?v=22"></script>
-  <script src="./js/factory-enhancements.js?v=23"></script>
-  <script src="./js/tutorial.js?v=22"></script>
-  <script src="./js/patch-notes.js?v=22"></script>
-  <script src="./js/account-features.js?v=22"></script>
+  <script src="./data/satisfactory-data.js?v=24"></script>
+  <script src="./js/map-data.js?v=24"></script>
+  <script src="./js/library-data.js?v=24"></script>
+  <script src="./js/icons.js?v=24"></script>
+  <script src="./js/solver.js?v=24"></script>
+  <script src="./js/app.js?v=24"></script>
+  <script src="./js/factory-enhancements.js?v=24"></script>
+  <script src="./js/tutorial.js?v=24"></script>
+  <script src="./js/patch-notes.js?v=24"></script>
+  <script src="./js/account-features.js?v=24"></script>
 </body>
 </html>

@@ -5,6 +5,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'tool_xenozapper',
       name: 'Xeno-Zapper',
+      nameEn: 'Xeno-Zapper',
       category: 'Ferramentas & Equipamentos',
       wikiImage: 'https://satisfactory.wiki.gg/images/Xeno-Zapper.png',
       tier: 'Tier 0 (Inicial)',
@@ -15,6 +16,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'tool_xenobasher',
       name: 'Xeno-Basher',
+      nameEn: 'Xeno-Basher',
       category: 'Ferramentas & Equipamentos',
       wikiImage: 'https://satisfactory.wiki.gg/images/Xeno-Basher.png',
       tier: 'Tier 3 / 4 (Combate Avançado)',
@@ -25,6 +27,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'tool_chainsaw',
       name: 'Motosserra',
+      nameEn: 'Chainsaw',
       category: 'Ferramentas & Equipamentos',
       wikiImage: 'https://satisfactory.wiki.gg/images/Chainsaw.png',
       tier: 'Tier 2 (Desobstrução)',
@@ -35,6 +38,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'tool_rebar_gun',
       name: 'Arma de Vergalhões',
+      nameEn: 'Rebar Gun',
       category: 'Ferramentas & Equipamentos',
       wikiImage: 'https://satisfactory.wiki.gg/images/Rebar_Gun.png',
       tier: 'MAM (Pesquisa Alienígena)',
@@ -45,6 +49,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'tool_rifle',
       name: 'Rifle',
+      nameEn: 'Rifle',
       category: 'Ferramentas & Equipamentos',
       wikiImage: 'https://satisfactory.wiki.gg/images/Rifle.png',
       tier: 'MAM (Enxofre)',
@@ -55,6 +60,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'tool_nobelisk',
       name: 'Detonador Nobelisk',
+      nameEn: 'Nobelisk Detonator',
       category: 'Ferramentas & Equipamentos',
       wikiImage: 'https://satisfactory.wiki.gg/images/Nobelisk_Detonator.png',
       tier: 'MAM (Enxofre)',
@@ -65,6 +71,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'tool_object_scanner',
       name: 'Scanner de Objetos',
+      nameEn: 'Object Scanner',
       category: 'Ferramentas & Equipamentos',
       wikiImage: 'https://satisfactory.wiki.gg/images/Object_Scanner.png',
       tier: 'MAM',
@@ -75,6 +82,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'tool_zipline',
       name: 'Tirolesa',
+      nameEn: 'Zipline',
       category: 'Ferramentas & Equipamentos',
       wikiImage: 'https://satisfactory.wiki.gg/images/Zipline.png',
       tier: 'MAM (Cátério)',
@@ -85,6 +93,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'tool_bladerunners',
       name: 'Lâminas Corredoras',
+      nameEn: 'Blade Runners',
       category: 'Ferramentas & Equipamentos',
       wikiImage: 'https://satisfactory.wiki.gg/images/Blade_Runners.png',
       tier: 'MAM (Cátério)',
@@ -95,6 +104,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'tool_parachute',
       name: 'Paraquedas',
+      nameEn: 'Parachute',
       category: 'Ferramentas & Equipamentos',
       wikiImage: 'https://satisfactory.wiki.gg/images/Parachute.png',
       tier: 'MAM (Micélio)',
@@ -105,6 +115,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'tool_jetpack',
       name: 'Mochila a Jato (Jetpack)',
+      nameEn: 'Jetpack',
       category: 'Ferramentas & Equipamentos',
       wikiImage: 'https://satisfactory.wiki.gg/images/Jetpack.png',
       tier: 'Tier 6',
@@ -115,6 +126,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'tool_hoverpack',
       name: 'Hoverpack',
+      nameEn: 'Hoverpack',
       category: 'Ferramentas & Equipamentos',
       wikiImage: 'https://satisfactory.wiki.gg/images/Hoverpack.png',
       tier: 'Tier 7',
@@ -125,6 +137,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'tool_gasmask',
       name: 'Máscara de Gás',
+      nameEn: 'Gas Mask',
       category: 'Ferramentas & Equipamentos',
       wikiImage: 'https://satisfactory.wiki.gg/images/Gas_Mask.png',
       tier: 'MAM (Micélio)',
@@ -135,6 +148,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'tool_hazmat',
       name: 'Traje Anti-Radiação (Hazmat)',
+      nameEn: 'Hazmat Suit',
       category: 'Ferramentas & Equipamentos',
       wikiImage: 'https://satisfactory.wiki.gg/images/Hazmat_Suit.png',
       tier: 'Tier 7',
@@ -147,6 +161,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'fauna_lizard_doggo',
       name: 'Lagarto-Cachorro (Lizard Doggo)',
+      nameEn: 'Lizard Doggo',
       category: 'Animais / Fauna',
       wikiImage: 'https://satisfactory.wiki.gg/images/Lizard_Doggo.png',
       behavior: 'Pacífico / Domesticável',
@@ -157,6 +172,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'fauna_hog',
       name: 'Javali Fofo (Fluffy-tailed Hog)',
+      nameEn: 'Fluffy-tailed Hog',
       category: 'Animais / Fauna',
       wikiImage: 'https://satisfactory.wiki.gg/images/Fluffy-tailed_Hog.png',
       behavior: 'Hostil (Investida)',
@@ -167,6 +183,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'fauna_spitter',
       name: 'Cuspidor de Plasma (Plasma Spitter)',
+      nameEn: 'Plasma Spitter',
       category: 'Animais / Fauna',
       wikiImage: 'https://satisfactory.wiki.gg/images/Desert_Spitter.png',
       behavior: 'Hostil (Longo Alcance)',
@@ -177,6 +194,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'fauna_stinger',
       name: 'Ferrão (Stinger)',
+      nameEn: 'Stinger',
       category: 'Animais / Fauna',
       wikiImage: 'https://satisfactory.wiki.gg/images/Elite_Stinger.png',
       behavior: 'Hostil (Agressivo)',
@@ -187,6 +205,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'fauna_hatcher',
       name: 'Vagalume / Incubadora (Flying Crab Hatcher)',
+      nameEn: 'Flying Crab Hatcher',
       category: 'Animais / Fauna',
       wikiImage: 'https://satisfactory.wiki.gg/images/Flying_Crab_Hatcher.png',
       behavior: 'Hostil (Enxame)',
@@ -197,6 +216,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'fauna_space_giraffe',
       name: 'Baleia-Pinguim (Space Giraffe-Tick-Penguin)',
+      nameEn: 'Space Giraffe-Tick-Penguin-Whale Thing',
       category: 'Animais / Fauna',
       wikiImage: 'https://satisfactory.wiki.gg/images/Space_Giraffe-Tick-Penguin-Whale_Thing.png',
       behavior: 'Pacífico (Imenso)',
@@ -207,6 +227,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'fauna_manta',
       name: 'Arraia Voadora Gigante (Giant Flying Manta)',
+      nameEn: 'Giant Flying Manta',
       category: 'Animais / Fauna',
       wikiImage: 'https://satisfactory.wiki.gg/images/Giant_Flying_Manta.png',
       behavior: 'Pacífico (Aéreo)',
@@ -217,6 +238,7 @@ window.SATISFACTORY_LIBRARY_EXTRA = {
     {
       id: 'fauna_non_flying_bird',
       name: 'Pássaro Não-Voador (Non-Flying Bird)',
+      nameEn: 'Non-Flying Bird',
       category: 'Animais / Fauna',
       wikiImage: 'https://satisfactory.wiki.gg/images/Non_Flying_Bird.png',
       behavior: 'Pacífico',

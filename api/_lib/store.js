@@ -248,11 +248,17 @@ function getReservedAdminUsernameLower() {
 
 function sanitizeUser(user) {
   if (!user) return null;
+  const prefs = (user.preferences && typeof user.preferences === 'object') ? user.preferences : {};
   return {
     id: user.id,
     username: user.username,
     role: user.role === 'admin' ? 'admin' : 'user',
-    createdAt: user.createdAt
+    createdAt: user.createdAt,
+    preferences: {
+      theme: prefs.theme === 'dark' ? 'dark' : (prefs.theme === 'light' ? 'light' : null),
+      libraryFavorites: Array.isArray(prefs.libraryFavorites) ? prefs.libraryFavorites.slice(0, 250) : [],
+      libraryRecents: Array.isArray(prefs.libraryRecents) ? prefs.libraryRecents.slice(0, 30) : []
+    }
   };
 }
 

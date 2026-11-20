@@ -96,9 +96,22 @@ const AppState = {
 
   // Aba 5: Biblioteca do Jogo (Recursos, Itens, Máquinas, Ferramentas, Fauna)
   library: {
-    category: 'all',
+    category: 'all', // 'all' | 'resources' | 'items' | 'sub:<cat>' | 'machines' | 'generators' | 'logistics' | 'tools' | 'creatures'
+    itemsExpanded: false,
+    filtersOpen: false,
+    filterForm: 'all', // 'all' | 'solid' | 'fluid'
+    filterAltOnly: false,
+    filterFavOnly: false,
+    viewMode: 'grid', // 'grid' | 'list' | 'cards'
+    cardSize: 'md', // 'sm' | 'md' | 'lg'
+    sortBy: 'progression', // 'progression' | 'az' | 'category'
+    collapsedSections: {},
     searchQuery: '',
-    selectedId: null
+    selectedId: null,
+    detailHistory: [],
+    focusedIndex: -1,
+    favorites: [],
+    recents: []
   },
 
   // Aba 6: Receitas (Banco completo Satisfactory 1.0+)
@@ -178,6 +191,13 @@ function fmt(num, maxDecimals = 2) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  try {
+    const cachedTheme = localStorage.getItem('splus_theme');
+    if (cachedTheme === 'dark' || cachedTheme === 'light') {
+      applyTheme(cachedTheme, { persistLocal: false, saveAccount: false, rerender: false });
+    }
+  } catch {}
+  syncOrientationButtons();
   initIntroSplash();
   initPickerEvents();
   initInfiniteCanvasEvents();
@@ -249,16 +269,34 @@ function dismissIntroSplash() {
   }, 480);
 }
 
-function toggleTheme() {
-  AppState.theme = AppState.theme === 'light' ? 'dark' : 'light';
-  document.body.classList.toggle('theme-light', AppState.theme === 'light');
-  document.body.classList.toggle('theme-dark', AppState.theme === 'dark');
+function applyTheme(theme, options = {}) {
+  const next = theme === 'dark' ? 'dark' : 'light';
+  AppState.theme = next;
+  document.documentElement.dataset.theme = next;
+  document.body.classList.toggle('theme-light', next === 'light');
+  document.body.classList.toggle('theme-dark', next === 'dark');
+
+  try {
+    if (options.persistLocal !== false) {
+      localStorage.setItem('splus_theme', next);
+    }
+  } catch {}
 
   const btn = document.getElementById('btn-theme-toggle');
   if (btn) {
-    btn.innerHTML = AppState.theme === 'light' ? '🌙 Escuro' : '☀️ Claro';
+    btn.innerHTML = next === 'light' ? '🌙 Escuro' : '☀️ Claro';
   }
-  renderAll(false);
+  if (options.saveAccount && typeof saveAccountPreferences === 'function') {
+    saveAccountPreferences({ theme: next });
+  }
+  if (options.rerender) {
+    renderAll(false);
+  }
+}
+
+function toggleTheme() {
+  const next = AppState.theme === 'light' ? 'dark' : 'light';
+  applyTheme(next, { persistLocal: true, saveAccount: true, rerender: true });
 }
 
 /* ============================================================================
@@ -328,8 +366,8 @@ function toggleShowAllMachines() {
   if (btn) {
     btn.classList.toggle('active', AppState.showAllMachines);
     btn.textContent = AppState.showAllMachines
-      ? '🏭 Todas Máquinas: SIM'
-      : '📦 Todas Máquinas: NÃO';
+      ? '🏭 Todas: SIM'
+      : '📦 Todas: NÃO';
   }
   renderAll(true);
 }
@@ -341,8 +379,8 @@ function toggle3DView() {
   if (btn) {
     btn.classList.toggle('active', AppState.canvas.is3DView);
     btn.textContent = AppState.canvas.is3DView
-      ? '🏢 Visão 3D: SIM'
-      : '🏢 Visão 3D: NÃO';
+      ? '🏢 3D: SIM'
+      : '🏢 3D: NÃO';
   }
   if (viewport) {
     viewport.classList.toggle('view-3d', AppState.canvas.is3DView);
@@ -350,12 +388,22 @@ function toggle3DView() {
   renderAll(false);
 }
 
+function syncOrientationButtons() {
+  const map = {
+    LR: document.getElementById('orient-lr'),
+    RL: document.getElementById('orient-rl'),
+    TB: document.getElementById('orient-tb'),
+    BT: document.getElementById('orient-bt')
+  };
+  Object.entries(map).forEach(([key, el]) => {
+    if (el) el.classList.toggle('active', AppState.orientation === key);
+  });
+}
+
 function setFlowOrientation(orient) {
-  AppState.orientation = orient === 'TB' ? 'TB' : 'LR';
-  const btnLR = document.getElementById('orient-lr');
-  const btnTB = document.getElementById('orient-tb');
-  if (btnLR) btnLR.classList.toggle('active', AppState.orientation === 'LR');
-  if (btnTB) btnTB.classList.toggle('active', AppState.orientation === 'TB');
+  const valid = ['LR', 'RL', 'TB', 'BT'];
+  AppState.orientation = valid.includes(orient) ? orient : 'LR';
+  syncOrientationButtons();
 
   // Força o realinhamento do layout mesmo após o usuário ter arrastado cards manualmente
   AppState.canvas.customPositions = {};
@@ -368,8 +416,82 @@ function setFlowOrientation(orient) {
   renderAll(true);
 }
 
+let _lastClearUndoSnapshot = null;
+let _undoClearTimer = null;
+
+function hideUndoClearToast() {
+  const toast = document.getElementById('undo-clear-toast');
+  if (toast) toast.classList.add('hidden');
+  if (_undoClearTimer) {
+    clearTimeout(_undoClearTimer);
+    _undoClearTimer = null;
+  }
+}
+
+function showUndoClearToast() {
+  const toast = document.getElementById('undo-clear-toast');
+  if (!toast) return;
+  toast.innerHTML = `
+    <span>Área limpa.</span>
+    <button type="button" class="btn-undo-clear" onclick="undoLastClearFlow()">Desfazer</button>
+    <button type="button" class="btn-undo-dismiss" onclick="hideUndoClearToast()" aria-label="Fechar">✕</button>
+  `;
+  toast.classList.remove('hidden');
+  if (_undoClearTimer) clearTimeout(_undoClearTimer);
+  _undoClearTimer = setTimeout(() => {
+    hideUndoClearToast();
+    _lastClearUndoSnapshot = null;
+  }, 8000);
+}
+
+function undoLastClearFlow() {
+  if (!_lastClearUndoSnapshot) return;
+  const snap = _lastClearUndoSnapshot;
+  _lastClearUndoSnapshot = null;
+  hideUndoClearToast();
+
+  if (snap.mode === 'production') {
+    AppState.production = snap.production;
+    AppState.push = snap.push;
+    AppState.pull = snap.pull;
+  } else if (snap.mode === 'power') {
+    AppState.power = snap.power;
+  } else if (snap.mode === 'free') {
+    AppState.free = snap.free;
+  }
+  AppState.canvas.customPositions = snap.customPositions || {};
+  renderAll(true);
+}
+
 function clearCurrentFlow() {
-  if (AppState.mode === 'production') {
+  const mode = AppState.mode;
+  const hasWork =
+    (mode === 'production' && (AppState.push.inputs.length > 0 || AppState.pull.targets.length > 0 || AppState.production.mounted)) ||
+    (mode === 'power' && (AppState.power.generatorId || AppState.power.mounted)) ||
+    (mode === 'free' && (AppState.free.blocks.length > 0 || AppState.free.customEdges.length > 0));
+
+  if (hasWork) {
+    _lastClearUndoSnapshot = {
+      mode,
+      production: JSON.parse(JSON.stringify(AppState.production)),
+      push: JSON.parse(JSON.stringify(AppState.push)),
+      pull: JSON.parse(JSON.stringify(AppState.pull)),
+      power: JSON.parse(JSON.stringify(AppState.power)),
+      free: JSON.parse(JSON.stringify(AppState.free)),
+      customPositions: JSON.parse(JSON.stringify(AppState.canvas.customPositions || {}))
+    };
+  }
+
+  // Invalida qualquer cálculo ELK em andamento
+  if (typeof _layoutRunSeq === 'number') _layoutRunSeq++;
+
+  // Fecha inspetor, modal de excesso e menus flutuantes abertos
+  if (AppState.inspector.isOpen && typeof closeMachineInspector === 'function') closeMachineInspector();
+  if (AppState.excessModal.isOpen && typeof closeExcessRecipeModal === 'function') closeExcessRecipeModal();
+  if (typeof closeCanvasMenus === 'function') closeCanvasMenus();
+  if (typeof FactoryUIState !== 'undefined') FactoryUIState.activeFooterTab = null;
+
+  if (mode === 'production') {
     AppState.production.driver = null;
     AppState.production.mounted = false;
     AppState.push.inputs = [];
@@ -377,23 +499,33 @@ function clearCurrentFlow() {
     AppState.push.recipeOverrides = {};
     AppState.push.stepSettings = {};
     AppState.pull.targets = [];
+    AppState.pull.availableInputs = [];
     AppState.pull.recipeOverrides = {};
     AppState.pull.stepSettings = {};
     AppState.pull.minerSettings = {};
-  } else if (AppState.mode === 'power') {
+  } else if (mode === 'power') {
     AppState.power.mounted = false;
     AppState.power.generatorId = null;
     AppState.power.fuelItemId = null;
     AppState.power.manualGenerators = null;
     AppState.power.manualWaterPumps = null;
-  } else if (AppState.mode === 'free') {
+  } else if (mode === 'free') {
     AppState.free.blocks = [];
     AppState.free.customEdges = [];
     AppState.free.checkPerformed = false;
     AppState.free.lastCheckReport = null;
   }
+
   AppState.canvas.customPositions = {};
+  AppState.canvas.lastGraph = null;
+  AppState.canvas.nodeMap = new Map();
+  AppState.canvas.lastGraphBounds = null;
+  clearCanvasGraph();
   renderAll(true);
+
+  if (hasWork) {
+    showUndoClearToast();
+  }
 }
 
 /* ============================================================================
@@ -448,17 +580,16 @@ function resetAllCanvasInteractions() {
 function updateConnectedWiresForNode(nodeId) {
   const graph = AppState.canvas.lastGraph;
   if (!graph || !Array.isArray(graph.edges)) return;
-  const isTB = AppState.orientation === 'TB';
+  const orient = AppState.orientation || 'LR';
   const nodeCoords = AppState.canvas.nodeMap;
 
   graph.edges.forEach((edge, idx) => {
     if (edge.from !== nodeId && edge.to !== nodeId) return;
-    if (edge._isOffPage) return;
     const fromBox = nodeCoords.get(edge.from);
     const toBox = nodeCoords.get(edge.to);
     if (!fromBox || !toBox) return;
 
-    const geom = computeEdgeGeometry(fromBox, toBox, isTB, edge);
+    const geom = computeEdgeGeometry(fromBox, toBox, orient, edge);
     const groupEl = document.getElementById(`edge-group-${idx}`);
     if (groupEl) {
       groupEl.querySelectorAll('path').forEach(p => p.setAttribute('d', geom.d));
@@ -492,7 +623,7 @@ function initInfiniteCanvasEvents() {
     if (e.target.closest('button, input, select, .hud-btn, .empty-card-box, .btn-expand-sidebar, .top-right-floating-actions, .user-dropdown-menu, .modal-backdrop, .map-workspace-view, .library-workspace-view, .calculator-workspace-view, .projects-workspace-view, .reports-workspace-view, .wire-hit-area, .conveyor-edge-group, .wire-belt-pill, #canvas-context-menu, #wire-drop-menu')) return;
 
     // 1. Clique em uma porta de saída para puxar esteira/conexão (APENAS no Modo Livre)
-    const outPort = e.target.closest('.port-lr-out, .port-tb-out');
+    const outPort = e.target.closest('.port-lr-out, .port-rl-out, .port-tb-out, .port-bt-out');
     if (outPort) {
       if (AppState.mode !== 'free') return;
       e.preventDefault();
@@ -502,9 +633,21 @@ function initInfiniteCanvasEvents() {
       const fromNodeId = cardEl.id;
       const fromBox = AppState.canvas.nodeMap.get(fromNodeId);
       if (!fromBox) return;
-      const isTB = AppState.orientation === 'TB';
-      const startX = isTB ? fromBox.x + fromBox.w / 2 : fromBox.x + fromBox.w;
-      const startY = isTB ? fromBox.y + fromBox.h : fromBox.y + 132;
+      const orient = AppState.orientation || 'LR';
+      let startX, startY;
+      if (orient === 'TB') {
+        startX = fromBox.x + fromBox.w / 2;
+        startY = fromBox.y + fromBox.h;
+      } else if (orient === 'BT') {
+        startX = fromBox.x + fromBox.w / 2;
+        startY = fromBox.y;
+      } else if (orient === 'RL') {
+        startX = fromBox.x;
+        startY = fromBox.y + fromBox.h / 2;
+      } else {
+        startX = fromBox.x + fromBox.w;
+        startY = fromBox.y + fromBox.h / 2;
+      }
 
       AppState.canvas.wiring = { fromNodeId, startX, startY, currX: startX, currY: startY };
       viewport.classList.add('wiring-active');
@@ -863,20 +1006,36 @@ function updateTopRightFloatingActions() {
       ? renderSaveProjectButtonsHtml('production')
       : '';
 
+    const hasAnyProd = AppState.push.inputs.length > 0 || AppState.pull.targets.length > 0 || isMounted;
     container.innerHTML = `
-      <button
-        class="btn-floating-primary sidebar-action-btn ${isReady ? 'ready' : 'disabled'}"
-        ${!isReady ? 'disabled title="Configure a entrada e o produto abaixo primeiro"' : ''}
-        onclick="mountProductionFlow()"
-      >
-        ${isMounted ? '🔄 Atualizar Linha de Produção' : '⚡ Montar Linha de Produção'}
-      </button>
+      <div class="sidebar-action-row">
+        <button
+          class="btn-floating-primary sidebar-action-btn ${isReady ? 'ready' : 'disabled'}"
+          ${!isReady ? 'disabled title="Configure a entrada e o produto abaixo primeiro"' : ''}
+          onclick="mountProductionFlow()"
+        >
+          ${isMounted ? '🔄 Atualizar' : '⚡ Montar Linha'}
+        </button>
+        <button
+          type="button"
+          class="btn-clear-inline"
+          ${!hasAnyProd ? 'disabled' : ''}
+          onclick="clearCurrentFlow()"
+          title="Limpar área de trabalho"
+        >Limpar</button>
+      </div>
+      ${isReady && isMounted ? `
+        <button type="button" class="btn-edit-in-free" onclick="convertProductionToFreeMode()" title="Levar esta linha para o Modo Livre para adicionar divisores e armazenamento">
+          🛠️ Editar no Livre
+        </button>
+      ` : ''}
       ${saveActionsHtml}
     `;
   } else if (AppState.mode === 'power') {
     setFooterHtml('');
     const isReady = Boolean(AppState.power.generatorId && AppState.power.fuelItemId);
     const isMounted = Boolean(AppState.power.mounted);
+    const hasAnyPower = Boolean(AppState.power.generatorId || isMounted);
     let summaryHtml = '';
     if (isReady) {
       const pwr = Solver.calculatePowerPlan(AppState.power);
@@ -891,13 +1050,22 @@ function updateTopRightFloatingActions() {
       }
     }
     container.innerHTML = `
-      <button
-        class="btn-floating-primary sidebar-action-btn ${isReady ? 'ready' : 'disabled'}"
-        ${!isReady ? 'disabled title="Escolha uma usina abaixo primeiro"' : ''}
-        onclick="mountPowerFlow()"
-      >
-        ${isMounted ? '🔄 Atualizar Linha de Produção' : '⚡ Montar Linha de Produção'}
-      </button>
+      <div class="sidebar-action-row">
+        <button
+          class="btn-floating-primary sidebar-action-btn ${isReady ? 'ready' : 'disabled'}"
+          ${!isReady ? 'disabled title="Escolha uma usina abaixo primeiro"' : ''}
+          onclick="mountPowerFlow()"
+        >
+          ${isMounted ? '🔄 Atualizar' : '⚡ Montar Usina'}
+        </button>
+        <button
+          type="button"
+          class="btn-clear-inline"
+          ${!hasAnyPower ? 'disabled' : ''}
+          onclick="clearCurrentFlow()"
+          title="Limpar área de trabalho"
+        >Limpar</button>
+      </div>
       ${summaryHtml}
     `;
   } else if (AppState.mode === 'free') {
@@ -913,12 +1081,21 @@ function updateTopRightFloatingActions() {
       : '';
 
     container.innerHTML = `
-      <button
-        class="btn-floating-primary sidebar-action-btn ready"
-        onclick="openAddMachineModal()"
-      >
-        ➕ Adicionar Máquina / Item
-      </button>
+      <div class="sidebar-action-row">
+        <button
+          class="btn-floating-primary sidebar-action-btn ready"
+          onclick="openAddMachineModal()"
+        >
+          ➕ Adicionar
+        </button>
+        <button
+          type="button"
+          class="btn-clear-inline"
+          ${!hasBlocks ? 'disabled' : ''}
+          onclick="clearCurrentFlow()"
+          title="Limpar área de trabalho"
+        >Limpar</button>
+      </div>
       ${freeSaveHtml}
     `;
   }
@@ -1114,10 +1291,6 @@ function renderPushFlowInsideProduction(sidebarEl, emptyOverlay, autoFit) {
     </div>
 
     ${recipesConfigHtml}
-
-    <div class="sidebar-footer-actions">
-      <button class="btn-clear-flow" onclick="clearCurrentFlow()">🗑️ Recomeçar / Limpar Tudo</button>
-    </div>
   `;
 
   if (!isReady) {
@@ -1307,10 +1480,6 @@ function renderPullFlowInsideProduction(sidebarEl, emptyOverlay, autoFit) {
     </div>
 
     ${stagesConfigHtml}
-
-    <div class="sidebar-footer-actions">
-      <button class="btn-clear-flow" onclick="clearCurrentFlow()">🗑️ Recomeçar / Limpar Tudo</button>
-    </div>
   `;
 
   if (!pullResult) {
@@ -1662,12 +1831,6 @@ function renderPowerMode(sidebarEl, emptyOverlay, autoFit) {
         ` : ''}
       </div>
     ` : ''}
-
-    <div class="sidebar-footer-actions">
-      ${isReady ? `
-        <button class="btn-clear-flow" onclick="clearCurrentFlow()">🗑️ Limpar Tudo</button>
-      ` : ''}
-    </div>
   `;
 
   if (!isReady) {
@@ -1940,12 +2103,6 @@ function renderFreeMode(sidebarEl, emptyOverlay, autoFit) {
         <div class="stage-config-list">
           ${blocksHtml}
         </div>
-      </div>
-    ` : ''}
-
-    ${blocks.length > 0 ? `
-      <div class="sidebar-footer-actions">
-        <button class="btn-clear-flow" onclick="clearCurrentFlow()">🗑️ Limpar Tudo</button>
       </div>
     ` : ''}
 
@@ -2378,7 +2535,9 @@ function renderCanvasGraph(graph, autoFit = false) {
   }
 
   AppState.canvas.lastGraph = graph;
-  const isTB = AppState.orientation === 'TB';
+  const orient = AppState.orientation || 'LR';
+  const isTB = orient === 'TB' || orient === 'BT';
+  const isRev = orient === 'RL' || orient === 'BT';
   const is3D = Boolean(AppState.canvas.is3DView);
 
   const CARD_WIDTH = 330;
@@ -2481,7 +2640,7 @@ function renderCanvasGraph(graph, autoFit = false) {
 
     let nodesHtml = maqueteFramesHtml;
     for (const [, box] of nodeCoords.entries()) {
-      nodesHtml += renderMagnificNodeCard(box, isTB);
+      nodesHtml += renderMagnificNodeCard(box, orient);
     }
     nodesEl.innerHTML = nodesHtml;
     // Sincroniza dimensões reais dos cards no DOM antes de traçar as esteiras (garante encaixe exato nas portas)
@@ -2494,7 +2653,7 @@ function renderCanvasGraph(graph, autoFit = false) {
         if (oh > 20) box.h = oh;
       }
     }
-    renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl);
+    renderCanvasWiresAndBadges(graph, nodeCoords, orient, wiresEl, nodesEl);
 
     if (autoFit) {
       setTimeout(() => fitCanvasToScreen(), 20);
@@ -2623,7 +2782,7 @@ function renderCanvasGraph(graph, autoFit = false) {
 
     let nodesHtml = wrapMarkersHtml;
     for (const [, box] of nodeCoords.entries()) {
-      nodesHtml += renderMagnificNodeCard(box, isTB);
+      nodesHtml += renderMagnificNodeCard(box, orient);
     }
     nodesEl.innerHTML = nodesHtml;
     // Sincroniza dimensões reais dos cards no DOM antes de traçar as esteiras (garante encaixe exato nas portas)
@@ -2636,7 +2795,7 @@ function renderCanvasGraph(graph, autoFit = false) {
         if (oh > 20) box.h = oh;
       }
     }
-    renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl);
+    renderCanvasWiresAndBadges(graph, nodeCoords, orient, wiresEl, nodesEl);
 
     if (autoFit) {
       setTimeout(() => fitCanvasToScreen(), 25);
@@ -2700,11 +2859,12 @@ function renderCanvasGraph(graph, autoFit = false) {
     });
   }
 
+  const elkDir = orient === 'TB' ? 'DOWN' : (orient === 'BT' ? 'UP' : (orient === 'RL' ? 'LEFT' : 'RIGHT'));
   const elkGraph = {
     id: 'root',
     layoutOptions: {
       'elk.algorithm': 'layered',
-      'elk.direction': isTB ? 'DOWN' : 'RIGHT',
+      'elk.direction': elkDir,
       'elk.aspectRatio': '1.6',
       'elk.edgeRouting': 'ORTHOGONAL',
       'elk.layered.wrapping.strategy': 'MULTI_EDGE',
@@ -2721,16 +2881,17 @@ function renderCanvasGraph(graph, autoFit = false) {
     const layerPosMap = new Map();
     const wrapGroupMap = new Map();
 
-    // Agrupa por coluna (DOWN) ou faixa (RIGHT) para identificar quebras de wrapping
+    // Agrupa por coluna/faixa para identificar quebras de wrapping
     let currentGroup = 0;
-    let prevPrimary = -Infinity;
+    let prevPrimary = null;
     (res.children || []).forEach((c) => {
       const layerIdx = Number(String(c.id).replace('L_', ''));
       const x = Math.round(c.x || 0);
       const y = Math.round(c.y || 0);
       const primary = isTB ? y : x;
-      if (prevPrimary !== -Infinity && primary < prevPrimary - 10) {
-        currentGroup++;
+      if (prevPrimary !== null) {
+        const wrapped = isRev ? (primary > prevPrimary + 10) : (primary < prevPrimary - 10);
+        if (wrapped) currentGroup++;
       }
       prevPrimary = primary;
       layerPosMap.set(layerIdx, { x, y });
@@ -2744,7 +2905,10 @@ function renderCanvasGraph(graph, autoFit = false) {
   });
 }
 
-function computeEdgeGeometry(fromBox, toBox, isTB, edge) {
+function computeEdgeGeometry(fromBox, toBox, orientOrIsTB, edge) {
+  const orient = typeof orientOrIsTB === 'string'
+    ? orientOrIsTB
+    : (orientOrIsTB ? 'TB' : 'LR');
   let x1, y1, x2, y2, midX, midY, d, badgeX, badgeY;
   // Usa as dimensões reais medidas do card para que toda esteira encoste exatamente na porta
   const fh = fromBox.h || 260;
@@ -2752,7 +2916,7 @@ function computeEdgeGeometry(fromBox, toBox, isTB, edge) {
   const fw = fromBox.w || 270;
   const tw = toBox.w || 270;
 
-  if (!isTB) {
+  if (orient === 'LR') {
     x1 = fromBox.x + fw;
     y1 = fromBox.y + fh / 2;
     x2 = toBox.x;
@@ -2762,6 +2926,26 @@ function computeEdgeGeometry(fromBox, toBox, isTB, edge) {
     d = buildRoundedOrthogonalPathLR(x1, y1, x2, y2, midX);
     badgeX = x2 >= x1 + 24 ? midX : (x1 + x2) / 2;
     badgeY = x2 >= x1 + 24 ? midY : Math.min(y1, y2) - Math.max(fh, th) / 2 - 26;
+  } else if (orient === 'RL') {
+    x1 = fromBox.x;
+    y1 = fromBox.y + fh / 2;
+    x2 = toBox.x + tw;
+    y2 = toBox.y + th / 2;
+    midX = (x1 + x2) / 2;
+    midY = (y1 + y2) / 2;
+    d = buildRoundedOrthogonalPathRL(x1, y1, x2, y2, midX);
+    badgeX = x1 >= x2 + 24 ? midX : (x1 + x2) / 2;
+    badgeY = x1 >= x2 + 24 ? midY : Math.min(y1, y2) - Math.max(fh, th) / 2 - 26;
+  } else if (orient === 'BT') {
+    x1 = fromBox.x + fw / 2;
+    y1 = fromBox.y;
+    x2 = toBox.x + tw / 2;
+    y2 = toBox.y + th;
+    midX = (x1 + x2) / 2;
+    midY = (y1 + y2) / 2;
+    d = buildRoundedOrthogonalPathBT(x1, y1, x2, y2, midY);
+    badgeX = midX;
+    badgeY = y1 >= y2 + 24 ? midY : (y1 + y2) / 2;
   } else {
     x1 = fromBox.x + fw / 2;
     y1 = fromBox.y + fh;
@@ -2776,7 +2960,10 @@ function computeEdgeGeometry(fromBox, toBox, isTB, edge) {
   return { x1, y1, x2, y2, midX, midY, d, badgeX, badgeY };
 }
 
-function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
+function renderCanvasWiresAndBadges(graph, nodeCoords, orientOrIsTB, wiresEl, nodesEl) {
+  const orient = typeof orientOrIsTB === 'string'
+    ? orientOrIsTB
+    : (orientOrIsTB ? 'TB' : 'LR');
   let pathsHtml = '';
   let badgesHtml = '';
 
@@ -2786,106 +2973,13 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
     if (!fromBox || !toBox) return;
 
     const isLift = (fromBox.floor || 1) !== (toBox.floor || 1);
-    const stageDiff = (typeof toBox.stageIdx === 'number' && typeof fromBox.stageIdx === 'number')
-      ? (toBox.stageIdx - fromBox.stageIdx)
-      : 1;
-    const isWrapJump = (typeof fromBox.wrapGroup === 'number' && typeof toBox.wrapGroup === 'number')
-      && fromBox.wrapGroup !== toBox.wrapGroup;
-    const isCycleBack = stageDiff <= 0;
-    const isOffPage = !edge.isCustom && (isWrapJump || stageDiff > 3 || isCycleBack);
-    edge._isOffPage = isOffPage;
+    edge._isOffPage = false;
 
     const hitHandler = (edge.isCustom && edge.edgeId)
       ? `onclick="openEdgeBeltMenu(event, '${edge.edgeId}')" oncontextmenu="openEdgeBeltMenu(event, '${edge.edgeId}')"`
       : '';
 
-    if (isOffPage) {
-      // Conector curto ancorado na porta (nunca invade o card nem flutua solto)
-      const STUB = 34;
-      const fh = fromBox.h || 260;
-      const th = toBox.h || 260;
-      const fw = fromBox.w || 270;
-      const tw = toBox.w || 270;
-
-      let sx1, sy1, sx2, sy2, tx1, ty1, tx2, ty2;
-      if (!isTB) {
-        sx1 = fromBox.x + fw;
-        sy1 = fromBox.y + fh / 2;
-        sx2 = sx1 + STUB;
-        sy2 = sy1;
-        tx2 = toBox.x;
-        ty2 = toBox.y + th / 2;
-        tx1 = tx2 - STUB;
-        ty1 = ty2;
-      } else {
-        sx1 = fromBox.x + fw / 2;
-        sy1 = fromBox.y + fh;
-        sx2 = sx1;
-        sy2 = sy1 + STUB;
-        tx2 = toBox.x + tw / 2;
-        ty2 = toBox.y;
-        tx1 = tx2;
-        ty1 = ty2 - STUB;
-      }
-
-      const dOut = `M ${sx1} ${sy1} L ${sx2} ${sy2}`;
-      const dIn = `M ${tx1} ${ty1} L ${tx2} ${ty2}`;
-      const fullGeom = computeEdgeGeometry(fromBox, toBox, isTB, edge);
-      const stubStroke = edge.isPipe ? '#0284c7' : '#f97316';
-      const fromName = (fromBox.node?.topLabel || fromBox.node?.item?.name || 'Origem').slice(0, 22);
-      const toName = (toBox.node?.topLabel || toBox.node?.item?.name || 'Destino').slice(0, 22);
-      const ratePart = edge.label ? ` · ${edge.label}` : '';
-
-      pathsHtml += `
-        <g id="edge-group-${idx}" class="conveyor-edge-group offpage-edge-group" data-from="${edge.from}" data-to="${edge.to}">
-          <path class="offpage-stub" d="${dOut}" stroke="${stubStroke}" stroke-width="5" stroke-linecap="round" fill="none" />
-          <path class="offpage-stub" d="${dIn}" stroke="${stubStroke}" stroke-width="5" stroke-linecap="round" fill="none" />
-          <path
-            id="wire-${idx}"
-            data-from="${edge.from}"
-            data-to="${edge.to}"
-            class="magnific-wire offpage-full-ghost"
-            d="${fullGeom.d}"
-            stroke="${stubStroke}"
-            stroke-width="3.5"
-            stroke-dasharray="8 6"
-            fill="none"
-          />
-        </g>
-      `;
-
-      const outAnchorCls = isTB ? 'offpage-pill-out-tb' : 'offpage-pill-out-lr';
-      const inAnchorCls = isTB ? 'offpage-pill-in-tb' : 'offpage-pill-in-lr';
-      badgesHtml += `
-        <div
-          class="wire-belt-pill offpage-pill ${outAnchorCls} ${edge.isPipe ? 'pipe-pill' : 'belt-pill'}"
-          data-from="${edge.from}"
-          data-to="${edge.to}"
-          style="left:${sx2}px; top:${sy2}px;"
-          onmouseenter="highlightEdgePair('${edge.from}', '${edge.to}', true)"
-          onmouseleave="highlightEdgePair('${edge.from}', '${edge.to}', false)"
-          onclick="focusOnNode('${edge.to}')"
-          title="Clique para ir até ${toName} • Passe o mouse para ver o caminho completo"
-        >
-          <span>→ ${toName}${ratePart}</span>
-        </div>
-        <div
-          class="wire-belt-pill offpage-pill ${inAnchorCls} ${edge.isPipe ? 'pipe-pill' : 'belt-pill'}"
-          data-from="${edge.from}"
-          data-to="${edge.to}"
-          style="left:${tx1}px; top:${ty1}px;"
-          onmouseenter="highlightEdgePair('${edge.from}', '${edge.to}', true)"
-          onmouseleave="highlightEdgePair('${edge.from}', '${edge.to}', false)"
-          onclick="focusOnNode('${edge.from}')"
-          title="Clique para ir até ${fromName} • Passe o mouse para ver o caminho completo"
-        >
-          <span>← ${fromName}${ratePart}</span>
-        </div>
-      `;
-      return;
-    }
-
-    const geom = computeEdgeGeometry(fromBox, toBox, isTB, edge);
+    const geom = computeEdgeGeometry(fromBox, toBox, orient, edge);
     const { d, badgeX, badgeY } = geom;
 
     if (edge.isPipe) {
@@ -2927,7 +3021,7 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
             stroke-width="24"
             fill="none"
           >
-            ${edge.isCustom ? '<title>Clique para escolher a tubulação ou excluir conexão</title>' : ''}
+            ${edge.isCustom ? '<title>Clique para escolher a tubulação, inserir junção ou excluir</title>' : ''}
           </path>
         </g>
       `;
@@ -2949,7 +3043,7 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
             data-to="${edge.to}"
             class="magnific-wire belt-wire belt-track-animated ${isLift ? 'lift-wire' : ''}"
             d="${d}"
-            stroke="#f97316"
+            stroke="#EA580C"
             stroke-width="5"
             stroke-dasharray="10 6"
             fill="none"
@@ -2961,7 +3055,7 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, isTB, wiresEl, nodesEl) {
             stroke-width="24"
             fill="none"
           >
-            ${edge.isCustom ? '<title>Clique para escolher o nível da esteira ou excluir conexão</title>' : ''}
+            ${edge.isCustom ? '<title>Clique para escolher a esteira, inserir divisor ou excluir</title>' : ''}
           </path>
         </g>
       `;
@@ -3027,8 +3121,8 @@ function updateCanvasWiresOnly() {
   const wiresEl = document.getElementById('spaces-wires');
   const nodesEl = document.getElementById('spaces-nodes');
   if (!graph || !wiresEl || !nodesEl) return;
-  const isTB = AppState.orientation === 'TB';
-  renderCanvasWiresAndBadges(graph, AppState.canvas.nodeMap, isTB, wiresEl, nodesEl);
+  const orient = AppState.orientation || 'LR';
+  renderCanvasWiresAndBadges(graph, AppState.canvas.nodeMap, orient, wiresEl, nodesEl);
 }
 
 function buildRoundedOrthogonalPathLR(x1, y1, x2, y2, midX) {
@@ -3046,9 +3140,29 @@ function buildRoundedOrthogonalPathLR(x1, y1, x2, y2, midX) {
       `L ${x2} ${y2}`
     ].join(' ');
   }
-  // Destino à esquerda ou muito próximo: contorna por fora sem atravessar o card
   const outX = x1 + 28;
   const inX = x2 - 28;
+  const routeY = Math.min(y1, y2) - 165;
+  return `M ${x1} ${y1} L ${outX} ${y1} L ${outX} ${routeY} L ${inX} ${routeY} L ${inX} ${y2} L ${x2} ${y2}`;
+}
+
+function buildRoundedOrthogonalPathRL(x1, y1, x2, y2, midX) {
+  const dy = y2 - y1;
+  if (x1 >= x2 + 24) {
+    if (Math.abs(dy) < 4) return `M ${x1} ${y1} L ${x2} ${y2}`;
+    const r = Math.min(18, Math.abs(dy) / 2, Math.abs(x1 - midX) / 2, Math.abs(midX - x2) / 2);
+    const signY = dy > 0 ? 1 : -1;
+    return [
+      `M ${x1} ${y1}`,
+      `L ${midX + r} ${y1}`,
+      `Q ${midX} ${y1} ${midX} ${y1 + r * signY}`,
+      `L ${midX} ${y2 - r * signY}`,
+      `Q ${midX} ${y2} ${midX - r} ${y2}`,
+      `L ${x2} ${y2}`
+    ].join(' ');
+  }
+  const outX = x1 - 28;
+  const inX = x2 + 28;
   const routeY = Math.min(y1, y2) - 165;
   return `M ${x1} ${y1} L ${outX} ${y1} L ${outX} ${routeY} L ${inX} ${routeY} L ${inX} ${y2} L ${x2} ${y2}`;
 }
@@ -3068,14 +3182,37 @@ function buildRoundedOrthogonalPathTB(x1, y1, x2, y2, midY) {
       `L ${x2} ${y2}`
     ].join(' ');
   }
-  // Destino acima da origem: sai por baixo, desvia pelo corredor do meio e entra por cima sem ponta pendurada
   const outY = y1 + 28;
   const inY = y2 - 28;
   const corridorX = Math.abs(dx) > 120 ? (x1 + x2) / 2 : (x1 + 170);
   return `M ${x1} ${y1} L ${x1} ${outY} L ${corridorX} ${outY} L ${corridorX} ${inY} L ${x2} ${inY} L ${x2} ${y2}`;
 }
 
-function renderMagnificNodeCard(box, isTB) {
+function buildRoundedOrthogonalPathBT(x1, y1, x2, y2, midY) {
+  const dx = x2 - x1;
+  if (y1 >= y2 + 24) {
+    if (Math.abs(dx) < 4) return `M ${x1} ${y1} L ${x2} ${y2}`;
+    const r = Math.min(18, Math.abs(dx) / 2, Math.abs(y1 - midY) / 2, Math.abs(midY - y2) / 2);
+    const signX = dx > 0 ? 1 : -1;
+    return [
+      `M ${x1} ${y1}`,
+      `L ${x1} ${midY + r}`,
+      `Q ${x1} ${midY} ${x1 + r * signX} ${midY}`,
+      `L ${x2 - r * signX} ${midY}`,
+      `Q ${x2} ${midY} ${x2} ${midY - r}`,
+      `L ${x2} ${y2}`
+    ].join(' ');
+  }
+  const outY = y1 - 28;
+  const inY = y2 + 28;
+  const corridorX = Math.abs(dx) > 120 ? (x1 + x2) / 2 : (x1 + 170);
+  return `M ${x1} ${y1} L ${x1} ${outY} L ${corridorX} ${outY} L ${corridorX} ${inY} L ${x2} ${inY} L ${x2} ${y2}`;
+}
+
+function renderMagnificNodeCard(box, orientOrIsTB) {
+  const orient = typeof orientOrIsTB === 'string'
+    ? orientOrIsTB
+    : (orientOrIsTB ? 'TB' : 'LR');
   const { x, y, w, h, node } = box;
 
   if (node.kind === 'power_emblem') {
@@ -3191,8 +3328,14 @@ function renderMagnificNodeCard(box, isTB) {
   const isSplitterLike = node.kind === 'splitter' || node.kind === 'merger' || node.kind === 'smart_splitter' || node.kind === 'programmable_splitter' || node.kind === 'priority_merger';
   const portInType = isFluidNode ? 'port-fluid' : (isSplitterLike ? 'port-splitter' : 'port-in');
   const portOutType = isFluidNode ? 'port-fluid' : (isSplitterLike ? 'port-splitter' : 'port-out');
-  const portInClass = `${isTB ? 'port-tb-in' : 'port-lr-in'} ${portInType}`;
-  const portOutClass = `${isTB ? 'port-tb-out' : 'port-lr-out'} ${portOutType}`;
+  const portOrientPrefix = orient === 'TB' ? 'port-tb' : (orient === 'BT' ? 'port-bt' : (orient === 'RL' ? 'port-rl' : 'port-lr'));
+  const portInClass = `${portOrientPrefix}-in ${portInType}`;
+  const portOutClass = `${portOrientPrefix}-out ${portOutType}`;
+  const hasOutPort = node.outPorts !== 0;
+  const missingInputs = Array.isArray(node._missingInputs) ? node._missingInputs : [];
+  const missingBadgeHtml = missingInputs.length > 0
+    ? `<span class="mcard-missing-badge" title="Sem entrada ligada: ${missingInputs.join(', ')}">!</span>`
+    : '';
 
   const floorNum = box.floor || node._effectiveFloor || 1;
   const floorBadgeHtml = (AppState.canvas.is3DView || floorNum > 1)
@@ -3209,8 +3352,8 @@ function renderMagnificNodeCard(box, isTB) {
     <div
       id="${node.id}"
       data-floor="${floorNum}"
-      class="magnific-card kind-${node.kind} ${isCompact ? 'compact-card' : ''} ${isFinalProduct ? 'final-product-highlight' : ''} ${isConfigurable ? 'configurable-card' : ''} ${floorNum > 1 ? 'upper-floor-card' : ''}"
-      style="left:${x}px; top:${y}px; width:${w}px; --card-accent:${node.accent || '#ff7a1a'}; --floor-idx:${floorNum - 1};"
+      class="magnific-card kind-${node.kind} ${isCompact ? 'compact-card' : ''} ${isFinalProduct ? 'final-product-highlight' : ''} ${isConfigurable ? 'configurable-card' : ''} ${floorNum > 1 ? 'upper-floor-card' : ''} ${missingInputs.length > 0 ? 'has-missing-input' : ''}"
+      style="left:${x}px; top:${y}px; width:${w}px; --card-accent:${node.accent || '#EA580C'}; --floor-idx:${floorNum - 1};"
       onmouseenter="highlightNodeWires('${node.id}', true)"
       onmouseleave="highlightNodeWires('${node.id}', false)"
       ${isConfigurable ? `onclick="handleCanvasCardClick(event, '${node.id}')"` : ''}
@@ -3219,6 +3362,7 @@ function renderMagnificNodeCard(box, isTB) {
       <div class="mcard-top-label ${isFinalProduct ? 'final-top-label' : ''}">
         <span class="mcard-title">${isFinalProduct ? `🎯 ${node.entity?.name || 'Produto Final'}` : node.topLabel}</span>
         <div class="mcard-top-badges">
+          ${missingBadgeHtml}
           ${isFinalProduct ? '<span class="final-product-pill">PRODUTO FINAL</span>' : ''}
           ${floorBadgeHtml}
           ${deleteBtnHtml}
@@ -3246,9 +3390,11 @@ function renderMagnificNodeCard(box, isTB) {
         <div class="mcard-port ${portInClass}" title="Entrada">
           <span>▣</span>
         </div>
-        <div class="mcard-port ${portOutClass}" title="Puxe para conectar">
-          <span>▣</span>
-        </div>
+        ${hasOutPort ? `
+          <div class="mcard-port ${portOutClass}" title="Puxe para conectar">
+            <span>▣</span>
+          </div>
+        ` : ''}
       ` : ''}
     </div>
   `;
@@ -4187,7 +4333,7 @@ function addFreeBlock(blockType, options = {}) {
     const fromBox = AppState.canvas.nodeMap.get(options.connectFromNodeId);
     const fromBlockId = fromBox?.node?.blockId || null;
     const fromBlock = fromBlockId ? AppState.free.blocks.find(b => b.id === fromBlockId) : null;
-    const outItem = fromBox?.node?.outputsList?.[0]?.item;
+    const outItem = fromBox?.node?.outputsList?.[0]?.item || fromBox?.node?.resourceExtractInfo?.item || null;
     const isFluid = Boolean(outItem?.isFluid);
     AppState.free.customEdges.push({
       id: uid(),
@@ -4231,7 +4377,7 @@ function handleWireDropOnCard(fromNodeId, toNodeId) {
     return;
   }
 
-  const outItem = fromBox.node?.outputsList?.[0]?.item || toBox.node?.inputsList?.[0]?.item || null;
+  const outItem = fromBox.node?.outputsList?.[0]?.item || fromBox.node?.resourceExtractInfo?.item || toBox.node?.inputsList?.[0]?.item || null;
   const fromBlkId = fromBox.node?.blockId;
   const toBlkId = toBox.node?.blockId;
   const fromBlock = fromBlkId ? AppState.free.blocks.find(b => b.id === fromBlkId) : null;
@@ -4298,7 +4444,7 @@ function openCanvasContextMenu(clientX, clientY, worldPos) {
 function openWireDropMenu(clientX, clientY, fromNodeId, worldPos) {
   closeCanvasMenus();
   const fromBox = AppState.canvas.nodeMap.get(fromNodeId);
-  const outItem = fromBox?.node?.outputsList?.[0]?.item || null;
+  const outItem = fromBox?.node?.outputsList?.[0]?.item || fromBox?.node?.resourceExtractInfo?.item || null;
   const wx = Math.round(worldPos.x);
   const wy = Math.round(worldPos.y - 120);
 
@@ -4453,7 +4599,11 @@ function openEdgeBeltMenu(event, edgeId) {
   const optionsList = item?.isFluid ? pipes : belts;
 
   menu.innerHTML = `
-    <div class="context-menu-header">🚚 Escolher ${item?.isFluid ? 'Tubulação' : 'Esteira'} da Conexão</div>
+    <div class="context-menu-header">${item?.isFluid ? 'Tubulação' : 'Esteira'}</div>
+    <button class="context-menu-item" onclick="insertSplitterOnEdge('${edge.id}')">
+      ${item?.isFluid ? '🔩 Inserir Junção no meio' : '🔀 Inserir Divisor no meio'}
+    </button>
+    <div class="context-menu-divider"></div>
     ${optionsList.map(opt => `
       <button class="context-menu-item" onclick="setCustomEdgeBeltTier('${edge.id}', '${opt.id}')">
         ${opt.id === edge.beltTierId ? '✅ ' : ''}${opt.name.replace('Esteira de transporte ', 'Esteira ')} <small>(${opt.ratePerMin}/m)</small>
@@ -4464,6 +4614,180 @@ function openEdgeBeltMenu(event, edgeId) {
   `;
   positionFloatingMenu(menu, event.clientX, event.clientY);
   menu.classList.remove('hidden');
+}
+
+function insertSplitterOnEdge(edgeId) {
+  const edges = AppState.free.customEdges || [];
+  const idx = edges.findIndex(e => e.id === edgeId);
+  if (idx === -1) return;
+  const edge = edges[idx];
+  const fromBox = AppState.canvas.nodeMap.get(edge.fromNodeId);
+  const toBox = AppState.canvas.nodeMap.get(edge.toNodeId);
+  const item = edge.itemId ? Solver.getItem(edge.itemId) : null;
+  const isFluid = Boolean(item?.isFluid);
+
+  const midX = (fromBox && toBox) ? Math.round((fromBox.x + toBox.x) / 2) : 800;
+  const midY = (fromBox && toBox) ? Math.round((fromBox.y + toBox.y) / 2) : 600;
+
+  closeCanvasMenus();
+
+  const newBlockId = uid();
+  AppState.free.blocks.push({
+    id: newBlockId,
+    blockType: isFluid ? 'pipe_junction' : 'splitter',
+    logisticsId: isFluid ? 'Build_PipelineJunction_Cross_C' : 'Build_ConveyorAttachmentSplitter_C',
+    itemId: edge.itemId || null,
+    count: 1,
+    clockPercent: 100,
+    floor: 1,
+    machinesPerFloor: 0,
+    beltTierId: edge.beltTierId || 'Build_ConveyorBeltMk3_C',
+    pipeTierId: edge.beltTierId || 'Build_Pipeline_C',
+    x: midX,
+    y: midY
+  });
+
+  const midNodeId = `free_${newBlockId}_0`;
+  edges.splice(idx, 1,
+    {
+      id: uid(),
+      fromNodeId: edge.fromNodeId,
+      fromBlockId: edge.fromBlockId,
+      toNodeId: midNodeId,
+      toBlockId: newBlockId,
+      itemId: edge.itemId || null,
+      beltTierId: edge.beltTierId || null
+    },
+    {
+      id: uid(),
+      fromNodeId: midNodeId,
+      fromBlockId: newBlockId,
+      toNodeId: edge.toNodeId,
+      toBlockId: edge.toBlockId,
+      itemId: edge.itemId || null,
+      beltTierId: edge.beltTierId || null
+    }
+  );
+
+  AppState.free.checkPerformed = false;
+  AppState.free.lastCheckReport = null;
+  renderAll(false);
+}
+
+function convertProductionToFreeMode() {
+  const graph = AppState.canvas.lastGraph;
+  if (!graph || !Array.isArray(graph.columns) || graph.columns.length === 0) return;
+
+  const newBlocks = [];
+  const nodeIdToFree = new Map();
+  const nodeMap = AppState.canvas.nodeMap || new Map();
+
+  graph.columns.forEach((col) => {
+    (col.nodes || []).forEach((node) => {
+      const box = nodeMap.get(node.id);
+      const pos = box ? { x: Math.round(box.x), y: Math.round(box.y) } : {};
+      const blockId = uid();
+
+      if (node.kind === 'extractor') {
+        const resItem = node.resourceExtractInfo?.item || node.item;
+        const exId = node.entity?.id || '';
+        const minerMark = exId === 'Build_MinerMk3_C' ? 'mk3' : (exId === 'Build_MinerMk2_C' ? 'mk2' : 'mk1');
+        newBlocks.push({
+          id: blockId,
+          blockType: 'extractor',
+          itemId: resItem?.id || 'Desc_OreIron_C',
+          minerMark,
+          purity: 'normal',
+          count: 1,
+          clockPercent: 100,
+          floor: 1,
+          machinesPerFloor: 0,
+          beltTierId: 'Build_ConveyorBeltMk3_C',
+          pipeTierId: 'Build_Pipeline_C',
+          ...pos
+        });
+        nodeIdToFree.set(node.id, { blockId, nodeId: `free_${blockId}_0` });
+      } else if (node.kind === 'machine') {
+        const stData = col.stageData;
+        const recipeId = stData?.recipe?.id || null;
+        const machineId = stData?.machine?.id || node.entity?.id || null;
+        const clockPercent = stData?.clockPercent || 100;
+        newBlocks.push({
+          id: blockId,
+          blockType: 'machine',
+          machineId,
+          recipeId,
+          count: 1,
+          clockPercent,
+          sloops: 0,
+          floor: 1,
+          machinesPerFloor: 0,
+          beltTierId: 'Build_ConveyorBeltMk3_C',
+          pipeTierId: 'Build_Pipeline_C',
+          ...pos
+        });
+        nodeIdToFree.set(node.id, { blockId, nodeId: `free_${blockId}_0` });
+      } else if (node.kind === 'splitter' || node.kind === 'merger' || node.kind === 'pipe_junction') {
+        const logId = node.kind === 'merger'
+          ? 'Build_ConveyorAttachmentMerger_C'
+          : (node.kind === 'pipe_junction' ? 'Build_PipelineJunction_Cross_C' : 'Build_ConveyorAttachmentSplitter_C');
+        newBlocks.push({
+          id: blockId,
+          blockType: node.kind,
+          logisticsId: logId,
+          itemId: node.item?.id || null,
+          count: 1,
+          clockPercent: 100,
+          floor: 1,
+          machinesPerFloor: 0,
+          beltTierId: 'Build_ConveyorBeltMk3_C',
+          pipeTierId: 'Build_Pipeline_C',
+          ...pos
+        });
+        nodeIdToFree.set(node.id, { blockId, nodeId: `free_${blockId}_0` });
+      } else if (node.kind === 'final_product') {
+        const finalItem = node.outputsList?.[0]?.item || node.entity;
+        const isFluid = Boolean(finalItem?.isFluid);
+        newBlocks.push({
+          id: blockId,
+          blockType: isFluid ? 'fluid_buffer_mk1' : 'storage_mk1',
+          logisticsId: isFluid ? 'Build_PipeStorageTank_C' : 'Build_StorageContainerMk1_C',
+          itemId: finalItem?.id || null,
+          count: 1,
+          clockPercent: 100,
+          floor: 1,
+          machinesPerFloor: 0,
+          beltTierId: 'Build_ConveyorBeltMk3_C',
+          pipeTierId: 'Build_Pipeline_C',
+          ...pos
+        });
+        nodeIdToFree.set(node.id, { blockId, nodeId: `free_${blockId}_0` });
+      }
+    });
+  });
+
+  const newEdges = [];
+  (graph.edges || []).forEach((e) => {
+    const f = nodeIdToFree.get(e.from);
+    const t = nodeIdToFree.get(e.to);
+    if (!f || !t) return;
+    newEdges.push({
+      id: uid(),
+      fromNodeId: f.nodeId,
+      fromBlockId: f.blockId,
+      toNodeId: t.nodeId,
+      toBlockId: t.blockId,
+      itemId: e.itemId || null,
+      beltTierId: e.isPipe ? 'Build_Pipeline_C' : 'Build_ConveyorBeltMk3_C'
+    });
+  });
+
+  AppState.free.blocks = newBlocks;
+  AppState.free.customEdges = newEdges;
+  AppState.free.checkPerformed = false;
+  AppState.free.lastCheckReport = null;
+  AppState.canvas.customPositions = {};
+  switchMode('free');
 }
 
 function setCustomEdgeBeltTier(edgeId, beltTierId) {
@@ -4661,48 +4985,175 @@ function choosePickerItem(itemId) {
  * ABA 5: 📚 BIBLIOTECA COMPLETA DO JOGO (PT-BR)
  * ========================================================================== */
 
+const LIB_CATEGORY_COLORS = {
+  resources: '#0D9488',
+  items: '#2563EB',
+  'Peças & Componentes': '#2563EB',
+  'Lingotes': '#475569',
+  'Eletrônicos & Motores': '#4F46E5',
+  'Fluidos & Refinaria': '#0891B2',
+  'Biomassa': '#16A34A',
+  'Elevador Espacial': '#7C3AED',
+  'Nuclear': '#059669',
+  'Quântico & Alienígena': '#9333EA',
+  'Equipamentos': '#0284C7',
+  'FICSMAS': '#E11D48',
+  machines: '#4F46E5',
+  generators: '#0891B2',
+  logistics: '#0D9488',
+  tools: '#6366F1',
+  creatures: '#059669'
+};
+
+const LIB_PROGRESSION_ORDER = {
+  resources: 1,
+  'Lingotes': 2,
+  'Peças & Componentes': 3,
+  'Biomassa': 4,
+  'Eletrônicos & Motores': 5,
+  'Fluidos & Refinaria': 6,
+  'Equipamentos': 7,
+  'Elevador Espacial': 8,
+  'Nuclear': 9,
+  'Quântico & Alienígena': 10,
+  'FICSMAS': 11,
+  machines: 12,
+  generators: 13,
+  logistics: 14,
+  tools: 15,
+  creatures: 16
+};
+
+(function initLibraryLocalPrefs() {
+  try {
+    const favs = JSON.parse(localStorage.getItem('splus_lib_favorites') || '[]');
+    if (Array.isArray(favs)) AppState.library.favorites = favs;
+    const recs = JSON.parse(localStorage.getItem('splus_lib_recents') || '[]');
+    if (Array.isArray(recs)) AppState.library.recents = recs;
+  } catch {}
+})();
+
+function syncLibraryPrefsFromAccount(prefs) {
+  if (!prefs) return;
+  if (Array.isArray(prefs.libraryFavorites)) {
+    AppState.library.favorites = [...new Set([...prefs.libraryFavorites, ...AppState.library.favorites])].slice(0, 250);
+    try { localStorage.setItem('splus_lib_favorites', JSON.stringify(AppState.library.favorites)); } catch {}
+  }
+  if (Array.isArray(prefs.libraryRecents)) {
+    AppState.library.recents = [...new Set([...prefs.libraryRecents, ...AppState.library.recents])].slice(0, 30);
+    try { localStorage.setItem('splus_lib_recents', JSON.stringify(AppState.library.recents)); } catch {}
+  }
+  if (AppState.mode === 'library') renderAll(false);
+}
+
+function toggleLibraryFavorite(event, entryId) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  const favs = AppState.library.favorites || [];
+  const idx = favs.indexOf(entryId);
+  if (idx >= 0) favs.splice(idx, 1);
+  else favs.unshift(entryId);
+  AppState.library.favorites = favs.slice(0, 250);
+  try { localStorage.setItem('splus_lib_favorites', JSON.stringify(AppState.library.favorites)); } catch {}
+  if (typeof saveAccountPreferences === 'function') {
+    saveAccountPreferences({ libraryFavorites: AppState.library.favorites });
+  }
+  renderLibraryWorkspace();
+}
+
+function pushLibraryRecent(entryId) {
+  const recs = (AppState.library.recents || []).filter(x => x !== entryId);
+  recs.unshift(entryId);
+  AppState.library.recents = recs.slice(0, 12);
+  try { localStorage.setItem('splus_lib_recents', JSON.stringify(AppState.library.recents)); } catch {}
+  if (typeof saveAccountPreferences === 'function') {
+    saveAccountPreferences({ libraryRecents: AppState.library.recents });
+  }
+}
+
+function getLibColor(entry) {
+  if (entry.kind === 'items' && LIB_CATEGORY_COLORS[entry.subCategory]) {
+    return LIB_CATEGORY_COLORS[entry.subCategory];
+  }
+  return LIB_CATEGORY_COLORS[entry.kind] || '#475569';
+}
+
+function libEsc(str) {
+  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function highlightLibMatch(text, rawQuery) {
+  const safe = libEsc(text);
+  const q = Solver.normalizeText(rawQuery || '');
+  if (!q) return safe;
+  const norm = Solver.normalizeText(text || '');
+  const idx = norm.indexOf(q);
+  if (idx === -1) return safe;
+  const orig = String(text || '');
+  return libEsc(orig.slice(0, idx)) + '<mark class="lib-match">' + libEsc(orig.slice(idx, idx + q.length)) + '</mark>' + libEsc(orig.slice(idx + q.length));
+}
+
+let _libEntriesCache = null;
+
 function getLibraryEntries() {
+  if (_libEntriesCache) return _libEntriesCache;
+
   const allItems = Solver.getAllItems();
+  const allRecipes = Object.values(window.SATISFACTORY_DATA?.recipes || {}).filter(r => !r.isFicsmas);
+
+  const buildItemSearchMeta = (itemId) => {
+    const prodRecs = allRecipes.filter(r => (r.products || []).some(p => p.item === itemId));
+    const hasAlt = prodRecs.some(r => r.isAlternate);
+    const machNames = [...new Set(prodRecs.map(r => Solver.getMachine(r.machine)?.name || '').filter(Boolean))];
+    const ingNames = [...new Set(prodRecs.flatMap(r => (r.ingredients || []).map(i => {
+      const it = Solver.getItem(i.item);
+      return it ? `${it.name} ${it.nameEn || ''}` : '';
+    })).filter(Boolean))];
+    return { hasAlt, searchExtra: [...machNames, ...ingNames].join(' ') };
+  };
+
   const rawResources = allItems
     .filter(it => it.isRawResource)
-    .map(it => ({
-      id: `res_${it.id}`,
-      rawId: it.id,
-      kind: 'resources',
-      categoryLabel: 'Recursos Primários',
-      name: it.name,
-      entity: it,
-      summary: `Forma: ${it.isFluid ? 'Fluido / Gás' : 'Sólido'} • Unidade: ${it.unit || 'un'}`,
-      rawData: it
-    }));
+    .map(it => {
+      const meta = buildItemSearchMeta(it.id);
+      return {
+        id: `res_${it.id}`,
+        rawId: it.id,
+        kind: 'resources',
+        subCategory: 'Recursos Brutos',
+        categoryLabel: 'Recursos',
+        name: it.name,
+        nameEn: it.nameEn || '',
+        isFluid: Boolean(it.isFluid),
+        hasAlt: meta.hasAlt,
+        progressionRank: 1,
+        entity: it,
+        searchBlob: Solver.normalizeText(`${it.name} ${it.nameEn || ''} recursos ${meta.searchExtra}`),
+        rawData: it
+      };
+    });
 
   const products = allItems
     .filter(it => !it.isRawResource)
-    .map(it => ({
-      id: `item_${it.id}`,
-      rawId: it.id,
-      kind: 'items',
-      categoryLabel: it.category || 'Itens & Produtos',
-      name: it.name,
-      entity: it,
-      summary: `Forma: ${it.isFluid ? 'Fluido / Gás' : 'Sólido'} • Categoria: ${it.category || 'Item'}`,
-      rawData: it
-    }));
-
-  const recipes = Object.values(window.SATISFACTORY_DATA?.recipes || {})
-    .filter(r => !r.isFicsmas)
-    .map(r => {
-      const m = Solver.getMachine(r.machine);
-      const firstProd = r.products?.[0] ? Solver.getItem(r.products[0].item) : null;
+    .map(it => {
+      const meta = buildItemSearchMeta(it.id);
+      const sub = it.category || 'Peças & Componentes';
       return {
-        id: `rec_${r.id}`,
-        rawId: r.id,
-        kind: 'recipes',
-        categoryLabel: r.isAlternate ? 'Receita Alternativa ★' : 'Receita Padrão',
-        name: r.cleanName || r.name,
-        entity: firstProd || m,
-        summary: `${m ? m.name : 'Máquina'} • Ciclo: ${r.duration || 1}s`,
-        rawData: r
+        id: `item_${it.id}`,
+        rawId: it.id,
+        kind: 'items',
+        subCategory: sub,
+        categoryLabel: sub,
+        name: it.name,
+        nameEn: it.nameEn || '',
+        isFluid: Boolean(it.isFluid),
+        hasAlt: meta.hasAlt,
+        progressionRank: LIB_PROGRESSION_ORDER[sub] || 8,
+        entity: it,
+        searchBlob: Solver.normalizeText(`${it.name} ${it.nameEn || ''} ${sub} ${meta.searchExtra}`),
+        rawData: it
       };
     });
 
@@ -4710,23 +5161,36 @@ function getLibraryEntries() {
     id: `mach_${m.id}`,
     rawId: m.id,
     kind: 'machines',
-    categoryLabel: 'Máquinas & Extratores',
+    subCategory: 'Máquinas',
+    categoryLabel: 'Máquinas',
     name: m.name,
+    nameEn: m.nameEn || '',
+    isFluid: false,
+    hasAlt: false,
+    progressionRank: 12,
     entity: m,
-    summary: `Consumo Base: ${fmt(m.powerConsumption || 0, 1)} MW`,
+    searchBlob: Solver.normalizeText(`${m.name} ${m.nameEn || ''} maquinas extratores`),
     rawData: m
   }));
 
-  const generators = Solver.getPowerGenerators().map(g => ({
-    id: `gen_${g.id}`,
-    rawId: g.id,
-    kind: 'generators',
-    categoryLabel: 'Geradores de Energia',
-    name: g.name,
-    entity: g,
-    summary: `Geração Base: ${fmt(g.powerProduction || 0, 1)} MW`,
-    rawData: g
-  }));
+  const generators = Solver.getPowerGenerators().map(g => {
+    const fuelsStr = (g.fuels || []).map(f => Solver.getItem(f.itemId || f.item)?.name || '').join(' ');
+    return {
+      id: `gen_${g.id}`,
+      rawId: g.id,
+      kind: 'generators',
+      subCategory: 'Geradores',
+      categoryLabel: 'Geradores',
+      name: g.name,
+      nameEn: g.nameEn || '',
+      isFluid: false,
+      hasAlt: false,
+      progressionRank: 13,
+      entity: g,
+      searchBlob: Solver.normalizeText(`${g.name} ${g.nameEn || ''} geradores energia ${fuelsStr}`),
+      rawData: g
+    };
+  });
 
   const { belts, pipes } = Solver.getBeltsAndPipes();
   const pipeImgMap = {
@@ -4735,14 +5199,20 @@ function getLibraryEntries() {
   };
   const logistics = [...belts, ...pipes].map(l => {
     const entityWithImg = l.wikiImage ? l : { ...l, wikiImage: pipeImgMap[l.id] || '' };
+    const isPipe = String(l.id || '').toLowerCase().includes('pipe');
     return {
       id: `logi_${l.id}`,
       rawId: l.id,
       kind: 'logistics',
-      categoryLabel: 'Esteiras & Tubulações',
+      subCategory: 'Esteiras & Tubos',
+      categoryLabel: 'Esteiras & Tubos',
       name: l.name,
+      nameEn: l.nameEn || '',
+      isFluid: isPipe,
+      hasAlt: false,
+      progressionRank: 14,
       entity: entityWithImg,
-      summary: `Capacidade: ${fmt(l.ratePerMin || 0, 0)} /min`,
+      searchBlob: Solver.normalizeText(`${l.name} ${l.nameEn || ''} esteiras tubos logistica`),
       rawData: l
     };
   });
@@ -4752,10 +5222,15 @@ function getLibraryEntries() {
     id: t.id,
     rawId: t.id,
     kind: 'tools',
-    categoryLabel: 'Ferramentas & Equipamentos',
+    subCategory: 'Ferramentas',
+    categoryLabel: 'Ferramentas',
     name: t.name,
+    nameEn: t.nameEn || '',
+    isFluid: false,
+    hasAlt: false,
+    progressionRank: 15,
     entity: t,
-    summary: `${t.tier} • ${t.slot}`,
+    searchBlob: Solver.normalizeText(`${t.name} ${t.nameEn || ''} ferramentas equipamentos ${t.tier || ''}`),
     rawData: t
   }));
 
@@ -4763,14 +5238,19 @@ function getLibraryEntries() {
     id: c.id,
     rawId: c.id,
     kind: 'creatures',
-    categoryLabel: 'Animais / Fauna',
+    subCategory: 'Fauna',
+    categoryLabel: 'Fauna',
     name: c.name,
+    nameEn: c.nameEn || '',
+    isFluid: false,
+    hasAlt: false,
+    progressionRank: 16,
     entity: c,
-    summary: `${c.behavior} • ${c.hp}`,
+    searchBlob: Solver.normalizeText(`${c.name} ${c.nameEn || ''} animais fauna ${c.behavior || ''}`),
     rawData: c
   }));
 
-  return [
+  _libEntriesCache = [
     ...rawResources,
     ...products,
     ...machines,
@@ -4779,22 +5259,125 @@ function getLibraryEntries() {
     ...tools,
     ...creatures
   ];
+  return _libEntriesCache;
+}
+
+function getFilteredLibraryEntries(allEntries, ignoreCategory = false) {
+  const st = AppState.library;
+  const query = Solver.normalizeText(st.searchQuery || '');
+  const favSet = new Set(st.favorites || []);
+
+  return allEntries.filter(e => {
+    if (!ignoreCategory && st.category !== 'all') {
+      if (st.category.startsWith('sub:')) {
+        const subName = st.category.slice(4);
+        if (e.kind !== 'items' || e.subCategory !== subName) return false;
+      } else if (e.kind !== st.category) {
+        return false;
+      }
+    }
+    if (st.filterForm === 'solid' && e.isFluid) return false;
+    if (st.filterForm === 'fluid' && !e.isFluid) return false;
+    if (st.filterAltOnly && !e.hasAlt) return false;
+    if (st.filterFavOnly && !favSet.has(e.id)) return false;
+    if (query && !e.searchBlob.includes(query)) return false;
+    return true;
+  });
+}
+
+let _libSearchDebounce = null;
+function setLibrarySearch(q) {
+  AppState.library.searchQuery = q;
+  AppState.library.focusedIndex = -1;
+  if (_libSearchDebounce) clearTimeout(_libSearchDebounce);
+  _libSearchDebounce = setTimeout(() => {
+    if (AppState.mode === 'library') {
+      updateLibrarySidebarCounts();
+      renderLibraryWorkspace();
+    }
+  }, 100);
 }
 
 function setLibraryCategory(cat) {
   AppState.library.category = cat;
-  AppState.library.selectedId = null;
+  AppState.library.focusedIndex = -1;
   renderAll(false);
 }
 
-function setLibrarySearch(q) {
-  AppState.library.searchQuery = q;
+function toggleLibraryItemsGroup(event) {
+  if (event) event.stopPropagation();
+  AppState.library.itemsExpanded = !AppState.library.itemsExpanded;
+  renderAll(false);
+}
+
+function toggleLibraryFiltersOpen() {
+  AppState.library.filtersOpen = !AppState.library.filtersOpen;
+  renderAll(false);
+}
+
+function setLibraryFilter(field, val) {
+  AppState.library[field] = val;
+  AppState.library.focusedIndex = -1;
+  renderAll(false);
+}
+
+function setLibraryViewMode(mode) {
+  AppState.library.viewMode = mode;
   renderLibraryWorkspace();
 }
 
-function selectLibraryEntry(entryId) {
-  AppState.library.selectedId = AppState.library.selectedId === entryId ? null : entryId;
+function setLibraryCardSize(sz) {
+  AppState.library.cardSize = sz;
   renderLibraryWorkspace();
+}
+
+function setLibrarySort(sortBy) {
+  AppState.library.sortBy = sortBy;
+  renderLibraryWorkspace();
+}
+
+function toggleLibrarySection(secKey) {
+  AppState.library.collapsedSections[secKey] = !AppState.library.collapsedSections[secKey];
+  renderLibraryWorkspace();
+}
+
+function selectLibraryEntry(entryId, fromHistory = false) {
+  const st = AppState.library;
+  if (!entryId || st.selectedId === entryId) {
+    st.selectedId = null;
+    st.detailHistory = [];
+  } else {
+    if (!fromHistory && st.selectedId && st.selectedId !== entryId) {
+      st.detailHistory.push(st.selectedId);
+      if (st.detailHistory.length > 25) st.detailHistory.shift();
+    }
+    st.selectedId = entryId;
+    pushLibraryRecent(entryId);
+  }
+  renderLibraryWorkspace();
+}
+
+function navigateLibraryDetailBack() {
+  const st = AppState.library;
+  const prev = st.detailHistory.pop();
+  if (prev) {
+    st.selectedId = prev;
+  } else {
+    st.selectedId = null;
+  }
+  renderLibraryWorkspace();
+}
+
+function navigateLibraryToRawId(rawId) {
+  const all = getLibraryEntries();
+  const target = all.find(e => e.rawId === rawId);
+  if (target) selectLibraryEntry(target.id);
+}
+
+function openRecipesForLibraryItem(itemName) {
+  AppState.recipes.searchQuery = itemName || '';
+  AppState.recipes.selectedId = null;
+  switchMode('recipes');
 }
 
 function planItemFromLibrary(itemId, isRaw) {
@@ -4833,211 +5416,503 @@ function planRecipeFromRecipesTab(itemId, recipeId) {
   switchMode('production');
 }
 
+function getLibraryCategoryIcon(catId) {
+  const d = window.SATISFACTORY_DATA || {};
+  const ex = window.SATISFACTORY_LIBRARY_EXTRA || {};
+  const map = {
+    all: d.items?.Desc_SpaceElevatorPart_9_C?.wikiImage || d.items?.Desc_IronPlate_C?.wikiImage,
+    resources: d.items?.Desc_OreIron_C?.wikiImage,
+    items: d.items?.Desc_IronPlateReinforced_C?.wikiImage || d.items?.Desc_IronPlate_C?.wikiImage,
+    machines: d.machines?.Build_ConstructorMk1_C?.wikiImage,
+    generators: d.generators?.Build_GeneratorCoal_C?.wikiImage,
+    logistics: (d.belts || [])[2]?.wikiImage || (d.belts || [])[0]?.wikiImage,
+    tools: (ex.tools || [])[0]?.wikiImage,
+    creatures: (ex.creatures || [])[0]?.wikiImage
+  };
+  return map[catId] || '';
+}
+
+function updateLibrarySidebarCounts() {
+  const allEntries = getLibraryEntries();
+  const matched = getFilteredLibraryEntries(allEntries, true);
+  const countMap = new Map();
+  countMap.set('all', matched.length);
+  matched.forEach(e => {
+    countMap.set(e.kind, (countMap.get(e.kind) || 0) + 1);
+    if (e.kind === 'items') {
+      const k = `sub:${e.subCategory}`;
+      countMap.set(k, (countMap.get(k) || 0) + 1);
+    }
+  });
+  document.querySelectorAll('[data-lib-cat-count]').forEach(el => {
+    const key = el.getAttribute('data-lib-cat-count');
+    const c = countMap.get(key) || 0;
+    el.textContent = String(c);
+    const btn = el.closest('.library-cat-btn');
+    if (btn) btn.classList.toggle('is-empty', c === 0);
+  });
+}
+
 function renderLibraryMode(sidebarEl, emptyOverlay) {
   emptyOverlay.classList.add('hidden');
   emptyOverlay.innerHTML = '';
 
+  const st = AppState.library;
   const allEntries = getLibraryEntries();
-  const counts = {
-    all: allEntries.length,
-    resources: allEntries.filter(e => e.kind === 'resources').length,
-    items: allEntries.filter(e => e.kind === 'items').length,
-    machines: allEntries.filter(e => e.kind === 'machines').length,
-    generators: allEntries.filter(e => e.kind === 'generators').length,
-    logistics: allEntries.filter(e => e.kind === 'logistics').length,
-    tools: allEntries.filter(e => e.kind === 'tools').length,
-    creatures: allEntries.filter(e => e.kind === 'creatures').length
-  };
+  const matchedAll = getFilteredLibraryEntries(allEntries, true);
+
+  const countByKind = (k) => k === 'all' ? matchedAll.length : matchedAll.filter(e => e.kind === k).length;
+
+  // Subcategorias reais de "Itens & Produtos"
+  const subNames = [...new Set(allEntries.filter(e => e.kind === 'items').map(e => e.subCategory))]
+    .sort((a, b) => (LIB_PROGRESSION_ORDER[a] || 99) - (LIB_PROGRESSION_ORDER[b] || 99));
 
   const cats = [
-    { id: 'all', label: '🌐 Tudo', count: counts.all },
-    { id: 'resources', label: '⛏️ Recursos', count: counts.resources },
-    { id: 'items', label: '📦 Itens & Produtos', count: counts.items },
-    { id: 'machines', label: '🏭 Máquinas', count: counts.machines },
-    { id: 'generators', label: '⚡ Geradores', count: counts.generators },
-    { id: 'logistics', label: '🚚 Esteiras & Tubos', count: counts.logistics },
-    { id: 'tools', label: '🔧 Ferramentas', count: counts.tools },
-    { id: 'creatures', label: '🐾 Animais / Fauna', count: counts.creatures }
+    { id: 'all', label: 'Tudo', color: '#475569' },
+    { id: 'resources', label: 'Recursos', color: LIB_CATEGORY_COLORS.resources },
+    { id: 'items', label: 'Itens & Produtos', color: LIB_CATEGORY_COLORS.items, expandable: true },
+    { id: 'machines', label: 'Máquinas', color: LIB_CATEGORY_COLORS.machines },
+    { id: 'generators', label: 'Geradores', color: LIB_CATEGORY_COLORS.generators },
+    { id: 'logistics', label: 'Esteiras & Tubos', color: LIB_CATEGORY_COLORS.logistics },
+    { id: 'tools', label: 'Ferramentas', color: LIB_CATEGORY_COLORS.tools },
+    { id: 'creatures', label: 'Fauna', color: LIB_CATEGORY_COLORS.creatures }
   ];
 
+  const activeFiltersCount = (st.filterForm !== 'all' ? 1 : 0) + (st.filterAltOnly ? 1 : 0) + (st.filterFavOnly ? 1 : 0);
+
   sidebarEl.innerHTML = `
-    <div class="sidebar-step-block">
-      <div class="step-header-row">
-        <span class="step-badge">BIBLIOTECA</span>
-        <h4>Enciclopédia do Jogo</h4>
-      </div>
+    <div class="sidebar-step-block lib-sidebar-search-block">
       <input
+        id="lib-search-input"
         type="text"
         class="sidebar-input"
-        placeholder="🔍 Buscar recurso, máquina, receita, animal..."
-        value="${AppState.library.searchQuery}"
+        placeholder="Buscar (PT ou EN)... [/]"
+        value="${libEsc(st.searchQuery)}"
         oninput="setLibrarySearch(this.value)"
       />
+      <button type="button" class="lib-filters-toggle ${st.filtersOpen || activeFiltersCount > 0 ? 'active' : ''}" onclick="toggleLibraryFiltersOpen()">
+        <span>Filtros${activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ''}</span>
+        <span>${st.filtersOpen ? '▾' : '▸'}</span>
+      </button>
+      ${st.filtersOpen ? `
+        <div class="lib-filter-chips">
+          <button type="button" class="am-qf-chip ${st.filterForm === 'all' ? 'active' : ''}" onclick="setLibraryFilter('filterForm', 'all')">Todos</button>
+          <button type="button" class="am-qf-chip ${st.filterForm === 'solid' ? 'active' : ''}" onclick="setLibraryFilter('filterForm', 'solid')">Sólido</button>
+          <button type="button" class="am-qf-chip ${st.filterForm === 'fluid' ? 'active' : ''}" onclick="setLibraryFilter('filterForm', 'fluid')">💧 Fluido</button>
+          <button type="button" class="am-qf-chip ${st.filterAltOnly ? 'active' : ''}" onclick="setLibraryFilter('filterAltOnly', ${!st.filterAltOnly})">ALT</button>
+          <button type="button" class="am-qf-chip ${st.filterFavOnly ? 'active' : ''}" onclick="setLibraryFilter('filterFavOnly', ${!st.filterFavOnly})">★ Favoritos</button>
+        </div>
+      ` : ''}
     </div>
 
-    <div class="sidebar-step-block">
-      <div class="step-header-row">
-        <span class="step-badge">CATEGORIAS</span>
-        <h4>Filtrar por Tipo</h4>
-      </div>
-      <div class="library-cat-list">
-        ${cats.map(c => `
-          <button
-            type="button"
-            class="library-cat-btn ${AppState.library.category === c.id ? 'active' : ''}"
-            onclick="setLibraryCategory('${c.id}')"
-          >
-            <span>${c.label}</span>
-            <span class="library-cat-count">${c.count}</span>
-          </button>
-        `).join('')}
-      </div>
+    <div class="library-cat-list">
+      ${cats.map(c => {
+        const cnt = countByKind(c.id);
+        const iconUrl = getLibraryCategoryIcon(c.id);
+        const isActive = st.category === c.id;
+        const subHtml = (c.expandable && st.itemsExpanded) ? `
+          <div class="library-subcat-list">
+            ${subNames.map(sub => {
+              const subKey = `sub:${sub}`;
+              const subCnt = matchedAll.filter(e => e.kind === 'items' && e.subCategory === sub).length;
+              const subColor = LIB_CATEGORY_COLORS[sub] || '#2563EB';
+              return `
+                <button
+                  type="button"
+                  class="library-cat-btn library-subcat-btn ${st.category === subKey ? 'active' : ''} ${subCnt === 0 ? 'is-empty' : ''}"
+                  onclick="setLibraryCategory('${libEsc(subKey)}')"
+                >
+                  <span class="lib-cat-left">
+                    <span class="lib-cat-dot" style="background:${subColor};"></span>
+                    <span>${libEsc(sub)}</span>
+                  </span>
+                  <span class="library-cat-count" data-lib-cat-count="${libEsc(subKey)}">${subCnt}</span>
+                </button>
+              `;
+            }).join('')}
+          </div>
+        ` : '';
+
+        return `
+          <div class="library-cat-group">
+            <button
+              type="button"
+              class="library-cat-btn ${isActive ? 'active' : ''} ${cnt === 0 ? 'is-empty' : ''}"
+              onclick="${c.expandable ? `if (AppState.library.category === 'items') { toggleLibraryItemsGroup(event); } else { AppState.library.itemsExpanded = true; setLibraryCategory('items'); }` : `setLibraryCategory('${c.id}')`}"
+            >
+              <span class="lib-cat-left">
+                ${c.id !== 'all' ? `<span class="lib-cat-dot" style="background:${c.color};"></span>` : ''}
+                ${iconUrl ? `<img class="lib-cat-img" src="${iconUrl}" alt="" loading="lazy" />` : ''}
+                <span>${c.label}</span>
+              </span>
+              <span class="lib-cat-right">
+                ${c.expandable ? `<span class="lib-cat-chevron" onclick="toggleLibraryItemsGroup(event)">${st.itemsExpanded ? '▾' : '▸'}</span>` : ''}
+                <span class="library-cat-count" data-lib-cat-count="${c.id}">${cnt}</span>
+              </span>
+            </button>
+            ${subHtml}
+          </div>
+        `;
+      }).join('')}
     </div>
   `;
 
   renderLibraryWorkspace(allEntries);
 }
 
+function renderLibraryDetailPanel(entry) {
+  if (!entry) return '';
+  const st = AppState.library;
+  const favSet = new Set(st.favorites || []);
+  const isFav = favSet.has(entry.id);
+  const catColor = getLibColor(entry);
+  const d = entry.rawData || {};
+
+  let statsHtml = '';
+  let bodyHtml = '';
+
+  const clickableItemChip = (itemId, labelOverride = null) => {
+    const it = Solver.getItem(itemId);
+    if (!it) return libEsc(labelOverride || itemId);
+    return `
+      <button type="button" class="lib-link-chip" onclick="navigateLibraryToRawId('${it.id}')">
+        ${renderEntityIcon(it, 18)}
+        <span>${libEsc(labelOverride || it.name)}</span>
+      </button>
+    `;
+  };
+
+  if (entry.kind === 'resources' || entry.kind === 'items') {
+    const stats = [];
+    stats.push({ k: 'Forma', v: d.isFluid ? '💧 Fluido' : 'Sólido' });
+    if (d.stackSize) stats.push({ k: 'Pilha', v: String(d.stackSize) });
+    if (d.sinkPoints > 0) stats.push({ k: 'Pontos SUPIMPA', v: fmt(d.sinkPoints, 0) });
+    if (d.energyMj > 0) stats.push({ k: 'Energia', v: `${fmt(d.energyMj, 0)} MJ` });
+    if (d.radioactive > 0) stats.push({ k: 'Radioatividade', v: fmt(d.radioactive, 2) });
+
+    statsHtml = stats.length ? `
+      <div class="lib-detail-stats">
+        ${stats.map(s => `<div class="lib-stat-pill"><span>${s.k}</span><strong>${s.v}</strong></div>`).join('')}
+      </div>
+    ` : '';
+
+    const prodRecs = Solver.indexes.recipesByProduct.get(entry.rawId) || [];
+    const usedInRecs = Object.values(window.SATISFACTORY_DATA?.recipes || {})
+      .filter(r => !r.isFicsmas && (r.ingredients || []).some(i => i.item === entry.rawId));
+    const isRaw = entry.kind === 'resources';
+
+    const renderRecBlock = (r) => {
+      const m = Solver.getMachine(r.machine);
+      const ings = (r.ingredients || []).map(i => `<span class="lib-rec-io-item">${clickableItemChip(i.item)} <small>${fmt(i.ratePerMin, 1)}/m</small></span>`).join('');
+      const prods = (r.products || []).map(p => `<span class="lib-rec-io-item">${clickableItemChip(p.item)} <small>${fmt(p.ratePerMin, 1)}/m</small></span>`).join('');
+      return `
+        <div class="lib-rec-card">
+          <div class="lib-rec-head">
+            <strong>${libEsc(r.cleanName || r.name)}</strong>
+            ${r.isAlternate ? '<span class="am-alt-badge">ALT</span>' : ''}
+            <span class="lib-rec-mach">${libEsc(m?.name || '')}</span>
+          </div>
+          <div class="lib-rec-flow">${ings} <span class="lib-rec-arrow">→</span> ${prods}</div>
+        </div>
+      `;
+    };
+
+    bodyHtml = `
+      ${d.description ? `<p class="lib-detail-desc">${libEsc(d.description)}</p>` : ''}
+      <div class="lib-detail-actions">
+        ${(isRaw || prodRecs.length > 0) ? `
+          <button type="button" class="btn-small-accent" onclick="planItemFromLibrary('${entry.rawId}', ${isRaw})">Planejar</button>
+        ` : ''}
+        <button type="button" class="btn-icon-action" onclick="openRecipesForLibraryItem('${libEsc(entry.name)}')">Receitas</button>
+      </div>
+      <div class="lib-detail-sec">
+        <h4>Como produzir (${prodRecs.length})</h4>
+        ${prodRecs.length > 0 ? prodRecs.map(renderRecBlock).join('') : '<div class="lib-empty-note">Recurso extraído diretamente do mapa.</div>'}
+      </div>
+      <div class="lib-detail-sec">
+        <h4>Onde é usado (${usedInRecs.length})</h4>
+        ${usedInRecs.length > 0 ? usedInRecs.slice(0, 14).map(renderRecBlock).join('') : '<div class="lib-empty-note">Uso direto / produto final.</div>'}
+      </div>
+    `;
+  } else if (entry.kind === 'machines') {
+    const recs = Solver.getRecipesByMachine(d.id);
+    const stats = [];
+    if (d.powerConsumption || d.basePowerMw || d.powerMw) {
+      stats.push({ k: 'Consumo', v: `${fmt(d.powerConsumption || d.basePowerMw || d.powerMw, 1)} MW` });
+    }
+    if (d.sloopSlots > 0) stats.push({ k: 'Somersloop', v: `${d.sloopSlots} slot(s)` });
+    statsHtml = stats.length ? `<div class="lib-detail-stats">${stats.map(s => `<div class="lib-stat-pill"><span>${s.k}</span><strong>${s.v}</strong></div>`).join('')}</div>` : '';
+    const buildCost = Array.isArray(d.buildCost) ? d.buildCost : [];
+    bodyHtml = `
+      ${d.description ? `<p class="lib-detail-desc">${libEsc(d.description)}</p>` : ''}
+      ${buildCost.length > 0 ? `
+        <div class="lib-detail-sec">
+          <h4>Custo de construção</h4>
+          <div class="lib-cost-row">
+            ${buildCost.map(bc => `<span class="lib-rec-io-item">${clickableItemChip(bc.item)} <small>×${bc.amount}</small></span>`).join('')}
+          </div>
+        </div>
+      ` : ''}
+      <div class="lib-detail-sec">
+        <h4>Receitas (${recs.length})</h4>
+        <div class="lib-rec-tags">
+          ${recs.length > 0 ? recs.slice(0, 30).map(r => `<span class="lib-tag-pill">${libEsc(r.cleanName || r.name)}${r.isAlternate ? ' ★' : ''}</span>`).join('') : '<div class="lib-empty-note">Extração direta.</div>'}
+        </div>
+      </div>
+    `;
+  } else if (entry.kind === 'generators') {
+    const stats = [{ k: 'Geração', v: `${fmt(d.powerProduction || d.powerProductionMw || 0, 1)} MW` }];
+    statsHtml = `<div class="lib-detail-stats">${stats.map(s => `<div class="lib-stat-pill"><span>${s.k}</span><strong>${s.v}</strong></div>`).join('')}</div>`;
+    const fuels = d.fuels || [];
+    bodyHtml = `
+      <div class="lib-detail-sec">
+        <h4>Combustíveis (${fuels.length})</h4>
+        <div class="lib-cost-row">
+          ${fuels.map(f => `<span class="lib-rec-io-item">${clickableItemChip(f.itemId || f.item)} <small>${fmt(f.ratePerMin || 0, 1)}/m</small></span>`).join('')}
+        </div>
+      </div>
+    `;
+  } else if (entry.kind === 'logistics') {
+    const stats = [{ k: 'Vazão', v: `${fmt(d.ratePerMin || 0, 0)} ${entry.isFluid ? 'm³' : 'un'}/min` }];
+    statsHtml = `<div class="lib-detail-stats">${stats.map(s => `<div class="lib-stat-pill"><span>${s.k}</span><strong>${s.v}</strong></div>`).join('')}</div>`;
+  } else if (entry.kind === 'tools' || entry.kind === 'creatures') {
+    const stats = [];
+    if (d.tier) stats.push({ k: 'Desbloqueio', v: d.tier });
+    if (d.slot) stats.push({ k: 'Slot', v: d.slot });
+    if (d.damage) stats.push({ k: 'Efeito', v: d.damage });
+    if (d.behavior) stats.push({ k: 'Comportamento', v: d.behavior });
+    if (d.hp) stats.push({ k: 'Vida', v: d.hp });
+    if (d.drop) stats.push({ k: 'Drop', v: d.drop });
+    statsHtml = stats.length ? `<div class="lib-detail-stats">${stats.map(s => `<div class="lib-stat-pill"><span>${s.k}</span><strong>${libEsc(s.v)}</strong></div>`).join('')}</div>` : '';
+    bodyHtml = d.desc ? `<p class="lib-detail-desc">${libEsc(d.desc)}</p>` : '';
+  }
+
+  const isFauna = entry.kind === 'creatures';
+  return `
+    <aside class="lib-side-detail ${isFauna ? 'is-fauna' : ''}" aria-label="Detalhes do item">
+      <div class="lib-side-detail-top">
+        <div class="lib-side-top-left">
+          ${st.detailHistory.length > 0 ? `<button type="button" class="btn-icon-action" onclick="navigateLibraryDetailBack()">← Voltar</button>` : ''}
+          <span class="lib-cat-dot" style="background:${catColor};"></span>
+          <span class="lib-side-cat">${libEsc(entry.categoryLabel)}</span>
+        </div>
+        <div class="lib-side-top-right">
+          <button type="button" class="lib-fav-btn ${isFav ? 'active' : ''}" onclick="toggleLibraryFavorite(event, '${entry.id}')" title="Favoritar">${isFav ? '★' : '☆'}</button>
+          <button type="button" class="icon-close" onclick="selectLibraryEntry('${entry.id}')" aria-label="Fechar">✕</button>
+        </div>
+      </div>
+      <div class="lib-side-hero ${isFauna ? 'fauna-hero' : ''}">
+        ${entry.entity ? renderShowcaseImage(entry.entity, isFauna ? 160 : 96) : ''}
+        <div>
+          <h3>${libEsc(entry.name)}</h3>
+          ${entry.nameEn && entry.nameEn.toLowerCase() !== entry.name.toLowerCase() ? `<div class="lib-name-en">${libEsc(entry.nameEn)}</div>` : ''}
+        </div>
+      </div>
+      ${statsHtml}
+      <div class="lib-side-body">${bodyHtml}</div>
+    </aside>
+  `;
+}
+
+let _lastRenderedLibFlatIds = [];
+
 function renderLibraryWorkspace(cachedEntries = null) {
   const view = document.getElementById('library-workspace-view');
   if (!view) return;
 
+  const st = AppState.library;
   const allEntries = cachedEntries || getLibraryEntries();
-  const cat = AppState.library.category;
-  const query = Solver.normalizeText(AppState.library.searchQuery || '');
+  let filtered = getFilteredLibraryEntries(allEntries, false);
 
-  let filtered = cat === 'all' ? allEntries : allEntries.filter(e => e.kind === cat);
-  if (query) {
-    filtered = filtered.filter(e =>
-      Solver.normalizeText(e.name).includes(query) ||
-      Solver.normalizeText(e.categoryLabel).includes(query) ||
-      Solver.normalizeText(e.summary).includes(query)
-    );
+  // Ordenação
+  if (st.sortBy === 'az') {
+    filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  } else if (st.sortBy === 'category') {
+    filtered = [...filtered].sort((a, b) => a.categoryLabel.localeCompare(b.categoryLabel, 'pt-BR') || a.name.localeCompare(b.name, 'pt-BR'));
+  } else {
+    filtered = [...filtered].sort((a, b) => (a.progressionRank - b.progressionRank) || a.name.localeCompare(b.name, 'pt-BR'));
   }
 
-  const selectedEntry = AppState.library.selectedId
-    ? allEntries.find(e => e.id === AppState.library.selectedId)
-    : null;
+  _lastRenderedLibFlatIds = filtered.map(e => e.id);
+  const favSet = new Set(st.favorites || []);
+  const selectedEntry = st.selectedId ? allEntries.find(e => e.id === st.selectedId) : null;
 
-  let detailHtml = '';
-  if (selectedEntry) {
-    let extraDetails = '';
-    if (selectedEntry.kind === 'resources' || selectedEntry.kind === 'items') {
-      const prodRecs = Solver.indexes.recipesByProduct.get(selectedEntry.rawId) || [];
-      const usedInRecs = Object.values(window.SATISFACTORY_DATA?.recipes || {})
-        .filter(r => !r.isFicsmas && (r.ingredients || []).some(i => i.item === selectedEntry.rawId));
-      const isRaw = selectedEntry.kind === 'resources';
-      extraDetails = `
-        <div class="lib-detail-lists">
-          <div>
-            <strong>Produzido em (${prodRecs.length} receita(s)):</strong>
-            <ul>${prodRecs.slice(0, 6).map(r => `<li>${r.cleanName || r.name} (${Solver.getMachine(r.machine)?.name || ''})</li>`).join('') || '<li>Recurso extraído diretamente do mapa</li>'}</ul>
-          </div>
-          <div>
-            <strong>Usado como ingrediente em (${usedInRecs.length} receita(s)):</strong>
-            <ul>${usedInRecs.slice(0, 6).map(r => `<li>${r.cleanName || r.name}</li>`).join('') || '<li>Produto final / Uso direto</li>'}</ul>
-          </div>
-        </div>
-        ${(isRaw || prodRecs.length > 0) ? `
-          <div style="margin-top:14px;">
-            <button type="button" class="btn-mount-flow ready" onclick="planItemFromLibrary('${selectedEntry.rawId}', ${isRaw})">
-              ${isRaw ? '⛏️ Usar este Recurso na Aba de Produção' : '🏭 Planejar Produção deste Item (30/min)'}
-            </button>
-          </div>
-        ` : ''}
-      `;
-    } else if (selectedEntry.kind === 'recipes') {
-      const r = selectedEntry.rawData;
-      const m = Solver.getMachine(r.machine);
-      const ings = (r.ingredients || []).map(i => `${fmt(i.ratePerMin, 1)}/m ${Solver.getItem(i.item)?.name || i.item}`).join(' + ');
-      const prods = (r.products || []).map(p => `${fmt(p.ratePerMin, 1)}/m ${Solver.getItem(p.item)?.name || p.item}`).join(' + ');
-      extraDetails = `
-        <div class="lib-detail-lists">
-          <div><strong>Máquina:</strong> ${m ? m.name : 'Bancada'} • <strong>Ciclo:</strong> ${r.duration || 1}s</div>
-          <div><strong>Entrada:</strong> ${ings || 'Nenhuma'}</div>
-          <div><strong>Saída:</strong> ${prods || 'Nenhuma'}</div>
-        </div>
-      `;
-    } else if (selectedEntry.kind === 'machines') {
-      const m = selectedEntry.rawData;
-      const recs = Solver.getRecipesByMachine(m.id);
-      extraDetails = `
-        <div class="lib-detail-lists">
-          <div><strong>Consumo Elétrico Base:</strong> ⚡ ${fmt(m.powerConsumption || 0, 1)} MW</div>
-          <div><strong>Receitas compatíveis:</strong> ${recs.length > 0 ? recs.slice(0, 8).map(r => r.cleanName).join(', ') + (recs.length > 8 ? '...' : '') : 'Extração direta de nós do mapa'}</div>
-        </div>
-      `;
-    } else if (selectedEntry.kind === 'generators') {
-      const g = selectedEntry.rawData;
-      const fuels = (g.fuels || []).map(f => Solver.getItem(f.itemId)?.name || f.itemId).join(', ');
-      extraDetails = `
-        <div class="lib-detail-lists">
-          <div><strong>Geração Base:</strong> ⚡ ${fmt(g.powerProduction || 0, 1)} MW</div>
-          <div><strong>Combustíveis aceitos:</strong> ${fuels}</div>
-        </div>
-      `;
-    } else if (selectedEntry.kind === 'tools' || selectedEntry.kind === 'creatures') {
-      const d = selectedEntry.rawData;
-      extraDetails = `
-        <div class="lib-detail-lists">
-          <div>${d.desc}</div>
-          ${d.damage ? `<div><strong>Efeito / Dano:</strong> ${d.damage}</div>` : ''}
-          ${d.drop ? `<div><strong>Recompensa / Drop:</strong> ${d.drop}</div>` : ''}
+  const renderCard = (entry, flatIdx) => {
+    const color = getLibColor(entry);
+    const isFav = favSet.has(entry.id);
+    const isSel = st.selectedId === entry.id;
+    const isFocused = st.focusedIndex === flatIdx;
+    const imgSize = st.viewMode === 'list' ? 28 : (st.cardSize === 'sm' ? 40 : (st.cardSize === 'lg' ? 68 : 52));
+    const nameHtml = highlightLibMatch(entry.name, st.searchQuery);
+
+    if (st.viewMode === 'list') {
+      return `
+        <div
+          class="lib-list-row ${isSel ? 'active' : ''} ${isFocused ? 'kb-focus' : ''}"
+          style="--lib-cat-color:${color};"
+          onclick="selectLibraryEntry('${entry.id}')"
+        >
+          <span class="lib-cat-dot" style="background:${color};"></span>
+          ${entry.entity ? renderEntityIcon(entry.entity, imgSize) : ''}
+          <strong class="lib-list-name">${nameHtml}${entry.isFluid ? ' <span class="lib-fluid-drop" title="Fluido">💧</span>' : ''}</strong>
+          <span class="lib-list-cat">${libEsc(entry.categoryLabel)}</span>
+          <button type="button" class="lib-fav-btn ${isFav ? 'active' : ''}" onclick="toggleLibraryFavorite(event, '${entry.id}')" title="Favoritar">${isFav ? '★' : '☆'}</button>
         </div>
       `;
     }
 
-    detailHtml = `
-      <div class="workspace-detail-backdrop" onclick="if(event.target===this) selectLibraryEntry('${selectedEntry.id}')">
-        <div class="workspace-detail-modal">
-          <div class="lib-detail-head">
-            <div class="lib-detail-icon">
-              ${selectedEntry.entity ? renderShowcaseImage(selectedEntry.entity, 68) : `<span class="lib-emoji-lg">${selectedEntry.emojiIcon || '📦'}</span>`}
-            </div>
-            <div style="flex:1;">
-              <span class="lib-badge">${selectedEntry.categoryLabel}</span>
-              <h3>${selectedEntry.name}</h3>
-              <p>${selectedEntry.summary}</p>
-            </div>
-            <button type="button" class="icon-close" onclick="selectLibraryEntry('${selectedEntry.id}')">✕</button>
-          </div>
-          ${extraDetails}
+    return `
+      <div
+        role="button"
+        tabindex="0"
+        class="lib-card lib-view-${st.viewMode} lib-size-${st.cardSize} ${isSel ? 'active' : ''} ${isFocused ? 'kb-focus' : ''}"
+        style="--lib-cat-color:${color};"
+        onclick="selectLibraryEntry('${entry.id}')"
+        onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectLibraryEntry('${entry.id}');}"
+      >
+        <div class="lib-card-strip" style="background:${color};"></div>
+        <button type="button" class="lib-fav-btn lib-card-fav ${isFav ? 'active' : ''}" onclick="toggleLibraryFavorite(event, '${entry.id}')" title="Favoritar">${isFav ? '★' : '☆'}</button>
+        ${entry.isFluid ? '<span class="lib-fluid-drop lib-card-drop" title="Fluido">💧</span>' : ''}
+        <div class="lib-card-icon">
+          ${entry.entity ? renderEntityIcon(entry.entity, imgSize) : ''}
         </div>
+        <strong class="lib-card-name">${nameHtml}</strong>
+        ${st.viewMode === 'cards' ? `<span class="lib-card-sub">${libEsc(entry.categoryLabel)}</span>` : ''}
+      </div>
+    `;
+  };
+
+  // Seções recolhíveis quando em "Tudo" ou "Itens & Produtos" sem busca estreita
+  const useSections = (st.category === 'all' || st.category === 'items') && st.sortBy !== 'az';
+  let contentHtml = '';
+
+  // Seção Recentes (quando sem busca e na visão Tudo)
+  const recentEntries = (!st.searchQuery && st.category === 'all' && !st.filterFavOnly && (st.recents || []).length > 0)
+    ? st.recents.map(id => allEntries.find(e => e.id === id)).filter(Boolean).slice(0, 8)
+    : [];
+
+  if (recentEntries.length > 0) {
+    const collapsed = Boolean(st.collapsedSections['__recents']);
+    contentHtml += `
+      <section class="lib-section">
+        <button type="button" class="lib-section-head" onclick="toggleLibrarySection('__recents')">
+          <span class="lib-sec-title">Recentes <small>(${recentEntries.length})</small></span>
+          <span>${collapsed ? '▸' : '▾'}</span>
+        </button>
+        ${!collapsed ? `
+          <div class="lib-items-container lib-view-${st.viewMode} lib-size-${st.cardSize}">
+            ${recentEntries.map(e => renderCard(e, -1)).join('')}
+          </div>
+        ` : ''}
+      </section>
+    `;
+  }
+
+  if (filtered.length === 0) {
+    contentHtml += '<div class="picker-empty">Nenhum resultado encontrado.</div>';
+  } else if (useSections) {
+    const groups = new Map();
+    filtered.forEach((e, idx) => {
+      const gKey = st.category === 'items' ? e.subCategory : e.categoryLabel;
+      if (!groups.has(gKey)) groups.set(gKey, { color: getLibColor(e), items: [] });
+      groups.get(gKey).items.push({ entry: e, idx });
+    });
+
+    for (const [gName, gData] of groups.entries()) {
+      const collapsed = Boolean(st.collapsedSections[gName]);
+      contentHtml += `
+        <section class="lib-section">
+          <button type="button" class="lib-section-head" onclick="toggleLibrarySection('${libEsc(gName)}')">
+            <span class="lib-sec-title">
+              <span class="lib-cat-dot" style="background:${gData.color};"></span>
+              ${libEsc(gName)} <small>(${gData.items.length})</small>
+            </span>
+            <span>${collapsed ? '▸' : '▾'}</span>
+          </button>
+          ${!collapsed ? `
+            <div class="lib-items-container lib-view-${st.viewMode} lib-size-${st.cardSize}">
+              ${gData.items.map(x => renderCard(x.entry, x.idx)).join('')}
+            </div>
+          ` : ''}
+        </section>
+      `;
+    }
+  } else {
+    contentHtml += `
+      <div class="lib-items-container lib-view-${st.viewMode} lib-size-${st.cardSize}">
+        ${filtered.map((e, idx) => renderCard(e, idx)).join('')}
       </div>
     `;
   }
 
-  const displayList = filtered.slice(0, 180);
-
   view.innerHTML = `
-    <div class="lib-workspace-header">
-      <div>
-        <h2>📚 Biblioteca Satisfactory+</h2>
-        <span>${filtered.length} registro(s) encontrado(s)</span>
+    <div class="lib-shell ${selectedEntry ? 'has-detail' : ''}">
+      <div class="lib-main-col">
+        <div class="lib-toolbar">
+          <span class="lib-count-label">${filtered.length} item(ns)</span>
+          <div class="lib-toolbar-controls">
+            <select class="lib-sort-select" onchange="setLibrarySort(this.value)" aria-label="Ordenar">
+              <option value="progression" ${st.sortBy === 'progression' ? 'selected' : ''}>Progressão</option>
+              <option value="az" ${st.sortBy === 'az' ? 'selected' : ''}>A–Z</option>
+              <option value="category" ${st.sortBy === 'category' ? 'selected' : ''}>Categoria</option>
+            </select>
+            <div class="lib-seg-group" role="group" aria-label="Visualização">
+              <button type="button" class="lib-seg-btn ${st.viewMode === 'grid' ? 'active' : ''}" onclick="setLibraryViewMode('grid')" title="Grade compacta">⊞</button>
+              <button type="button" class="lib-seg-btn ${st.viewMode === 'list' ? 'active' : ''}" onclick="setLibraryViewMode('list')" title="Lista">☰</button>
+              <button type="button" class="lib-seg-btn ${st.viewMode === 'cards' ? 'active' : ''}" onclick="setLibraryViewMode('cards')" title="Cards">▭</button>
+            </div>
+            ${st.viewMode !== 'list' ? `
+              <div class="lib-seg-group" role="group" aria-label="Tamanho">
+                <button type="button" class="lib-seg-btn ${st.cardSize === 'sm' ? 'active' : ''}" onclick="setLibraryCardSize('sm')" title="Pequeno">P</button>
+                <button type="button" class="lib-seg-btn ${st.cardSize === 'md' ? 'active' : ''}" onclick="setLibraryCardSize('md')" title="Médio">M</button>
+                <button type="button" class="lib-seg-btn ${st.cardSize === 'lg' ? 'active' : ''}" onclick="setLibraryCardSize('lg')" title="Grande">G</button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+        <div class="lib-scroll-area">${contentHtml}</div>
       </div>
-    </div>
-    ${detailHtml}
-    <div class="lib-cards-grid">
-      ${displayList.map(entry => `
-        <button
-          type="button"
-          class="lib-card ${AppState.library.selectedId === entry.id ? 'active' : ''}"
-          onclick="selectLibraryEntry('${entry.id}')"
-        >
-          <div class="lib-card-icon">
-            ${entry.entity ? renderEntityIcon(entry.entity, 48) : `<span class="lib-emoji">${entry.emojiIcon || '📦'}</span>`}
-          </div>
-          <div class="lib-card-body">
-            <span class="lib-badge">${entry.categoryLabel}</span>
-            <strong>${entry.name}</strong>
-            <small>${entry.summary}</small>
-          </div>
-        </button>
-      `).join('')}
-      ${filtered.length === 0 ? `<div class="picker-empty">Nenhum item encontrado na Biblioteca.</div>` : ''}
+      ${renderLibraryDetailPanel(selectedEntry)}
     </div>
   `;
 }
+
+// Atalhos de teclado da Biblioteca: "/" busca, Setas navegam, Enter abre, ESC fecha
+document.addEventListener('keydown', (e) => {
+  if (AppState.mode !== 'library') return;
+  const tag = (e.target && e.target.tagName || '').toLowerCase();
+  const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select';
+
+  if (e.key === '/' && !isTyping) {
+    e.preventDefault();
+    const inp = document.getElementById('lib-search-input');
+    if (inp) { inp.focus(); inp.select(); }
+    return;
+  }
+  if (e.key === 'Escape' && AppState.library.selectedId) {
+    e.preventDefault();
+    AppState.library.selectedId = null;
+    AppState.library.detailHistory = [];
+    renderLibraryWorkspace();
+    return;
+  }
+  if (isTyping || _lastRenderedLibFlatIds.length === 0) return;
+
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    AppState.library.focusedIndex = (AppState.library.focusedIndex + 1) % _lastRenderedLibFlatIds.length;
+    renderLibraryWorkspace();
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const len = _lastRenderedLibFlatIds.length;
+    AppState.library.focusedIndex = (AppState.library.focusedIndex - 1 + len) % len;
+    renderLibraryWorkspace();
+  } else if (e.key === 'Enter' && AppState.library.focusedIndex >= 0) {
+    e.preventDefault();
+    const id = _lastRenderedLibFlatIds[AppState.library.focusedIndex];
+    if (id) selectLibraryEntry(id);
+  }
+});
 
 /* ============================================================================
  * ABA 6: 📜 RECEITAS (TODAS AS RECEITAS OFICIAIS SATISFACTORY 1.0+ EM PT-BR)

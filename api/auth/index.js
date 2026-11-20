@@ -162,6 +162,37 @@ module.exports = async function handler(req, res) {
       return sendJson(res, 200, { ok: true, message: 'Senha alterada com sucesso.' });
     }
 
+    // POST /api/auth?action=preferences (Salvar tema e favoritos/recentes da Biblioteca na conta)
+    if (req.method === 'POST' && action === 'preferences') {
+      const auth = await getAuthenticatedUser(req, res, false);
+      if (!auth) return sendJson(res, 401, { error: 'Sua sessão expirou. Faça login novamente.' });
+
+      const body = await readRequestBody(req, 32 * 1024);
+      const current = (auth.user.preferences && typeof auth.user.preferences === 'object')
+        ? { ...auth.user.preferences }
+        : {};
+
+      if (body.theme === 'light' || body.theme === 'dark') {
+        current.theme = body.theme;
+      }
+      if (Array.isArray(body.libraryFavorites)) {
+        current.libraryFavorites = [...new Set(
+          body.libraryFavorites
+            .filter((x) => typeof x === 'string' && x.length > 0 && x.length <= 120)
+        )].slice(0, 250);
+      }
+      if (Array.isArray(body.libraryRecents)) {
+        current.libraryRecents = [...new Set(
+          body.libraryRecents
+            .filter((x) => typeof x === 'string' && x.length > 0 && x.length <= 120)
+        )].slice(0, 30);
+      }
+
+      auth.user.preferences = current;
+      await writeJsonBlob(`db/users/${auth.user.usernameLower}.json`, auth.user);
+      return sendJson(res, 200, { ok: true, preferences: sanitizeUser(auth.user).preferences });
+    }
+
     return sendJson(res, 404, { error: 'Ação de autenticação não encontrada.' });
   } catch (err) {
     if (err.message === 'PAYLOAD_TOO_LARGE') return sendJson(res, 413, { error: 'Requisição muito grande.' });

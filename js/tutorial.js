@@ -22,10 +22,10 @@ const TUTORIAL_SLIDES = [
       }
     ],
     legend: [
-      '<strong>Painel esquerdo</strong>: abas da ferramenta, escolhas de itens e botão para gerar a linha.',
+      '<strong>Painel esquerdo</strong>: abas da ferramenta, escolhas de itens, botão de montar e <strong>Limpar</strong> (com <strong>Desfazer</strong>).',
       '<strong>Área de trabalho</strong>: espaço central onde as máquinas e esteiras são desenhadas.',
-      '<strong>Topo direito</strong>: direção do fluxo, <strong>Tutorial</strong>, <strong>Patch notes</strong>, <strong>Reportar</strong> e <strong>Entrar</strong>.',
-      '<strong>Barra inferior</strong>: zoom, <strong>Visão 3D</strong>, agrupamento de máquinas e <strong>Centralizar</strong>.'
+      '<strong>Topo direito</strong>: direção do fluxo em 4 sentidos (<strong>→ ← ↓ ↑</strong>), <strong>Tutorial</strong>, <strong>Patch notes</strong>, <strong>Reportar</strong> e <strong>Entrar</strong>.',
+      '<strong>Canto inferior direito</strong>: resumo recolhível da fábrica em cima e barra de ferramentas (zoom, <strong>3D</strong>, agrupamento, compacto e <strong>Centralizar</strong>) embaixo.'
     ],
     tip: 'Use as setas do teclado (← →) para trocar de passo e clique em qualquer imagem para ampliar.'
   },
@@ -102,7 +102,7 @@ const TUTORIAL_SLIDES = [
       '<strong>Etiqueta no meio</strong>: mostra a versão da esteira e a vazão (itens por minuto).',
       '<strong>Máquina seguinte</strong>: recebe o item e continua a produção.'
     ],
-    tip: 'Prefere ler na vertical? Clique em <strong>⬇️ Cima ➔ Baixo</strong> no topo da tela.'
+    tip: 'Você pode alterar a direção da linha a qualquer momento nos 4 botões de seta (<strong>→ ← ↓ ↑</strong>) no topo da tela, ou clicar em <strong>🛠️ Editar no Livre</strong> para inserir divisores e armazenamento.'
   },
   {
     id: 'etiquetas-esteiras',

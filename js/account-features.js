@@ -35,6 +35,7 @@ const AccountState = {
     success: '',
     myReports: [],
     myReportsLoaded: false,
+    unreadCount: 0,
     quota: null
   },
 
@@ -43,9 +44,14 @@ const AccountState = {
     loading: false,
     error: '',
     filterType: 'all',
+    filterStatus: 'all', // 'all' | 'novo' | 'lido' | 'feito'
     filterUser: '',
     filterPeriod: 'all', // 'all' | '24h' | '7d' | '14d'
-    searchQuery: ''
+    searchQuery: '',
+    newCount: 0,
+    replyingId: null,
+    replyDraft: '',
+    savingId: null
   },
 
   projects: {
@@ -143,6 +149,115 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+function applyUserPreferences(prefs) {
+  if (!prefs || typeof prefs !== 'object') return;
+  if ((prefs.theme === 'dark' || prefs.theme === 'light') && typeof applyTheme === 'function') {
+    applyTheme(prefs.theme, { persistLocal: true, saveAccount: false, rerender: false });
+  }
+  if (typeof syncLibraryPrefsFromAccount === 'function') {
+    syncLibraryPrefsFromAccount(prefs);
+  }
+}
+
+async function saveAccountPreferences(partial) {
+  if (!AccountState.user) return;
+  try {
+    const res = await apiFetch('/api/auth?action=preferences', {
+      method: 'POST',
+      body: JSON.stringify(partial || {})
+    });
+    if (res.ok && res.data && res.data.preferences && AccountState.user) {
+      AccountState.user.preferences = res.data.preferences;
+    }
+  } catch {
+    // silencioso
+  }
+}
+
+function updateReportUnreadDot() {
+  const dot = document.getElementById('report-unread-dot');
+  if (dot) {
+    dot.classList.toggle('hidden', !AccountState.user || !(AccountState.reportModal.unreadCount > 0));
+  }
+}
+
+function updateAdminReportsTabBadge() {
+  const repTab = document.getElementById('tab-reports');
+  if (!repTab) return;
+  const existing = repTab.querySelector('.admin-new-badge');
+  const count = Number(AccountState.adminReports.newCount) || 0;
+  if (count > 0 && AccountState.user && AccountState.user.role === 'admin') {
+    if (existing) {
+      existing.textContent = String(count);
+    } else {
+      const span = document.createElement('span');
+      span.className = 'admin-new-badge';
+      span.textContent = String(count);
+      repTab.appendChild(span);
+    }
+  } else if (existing) {
+    existing.remove();
+  }
+}
+
+async function refreshReportIndicators() {
+  if (!AccountState.user) {
+    AccountState.reportModal.unreadCount = 0;
+    AccountState.adminReports.newCount = 0;
+    updateReportUnreadDot();
+    updateAdminReportsTabBadge();
+    return;
+  }
+  try {
+    const res = await apiFetch('/api/reports?scope=mine', { method: 'GET' });
+    if (res.ok) {
+      AccountState.reportModal.myReports = res.data.reports || [];
+      AccountState.reportModal.myReportsLoaded = true;
+      AccountState.reportModal.quota = res.data.quota || null;
+      AccountState.reportModal.unreadCount = Number(res.data.unreadCount) || 0;
+      updateReportUnreadDot();
+    }
+    if (AccountState.user.role === 'admin') {
+      const aRes = await apiFetch('/api/reports?scope=all', { method: 'GET' });
+      if (aRes.ok) {
+        AccountState.adminReports.newCount = Number(aRes.data.newCount) || 0;
+        updateAdminReportsTabBadge();
+      }
+    }
+  } catch {
+    // silencioso
+  }
+}
+
+async function markMyReportsSeen() {
+  if (!AccountState.user || !(AccountState.reportModal.unreadCount > 0)) return;
+  AccountState.reportModal.unreadCount = 0;
+  updateReportUnreadDot();
+  try {
+    await apiFetch('/api/reports', {
+      method: 'PATCH',
+      body: JSON.stringify({ action: 'mark-seen' })
+    });
+    AccountState.reportModal.myReports.forEach((r) => {
+      r.hasUnreadUpdate = false;
+    });
+  } catch {
+    // silencioso
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && AccountState.user) {
+    refreshReportIndicators();
+  }
+});
+
+window.addEventListener('focus', () => {
+  if (AccountState.user) {
+    refreshReportIndicators();
+  }
+});
+
 async function restoreSessionOnLoad() {
   try {
     const res = await apiFetch('/api/auth?action=me', { method: 'GET' });
@@ -151,8 +266,12 @@ async function restoreSessionOnLoad() {
     AccountState.user = null;
   } finally {
     AccountState.sessionLoaded = true;
+    if (AccountState.user && AccountState.user.preferences) {
+      applyUserPreferences(AccountState.user.preferences);
+    }
     updateAuthHeaderUI();
     updateRoleBasedTabs();
+    refreshReportIndicators();
     if (typeof updateTopRightFloatingActions === 'function') {
       updateTopRightFloatingActions();
     }
@@ -392,10 +511,14 @@ async function submitLoginForm(e) {
       return;
     }
     AccountState.user = res.data.user;
+    if (AccountState.user && AccountState.user.preferences) {
+      applyUserPreferences(AccountState.user.preferences);
+    }
     const nextAction = AccountState.authModal.afterLoginAction;
     closeAuthModal();
     updateAuthHeaderUI();
     updateRoleBasedTabs();
+    refreshReportIndicators();
     if (typeof updateTopRightFloatingActions === 'function') updateTopRightFloatingActions();
     if (typeof nextAction === 'function') nextAction();
   } catch {
@@ -433,10 +556,14 @@ async function submitRegisterForm(e) {
       return;
     }
     AccountState.user = res.data.user;
+    if (AccountState.user && AccountState.user.preferences) {
+      applyUserPreferences(AccountState.user.preferences);
+    }
     const nextAction = AccountState.authModal.afterLoginAction;
     closeAuthModal();
     updateAuthHeaderUI();
     updateRoleBasedTabs();
+    refreshReportIndicators();
     if (typeof updateTopRightFloatingActions === 'function') updateTopRightFloatingActions();
     if (typeof nextAction === 'function') nextAction();
   } catch {
@@ -650,6 +777,17 @@ function compressImageInBrowser(file, maxSide = 1600, quality = 0.8) {
   });
 }
 
+function reportStatusLabel(status) {
+  if (status === 'lido') return 'Lido';
+  if (status === 'feito') return 'Feito';
+  return 'Novo';
+}
+
+function reportStatusBadgeHtml(status) {
+  const st = (status === 'lido' || status === 'feito') ? status : 'novo';
+  return `<span class="report-status-badge status-${st}">${reportStatusLabel(st)}</span>`;
+}
+
 async function loadMyReports() {
   if (!AccountState.user) return;
   try {
@@ -657,8 +795,15 @@ async function loadMyReports() {
     if (res.ok) {
       AccountState.reportModal.myReports = res.data.reports || [];
       AccountState.reportModal.quota = res.data.quota || null;
+      AccountState.reportModal.unreadCount = Number(res.data.unreadCount) || 0;
       AccountState.reportModal.myReportsLoaded = true;
-      if (AccountState.reportModal.isOpen) renderReportModalBody();
+      updateReportUnreadDot();
+      if (AccountState.reportModal.isOpen) {
+        renderReportModalBody();
+        if (AccountState.reportModal.tab === 'mine') {
+          markMyReportsSeen();
+        }
+      }
     }
   } catch {
     // ignore
@@ -840,9 +985,10 @@ function renderReportModalBody() {
           rm.myReports.length === 0
             ? '<div class="picker-empty">Nenhum report enviado.</div>'
             : rm.myReports.map((r) => `
-              <div class="report-item-card">
+              <div class="report-item-card ${r.hasUnreadUpdate ? 'has-unread' : ''}">
                 <div class="report-card-head">
                   <span class="lib-badge">${reportTypeLabel(r.type)}</span>
+                  ${reportStatusBadgeHtml(r.status)}
                   ${r.rating ? `<span class="report-stars-tag">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)} (${r.rating}/5)</span>` : ''}
                   <span class="report-date-tag">${fmtDateBR(r.createdAt)}</span>
                 </div>
@@ -855,6 +1001,15 @@ function renderReportModalBody() {
                         <img src="${escText(img.url)}" alt="Anexo" onclick="openImageLightbox('${escText(img.url)}')" />
                       </div>
                     `).join('')}
+                  </div>
+                ` : ''}
+                ${r.adminReply && r.adminReply.text ? `
+                  <div class="report-admin-reply-box">
+                    <div class="report-admin-reply-head">
+                      <strong>Resposta da equipe</strong>
+                      <span>${fmtDateBR(r.adminReply.updatedAt || r.adminReply.createdAt)}</span>
+                    </div>
+                    <p class="report-admin-reply-text">${escText(r.adminReply.text)}</p>
                   </div>
                 ` : ''}
               </div>
@@ -894,11 +1049,120 @@ async function loadAdminReports() {
       AccountState.adminReports.list = [];
     } else {
       AccountState.adminReports.list = res.data.reports || [];
+      AccountState.adminReports.newCount = Number(res.data.newCount) || AccountState.adminReports.list.filter((r) => (r.status || 'novo') === 'novo').length;
+      updateAdminReportsTabBadge();
     }
   } catch {
     AccountState.adminReports.error = 'Erro de conexão ao carregar os reports.';
   } finally {
     AccountState.adminReports.loading = false;
+    renderAdminReportsWorkspace();
+  }
+}
+
+async function setAdminReportStatus(reportId, status) {
+  AccountState.adminReports.savingId = reportId;
+  renderAdminReportsWorkspace();
+  try {
+    const res = await apiFetch('/api/reports', {
+      method: 'PATCH',
+      body: JSON.stringify({ action: 'set-status', id: reportId, status })
+    });
+    if (res.ok && res.data.report) {
+      const idx = AccountState.adminReports.list.findIndex((r) => r.id === reportId);
+      if (idx !== -1) AccountState.adminReports.list[idx] = res.data.report;
+      AccountState.adminReports.newCount = AccountState.adminReports.list.filter((r) => (r.status || 'novo') === 'novo').length;
+      updateAdminReportsTabBadge();
+    } else if (!res.ok) {
+      AccountState.adminReports.error = res.data.error || 'Erro ao atualizar status.';
+    }
+  } finally {
+    AccountState.adminReports.savingId = null;
+    renderAdminReportsWorkspace();
+  }
+}
+
+async function markAllAdminReportsRead() {
+  AccountState.adminReports.loading = true;
+  renderAdminReportsWorkspace();
+  try {
+    const res = await apiFetch('/api/reports', {
+      method: 'PATCH',
+      body: JSON.stringify({ action: 'mark-all-read' })
+    });
+    if (!res.ok) {
+      AccountState.adminReports.error = res.data.error || 'Erro ao marcar todos como lidos.';
+    }
+    await loadAdminReports();
+  } finally {
+    AccountState.adminReports.loading = false;
+    renderAdminReportsWorkspace();
+  }
+}
+
+function openAdminReplyBox(reportId) {
+  const rep = AccountState.adminReports.list.find((r) => r.id === reportId);
+  AccountState.adminReports.replyingId = reportId;
+  AccountState.adminReports.replyDraft = rep?.adminReply?.text || '';
+  renderAdminReportsWorkspace();
+  setTimeout(() => {
+    const ta = document.getElementById(`admin-reply-ta-${reportId}`);
+    if (ta) ta.focus();
+  }, 30);
+}
+
+function cancelAdminReplyBox() {
+  AccountState.adminReports.replyingId = null;
+  AccountState.adminReports.replyDraft = '';
+  renderAdminReportsWorkspace();
+}
+
+async function saveAdminReportReply(reportId) {
+  const text = String(AccountState.adminReports.replyDraft || '').trim();
+  if (!text) return;
+  AccountState.adminReports.savingId = reportId;
+  renderAdminReportsWorkspace();
+  try {
+    const res = await apiFetch('/api/reports', {
+      method: 'PATCH',
+      body: JSON.stringify({ action: 'set-reply', id: reportId, text })
+    });
+    if (res.ok && res.data.report) {
+      const idx = AccountState.adminReports.list.findIndex((r) => r.id === reportId);
+      if (idx !== -1) AccountState.adminReports.list[idx] = res.data.report;
+      AccountState.adminReports.replyingId = null;
+      AccountState.adminReports.replyDraft = '';
+      AccountState.adminReports.newCount = AccountState.adminReports.list.filter((r) => (r.status || 'novo') === 'novo').length;
+      updateAdminReportsTabBadge();
+    } else if (!res.ok) {
+      AccountState.adminReports.error = res.data.error || 'Erro ao salvar resposta.';
+    }
+  } finally {
+    AccountState.adminReports.savingId = null;
+    renderAdminReportsWorkspace();
+  }
+}
+
+async function deleteAdminReportReply(reportId) {
+  AccountState.adminReports.savingId = reportId;
+  renderAdminReportsWorkspace();
+  try {
+    const res = await apiFetch('/api/reports', {
+      method: 'PATCH',
+      body: JSON.stringify({ action: 'delete-reply', id: reportId })
+    });
+    if (res.ok && res.data.report) {
+      const idx = AccountState.adminReports.list.findIndex((r) => r.id === reportId);
+      if (idx !== -1) AccountState.adminReports.list[idx] = res.data.report;
+      if (AccountState.adminReports.replyingId === reportId) {
+        AccountState.adminReports.replyingId = null;
+        AccountState.adminReports.replyDraft = '';
+      }
+    } else if (!res.ok) {
+      AccountState.adminReports.error = res.data.error || 'Erro ao remover resposta.';
+    }
+  } finally {
+    AccountState.adminReports.savingId = null;
     renderAdminReportsWorkspace();
   }
 }
@@ -910,7 +1174,9 @@ function getFilteredAdminReports() {
   const uFilter = Solver.normalizeText(st.filterUser || '');
 
   return (st.list || []).filter((r) => {
+    const repStatus = (r.status === 'lido' || r.status === 'feito') ? r.status : 'novo';
     if (st.filterType !== 'all' && r.type !== st.filterType) return false;
+    if (st.filterStatus !== 'all' && repStatus !== st.filterStatus) return false;
     if (uFilter && !Solver.normalizeText(r.username || '').includes(uFilter)) return false;
     if (st.filterPeriod !== 'all') {
       const ageMs = now - new Date(r.createdAt).getTime();
@@ -919,7 +1185,7 @@ function getFilteredAdminReports() {
       if (st.filterPeriod === '14d' && ageMs > 14 * 24 * 60 * 60 * 1000) return false;
     }
     if (q) {
-      const hay = Solver.normalizeText(`${r.id} ${r.username} ${r.title || ''} ${r.message || ''}`);
+      const hay = Solver.normalizeText(`${r.id} ${r.username} ${r.title || ''} ${r.message || ''} ${r.adminReply?.text || ''}`);
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -971,6 +1237,16 @@ function renderAdminReportsMode(sidebarEl, emptyOverlay) {
       </div>
 
       <div class="field-group">
+        <label>Status</label>
+        <select class="sidebar-select" onchange="AccountState.adminReports.filterStatus = this.value; renderAdminReportsWorkspace();">
+          <option value="all" ${st.filterStatus === 'all' ? 'selected' : ''}>Todos</option>
+          <option value="novo" ${st.filterStatus === 'novo' ? 'selected' : ''}>Novos</option>
+          <option value="lido" ${st.filterStatus === 'lido' ? 'selected' : ''}>Lidos</option>
+          <option value="feito" ${st.filterStatus === 'feito' ? 'selected' : ''}>Feitos</option>
+        </select>
+      </div>
+
+      <div class="field-group">
         <label>Período</label>
         <select class="sidebar-select" onchange="AccountState.adminReports.filterPeriod = this.value; renderAdminReportsWorkspace();">
           <option value="all" ${st.filterPeriod === 'all' ? 'selected' : ''}>Todos (últimos 14 dias)</option>
@@ -979,7 +1255,8 @@ function renderAdminReportsMode(sidebarEl, emptyOverlay) {
         </select>
       </div>
 
-      <button type="button" class="btn-small-accent" style="width:100%; padding:8px;" onclick="loadAdminReports()">🔄 Atualizar Lista</button>
+      <button type="button" class="btn-small-accent" style="width:100%; padding:8px;" onclick="loadAdminReports()">🔄 Atualizar</button>
+      <button type="button" class="btn-icon-action" style="width:100%; padding:8px; margin-top:6px;" onclick="markAllAdminReportsRead()">✓ Marcar todos como lidos</button>
     </div>
 
     <div class="sidebar-step-block">
@@ -1001,29 +1278,47 @@ function renderAdminReportsWorkspace() {
   const st = AccountState.adminReports;
   const filtered = getFilteredAdminReports();
 
+  const newCnt = (st.list || []).filter((r) => (r.status || 'novo') === 'novo').length;
+  const readCnt = (st.list || []).filter((r) => r.status === 'lido').length;
+  const doneCnt = (st.list || []).filter((r) => r.status === 'feito').length;
+
   view.innerHTML = `
     <div class="lib-workspace-header">
       <div>
-        <h2>🛡️ Painel de Reports (Admin)</h2>
-        <span>Exibindo ${filtered.length} de ${st.list.length} report(s) ativo(s) • Expiração automática após 14 dias</span>
+        <h2>🛡️ Reports</h2>
+        <span>${filtered.length} de ${st.list.length} · ${newCnt} novo(s) · ${readCnt} lido(s) · ${doneCnt} feito(s)</span>
+      </div>
+      <div class="admin-status-chips">
+        <button type="button" class="am-qf-chip ${st.filterStatus === 'all' ? 'active' : ''}" onclick="AccountState.adminReports.filterStatus='all'; renderAdminReportsWorkspace();">Todos (${st.list.length})</button>
+        <button type="button" class="am-qf-chip ${st.filterStatus === 'novo' ? 'active' : ''}" onclick="AccountState.adminReports.filterStatus='novo'; renderAdminReportsWorkspace();">Novos (${newCnt})</button>
+        <button type="button" class="am-qf-chip ${st.filterStatus === 'lido' ? 'active' : ''}" onclick="AccountState.adminReports.filterStatus='lido'; renderAdminReportsWorkspace();">Lidos (${readCnt})</button>
+        <button type="button" class="am-qf-chip ${st.filterStatus === 'feito' ? 'active' : ''}" onclick="AccountState.adminReports.filterStatus='feito'; renderAdminReportsWorkspace();">Feitos (${doneCnt})</button>
       </div>
     </div>
 
     ${st.error ? `<div class="form-alert error">⚠️ ${escText(st.error)}</div>` : ''}
     ${st.loading ? '<div class="picker-empty">⏳ Carregando reports...</div>' : `
       <div class="admin-reports-stack">
-        ${filtered.length === 0 ? '<div class="picker-empty">Nenhum report encontrado com os filtros atuais.</div>' : filtered.map((r) => `
+        ${filtered.length === 0 ? '<div class="picker-empty">Nenhum report encontrado com os filtros atuais.</div>' : filtered.map((r) => {
+          const curStatus = (r.status === 'lido' || r.status === 'feito') ? r.status : 'novo';
+          const isSaving = st.savingId === r.id;
+          const isReplying = st.replyingId === r.id;
+          return `
           <div class="report-item-card admin-card">
             <div class="report-card-head">
               <div class="report-head-left">
                 <span class="lib-badge">${reportTypeLabel(r.type)}</span>
+                ${reportStatusBadgeHtml(curStatus)}
                 <strong class="report-user-name">👤 ${escText(r.username)}</strong>
                 ${r.rating ? `<span class="report-stars-tag">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)} (${r.rating}/5)</span>` : ''}
-                <span class="report-date-tag">#${escText(r.id)} • ${fmtDateBR(r.createdAt)} • ⏳ ${r.daysRemaining} dia(s)</span>
+                <span class="report-date-tag">#${escText(r.id)} • ${fmtDateBR(r.createdAt)}</span>
               </div>
               <div class="report-head-actions">
+                <button type="button" class="btn-icon-action ${curStatus === 'lido' ? 'is-selected' : ''}" ${isSaving ? 'disabled' : ''} onclick="setAdminReportStatus('${escText(r.id)}', 'lido')">Lido</button>
+                <button type="button" class="btn-icon-action ${curStatus === 'feito' ? 'is-selected' : ''}" ${isSaving ? 'disabled' : ''} onclick="setAdminReportStatus('${escText(r.id)}', 'feito')">Feito</button>
+                <button type="button" class="btn-icon-action" ${isSaving ? 'disabled' : ''} onclick="openAdminReplyBox('${escText(r.id)}')">${r.adminReply ? 'Editar resposta' : 'Responder'}</button>
                 <button type="button" class="btn-icon-action" onclick="downloadSingleReportTxt('${escText(r.id)}')">📄 .txt</button>
-                ${(r.images && r.images.length > 0) ? `<button type="button" class="btn-icon-action" onclick="downloadReportImages('${escText(r.id)}')">🖼️ Baixar imagens</button>` : ''}
+                ${(r.images && r.images.length > 0) ? `<button type="button" class="btn-icon-action" onclick="downloadReportImages('${escText(r.id)}')">🖼️ Imagens</button>` : ''}
                 <button type="button" class="btn-icon-danger" onclick="deleteAdminReport('${escText(r.id)}')" title="Excluir report">🗑️</button>
               </div>
             </div>
@@ -1046,8 +1341,41 @@ function renderAdminReportsWorkspace() {
                 `).join('')}
               </div>
             ` : ''}
+
+            ${r.adminReply && r.adminReply.text && !isReplying ? `
+              <div class="report-admin-reply-box">
+                <div class="report-admin-reply-head">
+                  <strong>Sua resposta</strong>
+                  <div>
+                    <span>${fmtDateBR(r.adminReply.updatedAt || r.adminReply.createdAt)}</span>
+                    <button type="button" class="btn-inline-link" onclick="openAdminReplyBox('${escText(r.id)}')">Editar</button>
+                    <button type="button" class="btn-inline-link danger" onclick="deleteAdminReportReply('${escText(r.id)}')">Remover</button>
+                  </div>
+                </div>
+                <p class="report-admin-reply-text">${escText(r.adminReply.text)}</p>
+              </div>
+            ` : ''}
+
+            ${isReplying ? `
+              <div class="admin-reply-editor">
+                <textarea
+                  id="admin-reply-ta-${escText(r.id)}"
+                  class="sidebar-textarea"
+                  rows="3"
+                  maxlength="1000"
+                  placeholder="Escreva a resposta para o usuário..."
+                  oninput="AccountState.adminReports.replyDraft = this.value;"
+                >${escText(st.replyDraft)}</textarea>
+                <div class="admin-reply-editor-actions">
+                  <button type="button" class="btn-small-accent" ${isSaving ? 'disabled' : ''} onclick="saveAdminReportReply('${escText(r.id)}')">${isSaving ? 'Salvando...' : 'Enviar resposta'}</button>
+                  <button type="button" class="btn-icon-action" onclick="cancelAdminReplyBox()">Cancelar</button>
+                  ${r.adminReply ? `<button type="button" class="btn-icon-danger" ${isSaving ? 'disabled' : ''} onclick="deleteAdminReportReply('${escText(r.id)}')">Remover resposta</button>` : ''}
+                </div>
+              </div>
+            ` : ''}
           </div>
-        `).join('')}
+          `;
+        }).join('')}
       </div>
     `}
   `;
@@ -1071,7 +1399,8 @@ function buildReportsTxtContent(reportsList) {
       `Report #${r.id}`,
       `Usuário: ${r.username}`,
       `Data: ${fmtDateBR(r.createdAt)}`,
-      `Tipo: ${typeNamePt(r.type)}`
+      `Tipo: ${typeNamePt(r.type)}`,
+      `Status: ${reportStatusLabel(r.status)}`
     ];
     if (r.type === 'rating' && r.rating) {
       lines.push(`Nota: ${r.rating}/5`);
@@ -1083,6 +1412,9 @@ function buildReportsTxtContent(reportsList) {
       lines.push(`Info técnica: Aba=${r.techInfo.tab} | Tela=${r.techInfo.viewport} | Navegador=${r.techInfo.browser}`);
     }
     lines.push(`Mensagem: ${r.message}`);
+    if (r.adminReply && r.adminReply.text) {
+      lines.push(`Resposta do admin (${fmtDateBR(r.adminReply.updatedAt || r.adminReply.createdAt)}): ${r.adminReply.text}`);
+    }
     const imgs = r.images || [];
     if (imgs.length > 0) {
       lines.push(`Imagens (${imgs.length}):`);
@@ -1443,7 +1775,8 @@ async function openSavedProjectInSpaces(projectId) {
   const p = proj.payload || {};
   const targetMode = p.sourceMode === 'free' ? 'free' : 'production';
 
-  AppState.orientation = p.orientation === 'LR' ? 'LR' : 'TB';
+  const validOrient = ['LR', 'RL', 'TB', 'BT'];
+  AppState.orientation = validOrient.includes(p.orientation) ? p.orientation : 'LR';
   AppState.showAllMachines = typeof p.showAllMachines === 'boolean' ? p.showAllMachines : true;
   AppState.canvas.is3DView = Boolean(p.is3DView);
   AppState.canvas.customPositions = p.customPositions || {};
@@ -1458,21 +1791,18 @@ async function openSavedProjectInSpaces(projectId) {
   }
 
   // Sincroniza botões de orientação, 3D e expansão
-  const btnLR = document.getElementById('orient-lr');
-  const btnTB = document.getElementById('orient-tb');
-  if (btnLR) btnLR.classList.toggle('active', AppState.orientation === 'LR');
-  if (btnTB) btnTB.classList.toggle('active', AppState.orientation === 'TB');
+  if (typeof syncOrientationButtons === 'function') syncOrientationButtons();
   const btn3d = document.getElementById('btn-toggle-3d');
   const vp = document.getElementById('spaces-viewport');
   if (btn3d) {
     btn3d.classList.toggle('active', AppState.canvas.is3DView);
-    btn3d.textContent = AppState.canvas.is3DView ? '🏢 Visão 3D: SIM' : '🏢 Visão 3D: NÃO';
+    btn3d.textContent = AppState.canvas.is3DView ? '🏢 3D: SIM' : '🏢 3D: NÃO';
   }
   if (vp) vp.classList.toggle('view-3d', AppState.canvas.is3DView);
   const btnExp = document.getElementById('btn-toggle-expand');
   if (btnExp) {
     btnExp.classList.toggle('active', AppState.showAllMachines);
-    btnExp.textContent = AppState.showAllMachines ? '🏭 Todas Máquinas: SIM' : '📦 Todas Máquinas: NÃO';
+    btnExp.textContent = AppState.showAllMachines ? '🏭 Todas: SIM' : '📦 Todas: NÃO';
   }
 
   AccountState.projects.activeProjectId = proj.id;
