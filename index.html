@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./styles.css?v=25" />
+  <link rel="stylesheet" href="./styles.css?v=26" />
   <script>
     (function () {
       try {
@@ -232,25 +232,26 @@
         </div>
       </div>
 
-      <!-- DOCK DIREITO UNIFICADO: ESTATÍSTICAS EM CIMA + FERRAMENTAS EMBAIXO -->
-      <div id="spaces-right-dock" class="spaces-right-dock">
-        <div id="factory-status-footer" class="factory-status-footer hidden"></div>
+      <!-- BARRA INFERIOR DE RESUMO DA LINHA -->
+      <div id="factory-status-footer" class="factory-status-footer hidden"></div>
 
-        <div id="spaces-hud-controls" class="spaces-hud-controls">
+      <!-- BARRA VERTICAL DE AÇÕES NO MEIO DIREITO -->
+      <div id="spaces-hud-controls" class="spaces-hud-controls">
+        <div class="hud-zoom-row">
           <button class="hud-btn" onclick="zoomCanvas(-0.15)" title="Diminuir Zoom">➖</button>
           <span id="zoom-readout" class="zoom-readout" onclick="resetCanvasView()" title="Resetar Zoom para 100%">100%</span>
           <button class="hud-btn" onclick="zoomCanvas(0.15)" title="Aumentar Zoom">➕</button>
-          <button id="btn-toggle-3d" class="hud-btn hud-btn-toggle" onclick="toggle3DView()" title="Alternar para Visão 3D em Andares (layout vertical)">
-            🏢 3D: NÃO
-          </button>
-          <button id="btn-toggle-expand" class="hud-btn hud-btn-toggle active" onclick="toggleShowAllMachines()" title="Alternar entre mostrar cada máquina individualmente ou agrupar por etapa">
-            🏭 Todas: SIM
-          </button>
-          <button id="btn-toggle-compact" class="hud-btn hud-btn-toggle" onclick="toggleCompactCardMode()" title="Alternar entre cards completos e cards compactos">
-            🧩 Compacto: NÃO
-          </button>
-          <button class="hud-btn hud-btn-fit" onclick="fitCanvasToScreen()" title="Centralizar e Enquadrar Fluxo">🎯 Centralizar</button>
         </div>
+        <button id="btn-toggle-3d" class="hud-btn hud-btn-toggle" onclick="toggle3DView()" title="Alternar para Visão 3D em Andares (layout vertical)">
+          🏢 3D: NÃO
+        </button>
+        <button id="btn-toggle-expand" class="hud-btn hud-btn-toggle active" onclick="toggleShowAllMachines()" title="Alternar entre mostrar cada máquina individualmente ou agrupar por etapa">
+          🏭 Todas: SIM
+        </button>
+        <button id="btn-toggle-compact" class="hud-btn hud-btn-toggle" onclick="toggleCompactCardMode()" title="Alternar entre cards completos e cards compactos">
+          🧩 Compacto: NÃO
+        </button>
+        <button class="hud-btn hud-btn-fit" onclick="fitCanvasToScreen()" title="Centralizar e Enquadrar Fluxo">🎯 Centralizar</button>
       </div>
 
       <!-- AVISO DESFAZER LIMPEZA -->
@@ -394,15 +395,15 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="./js/elk.bundled.js?v=13"></script>
-  <script src="./data/satisfactory-data.js?v=25"></script>
-  <script src="./js/map-data.js?v=25"></script>
-  <script src="./js/library-data.js?v=25"></script>
-  <script src="./js/icons.js?v=25"></script>
-  <script src="./js/solver.js?v=25"></script>
-  <script src="./js/app.js?v=25"></script>
-  <script src="./js/factory-enhancements.js?v=25"></script>
-  <script src="./js/tutorial.js?v=25"></script>
-  <script src="./js/patch-notes.js?v=25"></script>
-  <script src="./js/account-features.js?v=25"></script>
+  <script src="./data/satisfactory-data.js?v=26"></script>
+  <script src="./js/map-data.js?v=26"></script>
+  <script src="./js/library-data.js?v=26"></script>
+  <script src="./js/icons.js?v=26"></script>
+  <script src="./js/solver.js?v=26"></script>
+  <script src="./js/app.js?v=26"></script>
+  <script src="./js/factory-enhancements.js?v=26"></script>
+  <script src="./js/tutorial.js?v=26"></script>
+  <script src="./js/patch-notes.js?v=26"></script>
+  <script src="./js/account-features.js?v=26"></script>
 </body>
 </html>

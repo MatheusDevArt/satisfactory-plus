@@ -6314,64 +6314,28 @@ body.theme-dark {
 }
 
 /* ============================================================================
- * BARRA INFERIOR ÚNICA (RESUMO À ESQUERDA + AÇÕES/FERRAMENTAS À DIREITA)
+ * BARRA DE RESUMO EMBAIXO + BARRA VERTICAL DE AÇÕES NO MEIO DIREITO
  * ========================================================================== */
-.spaces-right-dock {
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 12px;
+#factory-status-footer.factory-status-footer {
+  position: absolute !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: 12px !important;
+  transform: translateX(-50%) !important;
   z-index: 26;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 6px 10px;
+  width: auto !important;
+  max-width: calc(100% - 170px) !important;
+  margin: 0 !important;
+  padding: 6px 8px;
   border-radius: 14px;
   border: 1.5px solid var(--border);
   background: var(--bg-panel);
   box-shadow: var(--card-shadow);
-  width: auto;
-  max-width: calc(100% - 28px);
-  pointer-events: auto;
 }
-.spaces-right-dock .factory-status-footer {
-  position: relative !important;
-  left: auto !important;
-  right: auto !important;
-  bottom: auto !important;
-  transform: none !important;
-  width: auto !important;
-  max-width: none !important;
-  margin: 0 !important;
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-}
-.spaces-right-dock .factory-status-footer.hidden {
+#factory-status-footer.factory-status-footer.hidden {
   display: none !important;
 }
-.spaces-right-dock .spaces-hud-controls {
-  position: static !important;
-  right: auto !important;
-  bottom: auto !important;
-  left: auto !important;
-  width: auto !important;
-  margin-left: auto;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: nowrap;
-  gap: 5px;
-  padding: 0 !important;
-  border: none !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-.spaces-right-dock .fs-footer-bar {
+#factory-status-footer .fs-footer-bar {
   border: none !important;
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -6382,19 +6346,18 @@ body.theme-dark {
   overflow-x: auto;
   scrollbar-width: none;
   gap: 5px;
-  width: 100%;
 }
-.spaces-right-dock .fs-footer-bar::-webkit-scrollbar {
+#factory-status-footer .fs-footer-bar::-webkit-scrollbar {
   display: none;
 }
-.spaces-right-dock .fs-footer-tab {
+#factory-status-footer .fs-footer-tab {
   white-space: nowrap;
   flex-shrink: 0;
 }
-.spaces-right-dock .fs-footer-drawer {
+#factory-status-footer .fs-footer-drawer {
   position: absolute;
   left: 0;
-  bottom: calc(100% + 12px);
+  bottom: calc(100% + 10px);
   width: min(420px, 90vw);
   max-height: 280px;
   border-radius: 12px;
@@ -6403,18 +6366,50 @@ body.theme-dark {
   box-shadow: var(--card-shadow);
   z-index: 30;
 }
-@media (max-width: 960px) {
-  .spaces-right-dock {
-    flex-wrap: wrap;
-    left: 10px;
-    right: 10px;
-    bottom: 10px;
-    gap: 6px;
+
+#spaces-hud-controls.spaces-hud-controls {
+  position: absolute !important;
+  right: 14px !important;
+  top: 50% !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: translateY(-50%) !important;
+  z-index: 26;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 6px !important;
+  width: auto !important;
+  padding: 8px !important;
+  border-radius: 14px !important;
+  border: 1.5px solid var(--border) !important;
+  background: var(--bg-panel) !important;
+  box-shadow: var(--card-shadow) !important;
+}
+#spaces-hud-controls.spaces-hud-controls.hidden {
+  display: none !important;
+}
+#spaces-hud-controls .hud-zoom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+#spaces-hud-controls .hud-btn-toggle,
+#spaces-hud-controls .hud-btn-fit {
+  width: 100%;
+  justify-content: center;
+  white-space: nowrap;
+}
+@media (max-width: 768px) {
+  #factory-status-footer.factory-status-footer {
+    max-width: calc(100% - 20px) !important;
+    bottom: 10px !important;
   }
-  .spaces-right-dock .spaces-hud-controls {
-    flex-wrap: wrap;
-    width: 100% !important;
-    justify-content: flex-end;
+  #spaces-hud-controls.spaces-hud-controls {
+    right: 8px !important;
+    padding: 6px !important;
+    gap: 4px !important;
   }
 }
 

@@ -311,7 +311,7 @@ function switchMode(mode) {
 
   const actionSec = document.getElementById('sidebar-action-section');
   const orientPillWrap = document.getElementById('orient-pill-wrap');
-  const rightDock = document.getElementById('spaces-right-dock');
+  const statusFooter = document.getElementById('factory-status-footer');
   const hudControls = document.getElementById('spaces-hud-controls');
   const mapView = document.getElementById('map-workspace-view');
   const libraryView = document.getElementById('library-workspace-view');
@@ -332,7 +332,7 @@ function switchMode(mode) {
   const freeToolbar = document.getElementById('free-logistics-toolbar');
   if (actionSec) actionSec.classList.toggle('hidden', isWorkspaceOverlay);
   if (orientPillWrap) orientPillWrap.classList.toggle('hidden', isWorkspaceOverlay);
-  if (rightDock) rightDock.classList.toggle('hidden', isWorkspaceOverlay);
+  if (statusFooter && isWorkspaceOverlay) statusFooter.classList.add('hidden');
   if (hudControls) hudControls.classList.toggle('hidden', isWorkspaceOverlay);
   if (freeToolbar) freeToolbar.classList.toggle('hidden', !isFree);
   if (mapView) mapView.classList.toggle('hidden', !isMap);
