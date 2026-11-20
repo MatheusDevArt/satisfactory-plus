@@ -311,6 +311,7 @@ function switchMode(mode) {
 
   const actionSec = document.getElementById('sidebar-action-section');
   const orientPillWrap = document.getElementById('orient-pill-wrap');
+  const rightDock = document.getElementById('spaces-right-dock');
   const hudControls = document.getElementById('spaces-hud-controls');
   const mapView = document.getElementById('map-workspace-view');
   const libraryView = document.getElementById('library-workspace-view');
@@ -331,6 +332,7 @@ function switchMode(mode) {
   const freeToolbar = document.getElementById('free-logistics-toolbar');
   if (actionSec) actionSec.classList.toggle('hidden', isWorkspaceOverlay);
   if (orientPillWrap) orientPillWrap.classList.toggle('hidden', isWorkspaceOverlay);
+  if (rightDock) rightDock.classList.toggle('hidden', isWorkspaceOverlay);
   if (hudControls) hudControls.classList.toggle('hidden', isWorkspaceOverlay);
   if (freeToolbar) freeToolbar.classList.toggle('hidden', !isFree);
   if (mapView) mapView.classList.toggle('hidden', !isMap);
@@ -1148,18 +1150,8 @@ function renderProductionMode(sidebarEl, emptyOverlay, autoFit) {
     `;
 
     clearCanvasGraph();
-    emptyOverlay.classList.remove('hidden');
-    emptyOverlay.innerHTML = `
-      <div class="empty-card-box">
-        <div class="empty-card-icon">🏭</div>
-        <h2>Planejador Visual Satisfactory+ 1.0+</h2>
-        <p>Comece adicionando seus recursos/mineradoras atuais ou escolha diretamente o produto final que deseja fabricar. O grafo visual calculará máquinas inteiras, divisores, esteiras e energia automaticamente.</p>
-        <div class="dual-start-grid">
-          <button class="btn-primary-Empty" onclick="openPushAddInputModal()">⛏️ Começar pela Mineradora / Recurso</button>
-          <button class="btn-primary-Empty secondary" onclick="openPullAddTargetModal()">🎯 Começar pelo Produto Final</button>
-        </div>
-      </div>
-    `;
+    emptyOverlay.classList.add('hidden');
+    emptyOverlay.innerHTML = '';
     return;
   }
 
@@ -1295,33 +1287,15 @@ function renderPushFlowInsideProduction(sidebarEl, emptyOverlay, autoFit) {
 
   if (!isReady) {
     clearCanvasGraph();
-    emptyOverlay.classList.remove('hidden');
-    emptyOverlay.innerHTML = `
-      <div class="empty-card-box">
-        <div class="empty-card-icon">🎯</div>
-        <h2>Escolha o Produto a ser Gerado</h2>
-        <p>Você já configurou a entrada! Agora selecione no painel lateral qual produto deseja fabricar a partir dos seus recursos.</p>
-        <div class="dual-start-grid">
-          <button class="btn-primary-Empty" onclick="openPushTargetPicker()">🎯 Escolher Produto para Fabricar</button>
-        </div>
-      </div>
-    `;
+    emptyOverlay.classList.add('hidden');
+    emptyOverlay.innerHTML = '';
     return;
   }
 
   if (!AppState.production.mounted) {
     clearCanvasGraph();
-    emptyOverlay.classList.remove('hidden');
-    emptyOverlay.innerHTML = `
-      <div class="empty-card-box">
-        <div class="empty-card-icon">⚡</div>
-        <h2>Linha de Produção Pronta!</h2>
-        <p>Sua cadeia para <strong>${targetItem ? targetItem.name : 'o produto'}</strong> (${fmt(chainResult.outputRate, 1)}/min) está calculada. Clique abaixo para montar o grafo visual no espaço.</p>
-        <div class="dual-start-grid">
-          <button class="btn-primary-Empty" onclick="mountProductionFlow()">⚡ Montar Linha de Produção no Espaço</button>
-        </div>
-      </div>
-    `;
+    emptyOverlay.classList.add('hidden');
+    emptyOverlay.innerHTML = '';
     return;
   }
 
@@ -1491,17 +1465,8 @@ function renderPullFlowInsideProduction(sidebarEl, emptyOverlay, autoFit) {
 
   if (!AppState.production.mounted) {
     clearCanvasGraph();
-    emptyOverlay.classList.remove('hidden');
-    emptyOverlay.innerHTML = `
-      <div class="empty-card-box">
-        <div class="empty-card-icon">⚡</div>
-        <h2>Linha de Produção Calculada!</h2>
-        <p>Todas as etapas, máquinas inteiras e mineradoras foram dimensionadas. Clique abaixo para montar o fluxo visual completo no espaço.</p>
-        <div class="dual-start-grid">
-          <button class="btn-primary-Empty" onclick="mountProductionFlow()">⚡ Montar Linha de Produção no Espaço</button>
-        </div>
-      </div>
-    `;
+    emptyOverlay.classList.add('hidden');
+    emptyOverlay.innerHTML = '';
     return;
   }
 
@@ -1835,30 +1800,15 @@ function renderPowerMode(sidebarEl, emptyOverlay, autoFit) {
 
   if (!isReady) {
     clearCanvasGraph();
-    emptyOverlay.classList.remove('hidden');
-    emptyOverlay.innerHTML = `
-      <div class="empty-card-box">
-        <div class="empty-card-icon">⚡</div>
-        <h2>Planejador de Energia (MW)</h2>
-        <p>Selecione o tipo de usina no painel lateral (Biomassa, Carvão, Combustível ou Nuclear) para dimensionar geradores, mineradoras, bombas d'água e divisores.</p>
-      </div>
-    `;
+    emptyOverlay.classList.add('hidden');
+    emptyOverlay.innerHTML = '';
     return;
   }
 
   if (!AppState.power.mounted) {
     clearCanvasGraph();
-    emptyOverlay.classList.remove('hidden');
-    emptyOverlay.innerHTML = `
-      <div class="empty-card-box">
-        <div class="empty-card-icon">🔋</div>
-        <h2>Usina de Energia Pronta!</h2>
-        <p>Configuração para <strong>${powerPlan.intGenerators}x ${selectedGen.name}</strong> (⚡ ${fmt(powerPlan.totalGrossMw, 1)} MW brutos) concluída. Clique abaixo para montar o diagrama visual.</p>
-        <div class="dual-start-grid">
-          <button class="btn-primary-Empty" onclick="mountPowerFlow()">⚡ Montar Linha de Energia no Espaço</button>
-        </div>
-      </div>
-    `;
+    emptyOverlay.classList.add('hidden');
+    emptyOverlay.innerHTML = '';
     return;
   }
 
@@ -2111,18 +2061,8 @@ function renderFreeMode(sidebarEl, emptyOverlay, autoFit) {
 
   if (blocks.length === 0) {
     clearCanvasGraph();
-    emptyOverlay.classList.remove('hidden');
-    emptyOverlay.innerHTML = `
-      <div class="empty-card-box">
-        <div class="empty-card-icon">🛠️</div>
-        <h2>Modo de Construção Livre (Sandbox)</h2>
-        <p>Adicione mineradoras, máquinas, divisores e geradores livremente, puxe esteiras entre as portas de conexão e clique em <strong>🩺 Diagnóstico / Check</strong> para validar gargalos e receitas!</p>
-        <div class="dual-start-grid">
-          <button class="btn-primary-Empty" onclick="addFreeBlock('extractor', { itemId: 'Desc_OreIron_C' })">⛏️ + Adicionar Mineradora</button>
-          <button class="btn-primary-Empty secondary" onclick="addFreeBlock('machine')">🏭 + Adicionar Máquina</button>
-        </div>
-      </div>
-    `;
+    emptyOverlay.classList.add('hidden');
+    emptyOverlay.innerHTML = '';
     return;
   }
 

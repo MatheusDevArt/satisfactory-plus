@@ -420,9 +420,7 @@ function renderFactorySummaryPanel({ mode, plan, freeBlocks, freeEdges, graph })
     { id: 'materiais', label: `Materiais (${materialsMap.size})`, body: materialsBody }
   ];
 
-  const activeTabObj = !FactoryUIState.statsCollapsed
-    ? (tabs.find((t) => t.id === FactoryUIState.activeFooterTab) || null)
-    : null;
+  const activeTabObj = tabs.find((t) => t.id === FactoryUIState.activeFooterTab) || null;
 
   return `
     ${activeTabObj ? `
@@ -434,28 +432,17 @@ function renderFactorySummaryPanel({ mode, plan, freeBlocks, freeEdges, graph })
         <div class="fs-footer-drawer-body">${activeTabObj.body}</div>
       </div>
     ` : ''}
-    <div class="fs-dock-stats ${FactoryUIState.statsCollapsed ? 'is-collapsed' : ''}">
-      <div class="fs-dock-head">
-        <button type="button" class="fs-dock-toggle" onclick="toggleSummaryStatsCollapsed()" title="${FactoryUIState.statsCollapsed ? 'Expandir resumo' : 'Recolher resumo'}">
-          <span>📊 Resumo</span>
-          <span class="fs-dock-meta">${totalBuildings} · ${balanceMw >= 0 ? '+' : ''}${fmt(balanceMw, 0)} MW</span>
-          <span class="fs-tab-caret">${FactoryUIState.statsCollapsed ? '▴' : '▾'}</span>
+    <div class="fs-footer-bar" role="tablist" aria-label="Resumo da linha">
+      ${tabs.map((t) => `
+        <button
+          type="button"
+          class="fs-footer-tab ${FactoryUIState.activeFooterTab === t.id ? 'active' : ''} ${t.tone ? 'tone-' + t.tone : ''}"
+          onclick="toggleSummarySection('${t.id}')"
+        >
+          <span>${t.label}</span>
+          <span class="fs-tab-caret">${FactoryUIState.activeFooterTab === t.id ? '▾' : '▴'}</span>
         </button>
-      </div>
-      ${!FactoryUIState.statsCollapsed ? `
-        <div class="fs-footer-bar" role="tablist" aria-label="Resumo da linha">
-          ${tabs.map((t) => `
-            <button
-              type="button"
-              class="fs-footer-tab ${FactoryUIState.activeFooterTab === t.id ? 'active' : ''} ${t.tone ? 'tone-' + t.tone : ''}"
-              onclick="toggleSummarySection('${t.id}')"
-            >
-              <span>${t.label}</span>
-              <span class="fs-tab-caret">${FactoryUIState.activeFooterTab === t.id ? '▾' : '▴'}</span>
-            </button>
-          `).join('')}
-        </div>
-      ` : ''}
+      `).join('')}
     </div>
   `;
 }

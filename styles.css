@@ -6314,104 +6314,106 @@ body.theme-dark {
 }
 
 /* ============================================================================
- * DOCK DIREITO UNIFICADO (ESTATÍSTICAS EM CIMA + FERRAMENTAS EMBAIXO)
+ * BARRA INFERIOR ÚNICA (RESUMO À ESQUERDA + AÇÕES/FERRAMENTAS À DIREITA)
  * ========================================================================== */
 .spaces-right-dock {
   position: absolute;
+  left: 14px;
   right: 14px;
-  bottom: 14px;
+  bottom: 12px;
   z-index: 26;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
-  width: min(560px, calc(100% - 28px));
-  pointer-events: none;
-}
-.spaces-right-dock > * {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-panel);
+  box-shadow: var(--card-shadow);
+  width: auto;
+  max-width: calc(100% - 28px);
   pointer-events: auto;
 }
 .spaces-right-dock .factory-status-footer {
-  position: static !important;
+  position: relative !important;
   left: auto !important;
   right: auto !important;
   bottom: auto !important;
   transform: none !important;
-  width: 100% !important;
+  width: auto !important;
   max-width: none !important;
   margin: 0 !important;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.spaces-right-dock .factory-status-footer.hidden {
+  display: none !important;
 }
 .spaces-right-dock .spaces-hud-controls {
   position: static !important;
   right: auto !important;
   bottom: auto !important;
   left: auto !important;
-  width: 100% !important;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.fs-dock-stats {
-  background: var(--bg-panel);
-  border: 1.5px solid var(--border);
-  border-radius: 12px;
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-}
-.fs-dock-head {
-  display: flex;
+  width: auto !important;
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
   align-items: center;
-}
-.fs-dock-toggle {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 7px 12px;
-  background: transparent;
-  border: none;
-  color: var(--text-main);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.fs-dock-meta {
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: 11px;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 5px;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 .spaces-right-dock .fs-footer-bar {
-  border: none;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
-  box-shadow: none;
-  padding: 6px 8px;
-  flex-wrap: wrap;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
   gap: 5px;
+  width: 100%;
+}
+.spaces-right-dock .fs-footer-bar::-webkit-scrollbar {
+  display: none;
+}
+.spaces-right-dock .fs-footer-tab {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .spaces-right-dock .fs-footer-drawer {
-  position: static;
-  width: 100%;
-  max-height: 240px;
-  margin-bottom: 6px;
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 12px);
+  width: min(420px, 90vw);
+  max-height: 280px;
   border-radius: 12px;
   border: 1.5px solid var(--border);
   background: var(--bg-panel);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--card-shadow);
+  z-index: 30;
 }
-@media (max-width: 768px) {
+@media (max-width: 960px) {
   .spaces-right-dock {
-    width: auto;
-    max-width: calc(100% - 20px);
+    flex-wrap: wrap;
+    left: 10px;
     right: 10px;
     bottom: 10px;
-  }
-  .fs-dock-stats.is-collapsed .fs-dock-meta {
-    display: none;
+    gap: 6px;
   }
   .spaces-right-dock .spaces-hud-controls {
-    width: auto !important;
+    flex-wrap: wrap;
+    width: 100% !important;
     justify-content: flex-end;
   }
 }
