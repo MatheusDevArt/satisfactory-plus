@@ -455,7 +455,7 @@ function openAddMachineModal(options = {}) {
   const st = FactoryUIState.addMachineModal;
   st.isOpen = true;
   st.search = '';
-  st.quickFilter = 'all';
+  st.quickFilter = options.quickFilter || 'all';
   st.filterItemId = options.filterItemId || null;
   st.fromNodeId = options.fromNodeId || null;
   st.worldPos = options.worldPos || null;
@@ -503,23 +503,35 @@ function getFilteredAddMachineOptions() {
   const filterItem = st.filterItemId ? itemsDb[st.filterItemId] : null;
   const isFilterFluid = Boolean(filterItem && filterItem.isFluid);
 
-  const showLogistics = qf === 'all' || qf === 'logistica' || qf === 'armazenamento' || qf === 'destinos';
+  const showLogistics = qf === 'all' || qf === 'logistica' || qf === 'armazenamento';
   const logistics = showLogistics ? Object.values(logisticsDb).filter((l) => {
     if (filterItem && l.isFluid !== isFilterFluid) return false;
     if (qf === 'logistica' && l.category !== 'Esteiras' && l.category !== 'Tubulações') return false;
-    if (qf === 'armazenamento' && l.category !== 'Armazenamento') return false;
-    if (qf === 'destinos' && l.category !== 'Destinos Finais') return false;
+    if (qf === 'armazenamento' && l.category !== 'Armazenamento' && l.category !== 'Destinos Finais') return false;
     if (!q) return true;
     return normAmText(`${l.name || ''} ${l.nameEn || ''} ${l.category || ''}`).includes(q);
   }) : [];
 
-  const showExtractors = !filterItem && (qf === 'all' || qf === 'extratores' || qf === 'maquinas');
+  // Todas as máquinas de produção do jogo (Fornalha, Construtor, Montadora, Refinaria, Fabricante, Misturador, etc.)
+  const showMachines = qf === 'all' || qf === 'maquinas';
+  const machines = showMachines ? Object.values(machinesDb).filter((m) => {
+    if (!m || !m.id) return false;
+    if (filterItem) {
+      const mRecs = Object.values(recipesDb).filter((r) => r && r.machine === m.id && !r.isFicsmas);
+      const accepts = mRecs.some((r) => (r.ingredients || []).some((ing) => ing.item === filterItem.id));
+      if (!accepts) return false;
+    }
+    if (!q) return true;
+    return normAmText(`${m.name || ''} ${m.nameEn || ''}`).includes(q);
+  }).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR')) : [];
+
+  const showExtractors = !filterItem && (qf === 'all' || qf === 'maquinas');
   const extractors = showExtractors ? Object.values(extractorsDb).filter((ex) => {
     if (!q) return true;
     return normAmText(`${ex.name || ''} ${ex.nameEn || ''}`).includes(q);
   }) : [];
 
-  const showGenerators = qf === 'all' || qf === 'energia' || qf === 'maquinas';
+  const showGenerators = qf === 'all' || qf === 'energia';
   const generators = showGenerators ? Object.values(generatorsDb).filter((g) => {
     if (filterItem) {
       const acceptsFuel = (g.fuels || []).some((f) => f.item === filterItem.id);
@@ -534,11 +546,11 @@ function getFilteredAddMachineOptions() {
     return normAmText(`${g.name || ''} ${g.nameEn || ''} ${fuelsText}`).includes(q);
   }) : [];
 
-  const showRecipes = qf === 'all' || qf === 'maquinas' || qf === 'produtos' || qf === 'alternativas';
+  // Receitas (padrão + alternativas ALT unificadas) — exclusivas em 'receitas' ou quando buscando em 'all'
+  const showRecipes = qf === 'receitas' || (qf === 'all' && (Boolean(q) || Boolean(filterItem)));
   const recipes = showRecipes ? Object.values(recipesDb).filter((r) => {
     if (!r || !r.machine || !machinesDb[r.machine]) return false;
     if (r.isFicsmas && !q) return false;
-    if (qf === 'alternativas' && !r.isAlternate) return false;
     if (st.filterItemId) {
       const accepts = (r.ingredients || []).some((ing) => ing.item === st.filterItemId);
       if (!accepts) return false;
@@ -559,7 +571,31 @@ function getFilteredAddMachineOptions() {
     return (a.cleanName || a.name).localeCompare(b.cleanName || b.name, 'pt-BR');
   }) : [];
 
-  return { logistics, extractors, generators, recipes, filterItem };
+  return { logistics, machines, extractors, generators, recipes, filterItem };
+}
+
+function pickMachineFromModal(machineId) {
+  const st = FactoryUIState.addMachineModal;
+  const pos = st.worldPos || {};
+  const fromNodeId = st.fromNodeId;
+  const filterItemId = st.filterItemId;
+  closeAddMachineModal();
+  if (typeof addFreeBlock !== 'function') return;
+
+  let recipeId = null;
+  if (filterItemId && typeof Solver !== 'undefined') {
+    const mRecs = Solver.getRecipesByMachine(machineId).filter((r) => !r.isFicsmas);
+    const compat = mRecs.find((r) => (r.ingredients || []).some((i) => i.item === filterItemId));
+    if (compat) recipeId = compat.id;
+  }
+  addFreeBlock('machine', {
+    machineId,
+    recipeId: recipeId || undefined,
+    x: pos.x,
+    y: pos.y,
+    connectFromNodeId: fromNodeId || undefined,
+    itemId: filterItemId || undefined
+  });
 }
 
 function pickExtractorFromModal(exId) {
@@ -677,21 +713,18 @@ function renderAddMachineModalResultsOnly() {
   const st = FactoryUIState.addMachineModal;
   const itemsDb = (window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.items) || {};
   const machinesDb = (window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.machines) || {};
-  const { logistics, extractors, generators, recipes, filterItem } = getFilteredAddMachineOptions();
+  const { logistics, machines, extractors, generators, recipes, filterItem } = getFilteredAddMachineOptions();
 
-  const totalActions = logistics.length + extractors.length + generators.length + Math.min(60, recipes.length);
+  const totalActions = machines.length + extractors.length + logistics.length + generators.length + Math.min(80, recipes.length);
   if (st.activeIndex >= totalActions) st.activeIndex = Math.max(0, totalActions - 1);
 
   const quickFilters = [
     { key: 'all', label: 'Todos' },
     { key: 'maquinas', label: 'Máquinas' },
-    { key: 'produtos', label: 'Produtos' },
+    { key: 'receitas', label: 'Receitas' },
     { key: 'logistica', label: 'Logística' },
     { key: 'armazenamento', label: 'Armazenamento' },
-    { key: 'destinos', label: 'Destinos' },
-    ...(!filterItem ? [{ key: 'extratores', label: 'Extratores' }] : []),
-    { key: 'energia', label: 'Energia' },
-    { key: 'alternativas', label: 'ALT' }
+    { key: 'energia', label: 'Energia' }
   ];
 
   const quickFiltersHtml = `
@@ -715,31 +748,35 @@ function renderAddMachineModalResultsOnly() {
 
   filtersSlot.innerHTML = quickFiltersHtml + filterChipHtml;
 
-  const logisticsHtml = logistics.length > 0 ? `
-    <div class="am-section-title">Logística, Contêineres e Destinos (${logistics.length})</div>
+  let cursor = 0;
+  const machinesHtml = machines.length > 0 ? `
+    <div class="am-section-title">Máquinas de Produção (${machines.length})</div>
     <div class="am-logistics-grid">
-      ${logistics.map((l, idx) => `
-        <button
-          type="button"
-          class="am-log-btn ${idx === st.activeIndex ? 'is-active' : ''}"
-          onclick="pickLogisticsFromModal('${l.id}')"
-        >
-          ${l.wikiImage ? `<img src="${l.wikiImage}" alt="${escSummary(l.name)}" loading="lazy" />` : '<span>📦</span>'}
-          <span>${escSummary(l.name)}</span>
-        </button>
-      `).join('')}
+      ${machines.map((m) => {
+        const idx = cursor++;
+        return `
+          <button
+            type="button"
+            class="am-log-btn ${idx === st.activeIndex ? 'is-active' : ''}"
+            onclick="pickMachineFromModal('${m.id}')"
+          >
+            ${m.wikiImage ? `<img src="${m.wikiImage}" alt="${escSummary(m.name)}" loading="lazy" />` : '<span>🏭</span>'}
+            <span>${escSummary(m.name)}</span>
+          </button>
+        `;
+      }).join('')}
     </div>
   ` : '';
 
   const extractorsHtml = extractors.length > 0 ? `
     <div class="am-section-title">Extratores e Mineradoras (${extractors.length})</div>
     <div class="am-logistics-grid">
-      ${extractors.map((ex, eIdx) => {
-        const gIdx = logistics.length + eIdx;
+      ${extractors.map((ex) => {
+        const idx = cursor++;
         return `
           <button
             type="button"
-            class="am-log-btn ${gIdx === st.activeIndex ? 'is-active' : ''}"
+            class="am-log-btn ${idx === st.activeIndex ? 'is-active' : ''}"
             onclick="pickExtractorFromModal('${ex.id}')"
           >
             ${ex.wikiImage ? `<img src="${ex.wikiImage}" alt="${escSummary(ex.name)}" loading="lazy" />` : '<span>⛏️</span>'}
@@ -750,15 +787,34 @@ function renderAddMachineModalResultsOnly() {
     </div>
   ` : '';
 
-  const generatorsHtml = generators.length > 0 ? `
-    <div class="am-section-title">Geradores de Energia (${generators.length})</div>
+  const logisticsHtml = logistics.length > 0 ? `
+    <div class="am-section-title">Logística e Armazenamento (${logistics.length})</div>
     <div class="am-logistics-grid">
-      ${generators.map((g, genIdx) => {
-        const gIdx = logistics.length + extractors.length + genIdx;
+      ${logistics.map((l) => {
+        const idx = cursor++;
         return `
           <button
             type="button"
-            class="am-log-btn ${gIdx === st.activeIndex ? 'is-active' : ''}"
+            class="am-log-btn ${idx === st.activeIndex ? 'is-active' : ''}"
+            onclick="pickLogisticsFromModal('${l.id}')"
+          >
+            ${l.wikiImage ? `<img src="${l.wikiImage}" alt="${escSummary(l.name)}" loading="lazy" />` : '<span>📦</span>'}
+            <span>${escSummary(l.name)}</span>
+          </button>
+        `;
+      }).join('')}
+    </div>
+  ` : '';
+
+  const generatorsHtml = generators.length > 0 ? `
+    <div class="am-section-title">Geradores de Energia (${generators.length})</div>
+    <div class="am-logistics-grid">
+      ${generators.map((g) => {
+        const idx = cursor++;
+        return `
+          <button
+            type="button"
+            class="am-log-btn ${idx === st.activeIndex ? 'is-active' : ''}"
             onclick="pickGeneratorFromModal('${g.id}')"
           >
             ${g.wikiImage ? `<img src="${g.wikiImage}" alt="${escSummary(g.name)}" loading="lazy" />` : '<span>⚡</span>'}
@@ -769,12 +825,11 @@ function renderAddMachineModalResultsOnly() {
     </div>
   ` : '';
 
-  const recipesOffset = logistics.length + extractors.length + generators.length;
   const recipesHtml = recipes.length > 0 ? `
     <div class="am-section-title">Receitas (${recipes.length})</div>
     <div class="am-recipes-list">
-      ${recipes.slice(0, 60).map((r, rIdx) => {
-        const globalIdx = recipesOffset + rIdx;
+      ${recipes.slice(0, 80).map((r) => {
+        const idx = cursor++;
         const mObj = machinesDb[r.machine];
         const mainProd = r.products?.[0] ? itemsDb[r.products[0].item] : null;
         const ingIcons = (r.ingredients || []).map((i) => {
@@ -788,7 +843,7 @@ function renderAddMachineModalResultsOnly() {
         return `
           <button
             type="button"
-            class="am-recipe-row ${globalIdx === st.activeIndex ? 'is-active' : ''}"
+            class="am-recipe-row ${idx === st.activeIndex ? 'is-active' : ''}"
             onclick="pickRecipeFromModal('${r.id}')"
           >
             <div class="am-recipe-left">
@@ -806,17 +861,20 @@ function renderAddMachineModalResultsOnly() {
         `;
       }).join('')}
     </div>
-  ` : (logistics.length === 0 && extractors.length === 0 && generators.length === 0
+  ` : (machines.length === 0 && logistics.length === 0 && extractors.length === 0 && generators.length === 0
     ? '<div class="picker-empty">Nenhum item encontrado para este filtro.</div>'
     : '');
 
   resultsSlot.innerHTML = `
-    ${logisticsHtml}
-    ${extractorsHtml}
-    ${generatorsHtml}
-    ${recipesHtml}
+    <div class="am-results-scroll">
+      ${machinesHtml}
+      ${extractorsHtml}
+      ${logisticsHtml}
+      ${generatorsHtml}
+      ${recipesHtml}
+    </div>
     <div class="am-footer">
-      <span>${recipes.length} receita(s) · ${logistics.length + extractors.length + generators.length} construções</span>
+      <span>${machines.length + extractors.length + logistics.length + generators.length} construções · ${recipes.length} receita(s)</span>
       <button type="button" class="btn-tutorial-nav" onclick="closeAddMachineModal()">Cancelar</button>
     </div>
   `;
@@ -831,8 +889,8 @@ document.addEventListener('keydown', (e) => {
     closeAddMachineModal();
     return;
   }
-  const { logistics, extractors, generators, recipes } = getFilteredAddMachineOptions();
-  const total = logistics.length + extractors.length + generators.length + Math.min(60, recipes.length);
+  const { machines, extractors, logistics, generators, recipes } = getFilteredAddMachineOptions();
+  const total = machines.length + extractors.length + logistics.length + generators.length + Math.min(80, recipes.length);
   if (total === 0) return;
 
   if (e.key === 'ArrowDown') {
@@ -846,20 +904,13 @@ document.addEventListener('keydown', (e) => {
   } else if (e.key === 'Enter') {
     e.preventDefault();
     let idx = st.activeIndex;
-    if (idx < logistics.length) {
-      pickLogisticsFromModal(logistics[idx].id);
-      return;
-    }
-    idx -= logistics.length;
-    if (idx < extractors.length) {
-      pickExtractorFromModal(extractors[idx].id);
-      return;
-    }
+    if (idx < machines.length) { pickMachineFromModal(machines[idx].id); return; }
+    idx -= machines.length;
+    if (idx < extractors.length) { pickExtractorFromModal(extractors[idx].id); return; }
     idx -= extractors.length;
-    if (idx < generators.length) {
-      pickGeneratorFromModal(generators[idx].id);
-      return;
-    }
+    if (idx < logistics.length) { pickLogisticsFromModal(logistics[idx].id); return; }
+    idx -= logistics.length;
+    if (idx < generators.length) { pickGeneratorFromModal(generators[idx].id); return; }
     idx -= generators.length;
     const r = recipes[idx];
     if (r) pickRecipeFromModal(r.id);

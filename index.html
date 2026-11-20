@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./styles.css?v=27" />
+  <link rel="stylesheet" href="./styles.css?v=28" />
   <script>
     (function () {
       try {
@@ -36,27 +36,26 @@
     })();
   </script>
   <!-- TELA HOME (ABERTURA DO SITE E REABERTA AO CLICAR NA LOGO) -->
-  <section id="intro-splash" class="intro-splash home-screen home-v2" aria-label="Tela inicial Satisfactory+">
+  <section id="intro-splash" class="intro-splash home-screen home-v2 home-video-mode" aria-label="Tela inicial Satisfactory+">
+    <video class="home-bg-video" autoplay muted loop playsinline preload="auto" poster="./assets/home-bg.jpg" aria-hidden="true">
+      <source src="./assets/home-loop.mp4" type="video/mp4" />
+    </video>
     <div class="home-bg-scrim" aria-hidden="true"></div>
-    <div class="home-center-stage">
-      <div class="home-conveyor-hub home-hub-v2">
-        <div class="home-word-pill home-pill-top">Planeje</div>
-        <div class="home-hub-middle">
-          <div class="home-word-pill home-pill-left">Descubra</div>
-          <img src="./assets/home-logo-hub.png" alt="Satisfactory+ Logo" class="home-hub-logo-img" />
-          <div class="home-word-pill home-pill-right">Crie</div>
-        </div>
-      </div>
 
+    <div class="home-bottom-texts">
       <h1 class="intro-title home-title">Satisfactory<span>+</span></h1>
       <p class="intro-subtitle home-subtitle">Tudo que você precisa para montar suas fábricas</p>
       <div class="splash-credit">Criado por Matheus Pinheiro</div>
-    </div>
 
-    <button type="button" class="home-scroll-cue" onclick="dismissIntroSplash()" aria-label="Rolar para baixo para entrar">
-      <span>Role para baixo para começar</span>
-      <span class="home-scroll-arrow">↓</span>
-    </button>
+      <button type="button" class="home-scroll-cue home-scroll-icon-only" onclick="dismissIntroSplash()" aria-label="Entrar">
+        <span class="home-scroll-mouse" aria-hidden="true">
+          <span class="home-scroll-wheel"></span>
+        </span>
+        <svg class="home-scroll-chevron" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+    </div>
   </section>
 
   <div id="app-layout-root" class="app-layout-lr">
@@ -265,6 +264,9 @@
       <!-- AVISO DESFAZER LIMPEZA -->
       <div id="undo-clear-toast" class="undo-clear-toast hidden" role="status" aria-live="polite"></div>
 
+      <!-- AVISO DE CONEXÃO INVÁLIDA NO MODO LIVRE -->
+      <div id="connection-error-toast" class="connection-error-toast hidden" role="alert" aria-live="assertive"></div>
+
       <!-- MENU DE CONTEXTO (BOTÃO DIREITO NO MODO LIVRE) -->
       <div id="canvas-context-menu" class="canvas-context-menu hidden"></div>
 
@@ -403,15 +405,15 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="./js/elk.bundled.js?v=13"></script>
-  <script src="./data/satisfactory-data.js?v=27"></script>
-  <script src="./js/map-data.js?v=27"></script>
-  <script src="./js/library-data.js?v=27"></script>
-  <script src="./js/icons.js?v=27"></script>
-  <script src="./js/solver.js?v=27"></script>
-  <script src="./js/app.js?v=27"></script>
-  <script src="./js/factory-enhancements.js?v=27"></script>
-  <script src="./js/tutorial.js?v=27"></script>
-  <script src="./js/patch-notes.js?v=27"></script>
-  <script src="./js/account-features.js?v=27"></script>
+  <script src="./data/satisfactory-data.js?v=28"></script>
+  <script src="./js/map-data.js?v=28"></script>
+  <script src="./js/library-data.js?v=28"></script>
+  <script src="./js/icons.js?v=28"></script>
+  <script src="./js/solver.js?v=28"></script>
+  <script src="./js/app.js?v=28"></script>
+  <script src="./js/factory-enhancements.js?v=28"></script>
+  <script src="./js/tutorial.js?v=28"></script>
+  <script src="./js/patch-notes.js?v=28"></script>
+  <script src="./js/account-features.js?v=28"></script>
 </body>
 </html>

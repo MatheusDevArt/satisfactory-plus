@@ -2053,16 +2053,13 @@ function renderFreeMode(sidebarEl, emptyOverlay, autoFit) {
 
   sidebarEl.innerHTML = `
     <div class="sidebar-step-block">
-      <div class="step-header-row">
-        <span class="step-badge">LIVRE</span>
-        <h4>Adicionar ao Espaço</h4>
-      </div>
-      <div class="free-add-buttons">
-        <button class="btn-free-add" onclick="addFreeBlock('extractor', { itemId: 'Desc_OreIron_C' })">⛏️ + Mineradora</button>
-        <button class="btn-free-add" onclick="addFreeBlock('extractor', { itemId: 'Desc_LiquidOil_C' })">🛢️ + Extrator</button>
-        <button class="btn-free-add" onclick="addFreeBlock('extractor', { itemId: 'Desc_Water_C' })">💧 + Bomba</button>
-        <button class="btn-free-add" onclick="addFreeBlock('machine')">🏭 + Máquina</button>
-        <button class="btn-free-add" onclick="addFreeBlock('generator')">⚡ + Gerador de Energia</button>
+      <div class="free-add-buttons free-cat-filter-grid">
+        <button type="button" class="btn-free-add" onclick="openAddMachineModal({ quickFilter: 'all' })">Todos</button>
+        <button type="button" class="btn-free-add" onclick="openAddMachineModal({ quickFilter: 'maquinas' })">Máquinas</button>
+        <button type="button" class="btn-free-add" onclick="openAddMachineModal({ quickFilter: 'receitas' })">Receitas</button>
+        <button type="button" class="btn-free-add" onclick="openAddMachineModal({ quickFilter: 'logistica' })">Logística</button>
+        <button type="button" class="btn-free-add" onclick="openAddMachineModal({ quickFilter: 'armazenamento' })">Armazenamento</button>
+        <button type="button" class="btn-free-add" onclick="openAddMachineModal({ quickFilter: 'energia' })">Energia</button>
       </div>
     </div>
 
@@ -3303,7 +3300,8 @@ function renderMagnificNodeCard(box, orientOrIsTB) {
   const portOrientPrefix = orient === 'TB' ? 'port-tb' : (orient === 'BT' ? 'port-bt' : (orient === 'RL' ? 'port-rl' : 'port-lr'));
   const portInClass = `${portOrientPrefix}-in ${portInType}`;
   const portOutClass = `${portOrientPrefix}-out ${portOutType}`;
-  const hasOutPort = node.outPorts !== 0;
+  const hasInPort = node.kind !== 'extractor';
+  const hasOutPort = node.outPorts !== 0 && node.kind !== 'generator';
   const missingInputs = Array.isArray(node._missingInputs) ? node._missingInputs : [];
   const missingBadgeHtml = missingInputs.length > 0
     ? `<span class="mcard-missing-badge" title="Sem entrada ligada: ${missingInputs.join(', ')}">!</span>`
@@ -3359,9 +3357,11 @@ function renderMagnificNodeCard(box, orientOrIsTB) {
       </div>
 
       ${AppState.mode === 'free' ? `
-        <div class="mcard-port ${portInClass}" title="Entrada">
-          <span>▣</span>
-        </div>
+        ${hasInPort ? `
+          <div class="mcard-port ${portInClass}" title="Entrada">
+            <span>▣</span>
+          </div>
+        ` : ''}
         ${hasOutPort ? `
           <div class="mcard-port ${portOutClass}" title="Puxe para conectar">
             <span>▣</span>
@@ -4339,21 +4339,126 @@ function updateWirePreviewPath(x1, y1, x2, y2) {
   path.setAttribute('d', d);
 }
 
+let _connErrTimer = null;
+function showConnectionErrorToast(message) {
+  const el = document.getElementById('connection-error-toast');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.remove('hidden');
+  if (_connErrTimer) clearTimeout(_connErrTimer);
+  _connErrTimer = setTimeout(() => {
+    el.classList.add('hidden');
+  }, 4200);
+}
+
+const SOLID_ONLY_FREE_KINDS = new Set([
+  'splitter', 'smart_splitter', 'programmable_splitter',
+  'merger', 'priority_merger',
+  'storage_mk1', 'storage_mk2',
+  'awesome_sink', 'dimensional_depot', 'space_elevator'
+]);
+const FLUID_ONLY_FREE_KINDS = new Set([
+  'pipe_junction', 'pipe_pump_mk1', 'pipe_pump_mk2',
+  'fluid_buffer_mk1', 'fluid_buffer_mk2'
+]);
+
+function getNodeTransportInfo(node) {
+  const kind = node?.kind || '';
+  const outItems = (node.outputsList || []).map(o => o.item).filter(Boolean);
+  if (node.resourceExtractInfo?.item) outItems.push(node.resourceExtractInfo.item);
+  const inItems = (node.inputsList || []).map(i => i.item).filter(Boolean);
+
+  let outType = 'any';
+  if (SOLID_ONLY_FREE_KINDS.has(kind)) outType = 'solid';
+  else if (FLUID_ONLY_FREE_KINDS.has(kind)) outType = 'fluid';
+  else if (outItems.length > 0) {
+    const hasFluid = outItems.some(i => i.isFluid);
+    const hasSolid = outItems.some(i => !i.isFluid);
+    outType = hasFluid && hasSolid ? 'both' : (hasFluid ? 'fluid' : 'solid');
+  }
+
+  let inType = 'any';
+  if (SOLID_ONLY_FREE_KINDS.has(kind)) inType = 'solid';
+  else if (FLUID_ONLY_FREE_KINDS.has(kind)) inType = 'fluid';
+  else if (inItems.length > 0) {
+    const hasFluid = inItems.some(i => i.isFluid);
+    const hasSolid = inItems.some(i => !i.isFluid);
+    inType = hasFluid && hasSolid ? 'both' : (hasFluid ? 'fluid' : 'solid');
+  }
+
+  return { kind, outItems, inItems, outType, inType };
+}
+
+function validateFreeConnection(fromNode, toNode) {
+  if (!fromNode || !toNode) return { ok: false, reason: 'Conexão inválida.' };
+  if (fromNode.id === toNode.id) return { ok: false, reason: 'Não é possível conectar uma máquina nela mesma.' };
+
+  // 1. Destino não pode ser extrator/mineradora
+  if (toNode.kind === 'extractor') {
+    return { ok: false, reason: 'Extratores e mineradoras não possuem entrada de esteira ou tubulação.' };
+  }
+
+  // 2. Origem não pode ser destino final (sem saída) nem gerador de energia
+  if (fromNode.outPorts === 0) {
+    return { ok: false, reason: `${fromNode.topLabel || 'Este destino'} é um destino final e não possui saída.` };
+  }
+  if (fromNode.kind === 'generator') {
+    return { ok: false, reason: 'Geradores produzem energia elétrica e não possuem saída de esteira ou tubulação.' };
+  }
+
+  const src = getNodeTransportInfo(fromNode);
+  const dst = getNodeTransportInfo(toNode);
+
+  // 3. Incompatibilidade sólido (esteira) vs fluido (tubulação)
+  if (src.outType === 'solid' && dst.inType === 'fluid') {
+    return { ok: false, reason: 'Incompatível: não é possível conectar item sólido/esteira em entrada de tubulação/fluido.' };
+  }
+  if (src.outType === 'fluid' && dst.inType === 'solid') {
+    return { ok: false, reason: 'Incompatível: não é possível conectar fluido/tubulação em entrada de esteira/sólido.' };
+  }
+
+  // 4. Se destino for máquina ou gerador com entradas definidas e origem tiver item conhecido, validar compatibilidade do item
+  if ((toNode.kind === 'machine' || toNode.kind === 'generator') && dst.inItems.length > 0 && src.outItems.length > 0) {
+    const acceptedIds = new Set(dst.inItems.map(i => i.id));
+    const matchesAny = src.outItems.some(i => acceptedIds.has(i.id));
+    if (!matchesAny) {
+      const srcName = src.outItems[0]?.name || 'este item';
+      return { ok: false, reason: `${toNode.topLabel || 'Esta máquina'} não aceita ${srcName} na receita atual.` };
+    }
+  }
+
+  return { ok: true };
+}
+
 function handleWireDropOnCard(fromNodeId, toNodeId) {
   const fromBox = AppState.canvas.nodeMap.get(fromNodeId);
   const toBox = AppState.canvas.nodeMap.get(toNodeId);
   if (!fromBox || !toBox) return;
 
   if (AppState.mode !== 'free') {
-    // Em modos automáticos, apenas destaca ou informa
     return;
   }
 
-  const outItem = fromBox.node?.outputsList?.[0]?.item || fromBox.node?.resourceExtractInfo?.item || toBox.node?.inputsList?.[0]?.item || null;
+  const check = validateFreeConnection(fromBox.node, toBox.node);
+  if (!check.ok) {
+    showConnectionErrorToast(check.reason);
+    return;
+  }
+
+  const srcInfo = getNodeTransportInfo(fromBox.node);
+  const dstInfo = getNodeTransportInfo(toBox.node);
+  let outItem = null;
+  if (srcInfo.outItems.length > 0 && dstInfo.inItems.length > 0) {
+    const acceptedIds = new Set(dstInfo.inItems.map(i => i.id));
+    outItem = srcInfo.outItems.find(i => acceptedIds.has(i.id)) || srcInfo.outItems[0];
+  } else {
+    outItem = srcInfo.outItems[0] || dstInfo.inItems[0] || null;
+  }
+
   const fromBlkId = fromBox.node?.blockId;
   const toBlkId = toBox.node?.blockId;
   const fromBlock = fromBlkId ? AppState.free.blocks.find(b => b.id === fromBlkId) : null;
-  const isFluid = Boolean(outItem?.isFluid);
+  const isFluid = Boolean(outItem?.isFluid || srcInfo.outType === 'fluid' || dstInfo.inType === 'fluid');
 
   // Verifica se já existe
   const exists = AppState.free.customEdges.some(e => e.fromNodeId === fromNodeId && e.toNodeId === toNodeId);

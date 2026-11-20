@@ -388,7 +388,7 @@ function run() {
     { id: 'Build_ConveyorAttachmentSplitterSmart_C', kind: 'smart_splitter', category: 'Esteiras', isFluid: false, inPorts: 1, outPorts: 3, icon: 'https://satisfactory.wiki.gg/images/3/3c/Smart_Splitter.png' },
     { id: 'Build_ConveyorAttachmentSplitterProgrammable_C', kind: 'programmable_splitter', category: 'Esteiras', isFluid: false, inPorts: 1, outPorts: 3, icon: 'https://satisfactory.wiki.gg/images/2/2f/Programmable_Splitter.png' },
     { id: 'Build_ConveyorAttachmentMergerPriority_C', kind: 'priority_merger', category: 'Esteiras', isFluid: false, inPorts: 3, outPorts: 1, icon: 'https://satisfactory.wiki.gg/images/a/aa/Conveyor_Merger.png' },
-    { id: 'Build_PipelineJunction_Cross_C', kind: 'pipe_junction', category: 'Tubulações', isFluid: true, inPorts: 2, outPorts: 2, icon: 'https://satisfactory.wiki.gg/images/9/9e/Pipeline_Junction_Cross.png' },
+    { id: 'Build_PipelineJunction_Cross_C', kind: 'pipe_junction', category: 'Tubulações', isFluid: true, inPorts: 2, outPorts: 2, icon: 'https://satisfactory.wiki.gg/images/Pipeline_Junction.png' },
     { id: 'Build_PipelinePump_C', kind: 'pipe_pump_mk1', category: 'Tubulações', isFluid: true, inPorts: 1, outPorts: 1, icon: 'https://satisfactory.wiki.gg/images/0/08/Pipeline_Pump_Mk.1.png' },
     { id: 'Build_PipelinePumpMk2_C', kind: 'pipe_pump_mk2', category: 'Tubulações', isFluid: true, inPorts: 1, outPorts: 1, icon: 'https://satisfactory.wiki.gg/images/e/e5/Pipeline_Pump_Mk.2.png' },
     { id: 'Build_StorageContainerMk1_C', kind: 'storage_mk1', category: 'Armazenamento', isFluid: false, inPorts: 1, outPorts: 1, icon: 'https://satisfactory.wiki.gg/images/0/0b/Storage_Container.png' },

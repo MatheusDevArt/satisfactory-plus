@@ -22,10 +22,10 @@ const TUTORIAL_SLIDES = [
       }
     ],
     legend: [
-      '<strong>Painel esquerdo</strong>: abas da ferramenta, escolhas de itens, botão de montar e <strong>Limpar</strong> (com <strong>Desfazer</strong>).',
+      '<strong>Painel esquerdo</strong>: abas da ferramenta (em Produção: <strong>Recursos</strong>, <strong>Máquinas</strong> e <strong>Produtos</strong>), botão de montar e <strong>Limpar</strong> com <strong>Desfazer</strong>.',
       '<strong>Área de trabalho</strong>: espaço central onde as máquinas e esteiras são desenhadas.',
       '<strong>Topo direito</strong>: direção do fluxo em 4 sentidos (<strong>→ ← ↓ ↑</strong>), <strong>Tutorial</strong>, <strong>Patch notes</strong>, <strong>Reportar</strong> e <strong>Entrar</strong>.',
-      '<strong>Canto inferior direito</strong>: resumo recolhível da fábrica em cima e barra de ferramentas (zoom, <strong>3D</strong>, agrupamento, compacto e <strong>Centralizar</strong>) embaixo.'
+      '<strong>Meio direito e base</strong>: barra vertical compacta de ícones à direita (zoom, 3D, agrupamento, compacto e centralizar) e barra de resumo na parte inferior.'
     ],
     tip: 'Use as setas do teclado (← →) para trocar de passo e clique em qualquer imagem para ampliar.'
   },
@@ -243,9 +243,9 @@ const TUTORIAL_SLIDES = [
       }
     ],
     legend: [
-      '<strong>Porta de saída</strong>: arraste até outra máquina ou solte no vazio para abrir o modal <strong>Adicionar Máquina</strong> já filtrado pelo item.',
-      '<strong>Etiqueta clicável</strong>: clique na etiqueta da esteira para trocar a versão ou remover a ligação.',
-      '<strong>➕ Adicionar Máquina</strong>: adicione receitas, contêineres, tanques, divisores, Triturador SUPIMPA e Elevador Espacial.'
+      '<strong>Porta de saída</strong>: arraste até outra máquina (conexões incompatíveis entre sólido/fluido ou mineradoras são bloqueadas com aviso) ou solte no vazio para abrir o modal <strong>Adicionar Máquina</strong>.',
+      '<strong>Etiqueta clicável</strong>: clique na etiqueta da esteira para trocar a versão, <strong>Inserir Divisor no meio</strong> ou remover a ligação.',
+      '<strong>Categorias na barra lateral</strong>: filtre rapidamente por <strong>Todos</strong>, <strong>Máquinas</strong>, <strong>Receitas</strong> (incluindo ALT), <strong>Logística</strong>, <strong>Armazenamento</strong> e <strong>Energia</strong>.'
     ],
     tip: 'Segure <strong>Alt</strong> enquanto arrasta um card para duplicar a máquina rapidamente.',
     tryAction: { label: 'Experimentar no modo Livre', mode: 'free' }

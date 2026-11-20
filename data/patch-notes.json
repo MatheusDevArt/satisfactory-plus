@@ -1,5 +1,17 @@
 [
   {
+    "id": "2026-11-20-home-video-validacao-livre-filtros",
+    "date": "20/11/2026",
+    "title": "Home com vídeo animado, validação de conexões no Modo Livre e filtros atualizados",
+    "items": [
+      { "tag": "Novo", "text": "Tela inicial (Home) agora exibe o vídeo animado em loop com os textos abaixo da logo e ícone de rolagem animado." },
+      { "tag": "Novo", "text": "Validação de conexões no Modo Livre bloqueando ligações incompatíveis (mineradora em mineradora, sólido em tubulação/fluido e receitas incompatíveis) com aviso imediato." },
+      { "tag": "Melhoria", "text": "Filtro Máquinas lista todas as máquinas do jogo, filtro exclusivo Receitas reúne padrão e ALT, e os filtros agora aparecem direto na barra lateral do Modo Livre." },
+      { "tag": "Melhoria", "text": "Tamanho fixo e responsivo no modal de seleção de itens/máquinas sem redimensionar pelo conteúdo." },
+      { "tag": "Correção", "text": "Corrigida a imagem da Tubulação cruzada (Pipeline Junction) no modal de logística." }
+    ]
+  },
+  {
     "id": "2026-11-20-home-receitas-barra-vertical-filtros",
     "date": "20/11/2026",
     "title": "Nova Home, aba Receitas reformulada, barra vertical compacta e busca corrigida",

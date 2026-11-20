@@ -7444,3 +7444,171 @@ body.theme-dark #spaces-hud-controls.hud-vertical-icons .zoom-readout {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ============================================================================
+ * HOME COM VÍDEO EM LOOP + TEXTOS ABAIXO DA LOGO + ÍCONE DE ROLAGEM ANIMADO
+ * ========================================================================== */
+.intro-splash.home-video-mode {
+  background: #0b0c10 !important;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  padding-bottom: clamp(28px, 6vh, 64px);
+}
+.home-bg-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+}
+.home-video-mode .home-bg-scrim {
+  background: linear-gradient(
+    180deg,
+    rgba(11, 12, 16, 0.14) 0%,
+    rgba(11, 12, 16, 0.25) 52%,
+    rgba(11, 12, 16, 0.82) 100%
+  );
+  z-index: 1;
+}
+.home-bottom-texts {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 0 20px;
+  animation: homeFadeIn 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.home-scroll-icon-only {
+  position: static !important;
+  transform: none !important;
+  margin-top: 12px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: transparent !important;
+  border: none !important;
+  color: #ffffff;
+  cursor: pointer;
+  padding: 6px 12px;
+}
+.home-scroll-mouse {
+  width: 24px;
+  height: 38px;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.88);
+  display: inline-flex;
+  justify-content: center;
+  padding-top: 6px;
+  box-sizing: border-box;
+}
+.home-scroll-wheel {
+  width: 4px;
+  height: 8px;
+  border-radius: 999px;
+  background: #EA580C;
+  animation: homeWheelMove 1.6s ease-in-out infinite;
+}
+.home-scroll-chevron {
+  color: rgba(255, 255, 255, 0.9);
+  animation: homeChevronBounce 1.6s ease-in-out infinite;
+}
+@keyframes homeWheelMove {
+  0%, 100% { transform: translateY(0); opacity: 1; }
+  65% { transform: translateY(10px); opacity: 0.25; }
+}
+@keyframes homeChevronBounce {
+  0%, 100% { transform: translateY(0); opacity: 0.9; }
+  50% { transform: translateY(5px); opacity: 0.45; }
+}
+
+/* ============================================================================
+ * MODAL DE ESCOLHA DE ITEM / ADICIONAR MÁQUINA COM TAMANHO FIXO RESPONSIVO
+ * ========================================================================== */
+#add-machine-modal .modal-dialog,
+#picker-modal .modal-dialog {
+  width: min(780px, 92vw) !important;
+  max-width: 92vw !important;
+  height: min(650px, 84vh) !important;
+  max-height: 84vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+#add-machine-modal #add-machine-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  gap: 10px;
+}
+#add-machine-modal #am-results-slot {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.am-results-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+#picker-modal .picker-body,
+#picker-modal .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#picker-modal #picker-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
+}
+
+/* Filtros na sidebar da aba Livre */
+.free-cat-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.free-cat-filter-grid .btn-free-add {
+  justify-content: center;
+  text-align: center;
+  font-weight: 700;
+}
+
+/* Toast de erro de conexão inválida no Modo Livre */
+.connection-error-toast {
+  position: absolute;
+  top: 66px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 70;
+  max-width: min(480px, calc(100% - 28px));
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.28);
+}
+.connection-error-toast.hidden {
+  display: none !important;
+}
