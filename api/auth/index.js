@@ -62,11 +62,28 @@ module.exports = async function handler(req, res) {
           directProbeStatus = 'FETCH_ERROR';
         }
       }
+      let sampleBlobHost = null;
+      let sampleFetchNoAuth = null;
+      let sampleFetchWithAuth = null;
+      let sampleFetchBodySnippet = null;
       if (hasBlobToken) {
         try {
           const { list } = require('@vercel/blob');
-          await list({ limit: 1, token: getToken() });
+          const resList = await list({ prefix: 'db/users/', limit: 1, token: getToken() });
           listOk = true;
+          const first = resList.blobs && resList.blobs[0];
+          if (first && first.url) {
+            sampleBlobHost = new URL(first.url).host;
+            const r1 = await fetch(first.url, { cache: 'no-store' });
+            sampleFetchNoAuth = r1.status;
+            if (!r1.ok) {
+              const r2 = await fetch(first.url, { cache: 'no-store', headers: { Authorization: `Bearer ${getToken()}` } });
+              sampleFetchWithAuth = r2.status;
+              if (!r2.ok) {
+                sampleFetchBodySnippet = (await r2.text()).slice(0, 180);
+              }
+            }
+          }
         } catch (err) {
           listErrName = err?.name || 'Error';
           listErrMessage = String(err?.message || '').slice(0, 220);
@@ -80,7 +97,11 @@ module.exports = async function handler(req, res) {
         directProbeStatus,
         listOk,
         listErrName,
-        listErrMessage
+        listErrMessage,
+        sampleBlobHost,
+        sampleFetchNoAuth,
+        sampleFetchWithAuth,
+        sampleFetchBodySnippet
       });
     }
 
