@@ -50,6 +50,9 @@ module.exports = async function handler(req, res) {
       const hasStoreId = Boolean(getBlobStoreId());
       const hasSessionSecret = Boolean(process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 16);
       let directProbeStatus = null;
+      let listOk = false;
+      let listErrName = null;
+      let listErrMessage = null;
       if (hasStoreId) {
         try {
           const probeUrl = getDirectBlobUrl(`db/users/${getReservedAdminUsernameLower()}.json`);
@@ -59,12 +62,25 @@ module.exports = async function handler(req, res) {
           directProbeStatus = 'FETCH_ERROR';
         }
       }
+      if (hasBlobToken) {
+        try {
+          const { list } = require('@vercel/blob');
+          await list({ limit: 1, token: getToken() });
+          listOk = true;
+        } catch (err) {
+          listErrName = err?.name || 'Error';
+          listErrMessage = String(err?.message || '').slice(0, 220);
+        }
+      }
       return sendJson(res, 200, {
         ok: true,
         hasBlobToken,
         hasStoreId,
         hasSessionSecret,
-        directProbeStatus
+        directProbeStatus,
+        listOk,
+        listErrName,
+        listErrMessage
       });
     }
 
