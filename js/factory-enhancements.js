@@ -453,7 +453,7 @@ function renderFactorySummaryPanel({ mode, plan, freeBlocks, freeEdges, graph })
 function openAddMachineModal(options = {}) {
   const st = FactoryUIState.addMachineModal;
   st.isOpen = true;
-  st.search = '';
+  st.search = typeof options.initialSearch === 'string' ? options.initialSearch : '';
   st.quickFilter = options.quickFilter || 'all';
   st.filterItemId = options.filterItemId || null;
   st.fromNodeId = options.fromNodeId || null;
@@ -502,7 +502,7 @@ function getFilteredAddMachineOptions() {
   const filterItem = st.filterItemId ? itemsDb[st.filterItemId] : null;
   const isFilterFluid = Boolean(filterItem && filterItem.isFluid);
 
-  const showLogistics = qf === 'all' || qf === 'logistica' || qf === 'armazenamento';
+  const showLogistics = qf === 'all' || qf === 'logistica' || qf === 'armazenamento' || qf === 'logistica_armazenamento';
   const logistics = showLogistics ? Object.values(logisticsDb).filter((l) => {
     if (filterItem && l.isFluid !== isFilterFluid) return false;
     if (qf === 'logistica' && l.category !== 'Esteiras' && l.category !== 'Tubulações') return false;
@@ -721,8 +721,7 @@ function renderAddMachineModalResultsOnly() {
     { key: 'all', label: 'Todos' },
     { key: 'maquinas', label: 'Máquinas' },
     { key: 'receitas', label: 'Receitas' },
-    { key: 'logistica', label: 'Logística' },
-    { key: 'armazenamento', label: 'Armazenamento' },
+    { key: 'logistica_armazenamento', label: 'Logística & Armazenamento' },
     { key: 'energia', label: 'Energia' }
   ];
 

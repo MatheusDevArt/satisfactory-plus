@@ -633,12 +633,62 @@ async function submitChangePassword(e) {
       return;
     }
     closeAuthModal();
-    alert('Senha alterada com sucesso!');
+    showAccountToast('Senha alterada com sucesso!', 'success');
   } catch {
     AccountState.authModal.loading = false;
     AccountState.authModal.error = 'Erro de conexão com o servidor.';
     renderAuthModalBody();
   }
+}
+
+function openCustomConfirmModal(message, confirmLabel = 'Confirmar') {
+  return new Promise((resolve) => {
+    let modal = document.getElementById('splus-confirm-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'splus-confirm-modal';
+      modal.className = 'modal-backdrop hidden';
+      document.body.appendChild(modal);
+    }
+    const finish = (val) => {
+      modal.classList.add('hidden');
+      resolve(val);
+    };
+    modal.onclick = (e) => { if (e.target === modal) finish(false); };
+    modal.innerHTML = `
+      <div class="modal-card splus-confirm-card">
+        <div class="modal-header">
+          <h3>Confirmação</h3>
+          <button type="button" class="btn-icon-close" id="splus-confirm-x">✕</button>
+        </div>
+        <p class="splus-confirm-msg">${escText(message)}</p>
+        <div class="splus-confirm-actions">
+          <button type="button" class="calc-act-btn" id="splus-confirm-cancel">Cancelar</button>
+          <button type="button" class="calc-act-btn primary" id="splus-confirm-ok">${escText(confirmLabel)}</button>
+        </div>
+      </div>
+    `;
+    modal.classList.remove('hidden');
+    modal.querySelector('#splus-confirm-x').onclick = () => finish(false);
+    modal.querySelector('#splus-confirm-cancel').onclick = () => finish(false);
+    modal.querySelector('#splus-confirm-ok').onclick = () => finish(true);
+  });
+}
+
+function showAccountToast(message, tone = 'info') {
+  let el = document.getElementById('splus-account-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'splus-account-toast';
+    el.className = 'splus-account-toast hidden';
+    document.body.appendChild(el);
+  }
+  el.textContent = message;
+  el.className = `splus-account-toast tone-${tone}`;
+  clearTimeout(window._splusToastTimer);
+  window._splusToastTimer = setTimeout(() => {
+    el.classList.add('hidden');
+  }, 2800);
 }
 
 async function performLogout() {
@@ -1201,7 +1251,7 @@ async function deleteAdminReportReply(reportId) {
 }
 
 async function emptyAdminReportHistory() {
-  if (!confirm('Apagar definitivamente todos os reports resolvidos do histórico? Esta ação não pode ser desfeita.')) return;
+  if (!(await openCustomConfirmModal('Apagar definitivamente todos os reports resolvidos do histórico? Esta ação não pode ser desfeita.', 'Apagar histórico'))) return;
   AccountState.adminReports.loading = true;
   renderAdminReportsWorkspace();
   try {
@@ -1532,7 +1582,7 @@ function downloadAdminReportsTxt(scope = 'active') {
     label = 'ativos';
   }
   if (!list.length) {
-    alert('Não há reports para baixar.');
+    showAccountToast('Não há reports para baixar.', 'error');
     return;
   }
   const content = buildReportsTxtContent(list);
@@ -1561,10 +1611,10 @@ function downloadReportImages(reportId) {
 }
 
 async function deleteAdminReport(reportId) {
-  if (!confirm('Tem certeza que deseja excluir este report e todas as imagens anexadas?')) return;
+  if (!(await openCustomConfirmModal('Tem certeza que deseja excluir este report e todas as imagens anexadas?', 'Excluir'))) return;
   const res = await apiFetch(`/api/reports?id=${encodeURIComponent(reportId)}`, { method: 'DELETE' });
   if (!res.ok) {
-    alert(res.data.error || 'Erro ao excluir report.');
+    showAccountToast(res.data.error || 'Erro ao excluir report.', 'error');
     return;
   }
   AccountState.adminReports.list = AccountState.adminReports.list.filter((r) => r.id !== reportId);
@@ -1798,7 +1848,7 @@ async function submitSaveOrRenameProject(e, overwrite = false) {
     AccountState.projects.activeProjectMode = sm.sourceMode;
     closeSaveProjectModal();
     if (typeof updateTopRightFloatingActions === 'function') updateTopRightFloatingActions();
-    alert(`Projeto "${res.data.project.name}" salvo com sucesso!`);
+    showAccountToast(`Projeto "${res.data.project.name}" salvo com sucesso!`, 'success');
   } catch {
     sm.loading = false;
     sm.error = 'Erro de conexão ao salvar o projeto.';
@@ -1819,10 +1869,10 @@ async function quickUpdateActiveProject(sourceMode) {
     })
   });
   if (!res.ok) {
-    alert(res.data.error || 'Não foi possível atualizar o projeto.');
+    showAccountToast(res.data.error || 'Não foi possível atualizar o projeto.', 'error');
     return;
   }
-  alert(`Projeto "${AccountState.projects.activeProjectName}" atualizado com sucesso!`);
+  showAccountToast(`Projeto "${AccountState.projects.activeProjectName}" atualizado com sucesso!`, 'success');
 }
 
 async function loadUserProjects() {
@@ -1851,7 +1901,7 @@ async function loadUserProjects() {
 async function openSavedProjectInSpaces(projectId) {
   const res = await apiFetch(`/api/projects?id=${encodeURIComponent(projectId)}`, { method: 'GET' });
   if (!res.ok || !res.data.project) {
-    alert(res.data.error || 'Não foi possível abrir este projeto.');
+    showAccountToast(res.data.error || 'Não foi possível abrir este projeto.', 'error');
     return;
   }
 
@@ -1897,10 +1947,10 @@ async function openSavedProjectInSpaces(projectId) {
 }
 
 async function deleteSavedProject(projectId, projectName) {
-  if (!confirm(`Tem certeza que deseja remover o projeto "${projectName}"? Essa ação não pode ser desfeita.`)) return;
+  if (!(await openCustomConfirmModal(`Tem certeza que deseja remover o projeto "${projectName}"? Essa ação não pode ser desfeita.`, 'Remover'))) return;
   const res = await apiFetch(`/api/projects?id=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
   if (!res.ok) {
-    alert(res.data.error || 'Erro ao remover o projeto.');
+    showAccountToast(res.data.error || 'Erro ao remover o projeto.', 'error');
     return;
   }
   if (AccountState.projects.activeProjectId === projectId) {

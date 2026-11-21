@@ -49,7 +49,7 @@ const TUTORIAL_SLIDES = [
     legend: [
       '<strong>🏭 Produção</strong>: calcula automaticamente toda a fábrica a partir de um item ou recurso.',
       '<strong>⚡ Energia</strong>: planeja geradores, combustível e consumo de água.',
-      '<strong>🛠️ Livre</strong>: monte máquinas e esteiras manualmente do seu jeito.',
+      '<strong>🛠️ Oficina</strong>: monte máquinas, logística e esteiras manualmente do seu jeito.',
       '<strong>🗺️ Mapa</strong>: encontre nós de recurso no mapa do jogo e envie para a produção.',
       '<strong>📜 Receitas</strong>, <strong>📚 Biblioteca</strong> e <strong>🧮 Calculadora</strong>: consulte receitas, itens e use a nova suíte de calculadoras (máquinas, overclock com slider, energia, esteiras, armazenamento, materiais, SUPIMPA e numérica com teclado físico).'
     ],
@@ -343,16 +343,80 @@ const TUTORIAL_SLIDES = [
       { term: 'Divisor / Unificador', desc: 'Divide uma esteira em várias saídas ou junta várias entradas em uma só.' },
       { term: 'Atalhos na Oficina', desc: 'Ctrl+C/V copiar e colar, Shift+clique selecionar vários, Backspace apagar, Espaço+arrastar mover câmera, arrastar fundo seleciona área.' }
     ]
+  },
+  {
+    id: 'aba-energia',
+    title: 'Aba Energia — O que é e como usar',
+    oneLiner: 'Planeje usinas por meta de MW ou por quantidade de geradores, com combustível e água.',
+    scenes: [{ src: './assets/tutorial/tutorial-09-excesso.webp', alt: 'Painel de energia e status na base.' }],
+    legend: [
+      '<strong>O que faz:</strong> calcula geradores, consumo de combustível (/min), bombas d\'água e geração líquida.',
+      '<strong>Por energia (MW) ou Por geradores:</strong> escolha o modo no topo, informe a meta ou quantidade e selecione gerador e combustível.',
+      '<strong>Status neutro na base:</strong> mostra a energia gerada e consumida sem poluição visual.'
+    ],
+    tryAction: { label: 'Abrir Energia', mode: 'power' }
+  },
+  {
+    id: 'aba-mapa',
+    title: 'Aba Mapa — O que é e como usar',
+    oneLiner: 'Localize jazigos de recursos, discos rígidos e pontos de interesse em MASSAGE-2(A-B)b.',
+    scenes: [{ src: './assets/tutorial/tutorial-02-abas.webp', alt: 'Acesso à aba Mapa na barra lateral.' }],
+    legend: [
+      '<strong>O que faz:</strong> exibe o mapa interativo com mais de 2.500 pontos oficiais do jogo.',
+      '<strong>Filtros e busca:</strong> filtre por minério, pureza, cavernas ou discos rígidos na barra lateral.',
+      '<strong>Integração:</strong> use os jazigos encontrados para planejar sua extração na Produção ou Oficina.'
+    ],
+    tryAction: { label: 'Abrir Mapa', mode: 'map' }
+  },
+  {
+    id: 'aba-receitas',
+    title: 'Aba Receitas — O que é e como usar',
+    oneLiner: 'Compare receitas padrão e alternativas (ALT) com custo real em recursos brutos.',
+    scenes: [{ src: './assets/tutorial/tutorial-02-abas.webp', alt: 'Acesso à aba Receitas.' }],
+    legend: [
+      '<strong>O que faz:</strong> cataloga todas as receitas do Satisfactory 1.0+ com busca, filtros por máquina e favoritos.',
+      '<strong>Comparador:</strong> selecione receitas do mesmo produto para comparar máquinas, energia e subprodutos.',
+      '<strong>Atalho direto:</strong> clique em qualquer produto para abrir o planejamento em Produção.'
+    ],
+    tryAction: { label: 'Abrir Receitas', mode: 'recipes' }
+  },
+  {
+    id: 'aba-biblioteca',
+    title: 'Aba Biblioteca — O que é e como usar',
+    oneLiner: 'Enciclopédia completa de itens, máquinas, logística, ferramentas e fauna do jogo.',
+    scenes: [{ src: './assets/tutorial/tutorial-02-abas.webp', alt: 'Acesso à aba Biblioteca.' }],
+    legend: [
+      '<strong>O que faz:</strong> reúne dados oficiais de todos os itens e construções em português e inglês.',
+      '<strong>Categorias e favoritos:</strong> navegue por subcategorias coloridas, marque favoritos e acesse recentes.',
+      '<strong>Painel de detalhes:</strong> clique em qualquer card para ver receitas que produzem ou consomem o item.'
+    ],
+    tryAction: { label: 'Abrir Biblioteca', mode: 'library' }
+  },
+  {
+    id: 'aba-calculadora',
+    title: 'Aba Calculadora — O que é e como usar',
+    oneLiner: 'Calculadora comum com teclado físico + 6 ferramentas oficiais do jogo.',
+    scenes: [{ src: './assets/tutorial/tutorial-02-abas.webp', alt: 'Acesso à aba Calculadora.' }],
+    legend: [
+      '<strong>Calculadora:</strong> contas rápidas com teclado físico (+, -, *, /, %, Enter, Backspace, Esc).',
+      '<strong>Recursos, Produção e Energia:</strong> calcule máquinas (com overclock por tipo), saída/min, excesso e usinas.',
+      '<strong>Logística, SUPIMPA e Elevador Espacial:</strong> conte esteiras/divisores da linha atual, pontos do Triturador e progresso das 5 fases 1.0.'
+    ],
+    tryAction: { label: 'Abrir Calculadora', mode: 'calculator' }
   }
 ];
 
 const TUTORIAL_TOPICS = [
-  { id: 'primeiros-passos', icon: '🧭', title: 'Primeiros passos', sub: 'Visão geral da tela e abas', slideIds: ['como-usar', 'abas'] },
-  { id: 'producao', icon: '🏭', title: 'Produção', sub: 'Montar linha, fluxo, esteiras e cards', slideIds: ['primeira-linha', 'como-ler-fluxo', 'etiquetas-esteiras', 'cards-maquina', 'nos-recurso', 'produto-final'] },
-  { id: 'oficina', icon: '🛠️', title: 'Oficina', sub: 'Portas laranja/azul, duplicar, atalhos', slideIds: ['modo-livre', 'navegacao-foco'] },
-  { id: 'energia-status', icon: '⚡', title: 'Energia e Status', sub: 'Barra inferior neutra e excesso', slideIds: ['status-excesso'] },
-  { id: 'conta-reports', icon: '📁', title: 'Projetos, Conta e Reports', sub: 'Salvar na nuvem, Resolvido e Histórico', slideIds: ['conta-projetos-reportar', 'patch-notes'] },
-  { id: 'atalhos-glossario', icon: '⌨️', title: 'Atalhos e Glossário', sub: 'Termos do jogo e atalhos rápidos', slideIds: ['glossario'] }
+  { id: 'interface', icon: '🧭', title: 'Interface', sub: 'Elementos gerais, barras e controles', slideIds: ['como-usar', 'abas'] },
+  { id: 'producao', icon: '🏭', title: 'Produção', sub: 'Montar linha, fluxo, esteiras e cards', slideIds: ['primeira-linha', 'como-ler-fluxo', 'etiquetas-esteiras', 'cards-maquina', 'nos-recurso', 'produto-final', 'status-excesso'] },
+  { id: 'energia', icon: '⚡', title: 'Energia', sub: 'Usinas por MW ou geradores e água', slideIds: ['aba-energia'] },
+  { id: 'oficina', icon: '🛠️', title: 'Oficina', sub: 'Portas, duplicar, atalhos e overclock', slideIds: ['modo-livre', 'navegacao-foco'] },
+  { id: 'mapa', icon: '🗺️', title: 'Mapa', sub: 'Jazigos, filtros e pontos do mapa', slideIds: ['aba-mapa'] },
+  { id: 'receitas', icon: '📜', title: 'Receitas', sub: 'Padrão, ALT, comparador e favoritos', slideIds: ['aba-receitas'] },
+  { id: 'biblioteca', icon: '📚', title: 'Biblioteca', sub: 'Itens, máquinas e detalhes oficiais', slideIds: ['aba-biblioteca'] },
+  { id: 'calculadora', icon: '🧮', title: 'Calculadora', sub: 'Numérica, Recursos, Logística e SUPIMPA', slideIds: ['aba-calculadora'] },
+  { id: 'projetos-conta', icon: '📁', title: 'Projetos e Conta', sub: 'Salvar na nuvem, reports e novidades', slideIds: ['conta-projetos-reportar', 'patch-notes'] },
+  { id: 'atalhos-glossario', icon: '⌨️', title: 'Atalhos e Glossário', sub: 'Atalhos rápidos e termos do jogo', slideIds: ['glossario'] }
 ];
 
 const TutorialState = {
@@ -549,9 +613,9 @@ function renderTutorialSlide() {
     const mediaHtml = activeScene ? `
       <div class="tut-media-col">
         ${sceneTabsHtml}
-        <div class="tut-figure-box" onclick="openImageLightbox('${activeScene.src}?v=31')" title="Clique para ampliar a imagem">
+        <div class="tut-figure-box" onclick="openImageLightbox('${activeScene.src}?v=32')" title="Clique para ampliar a imagem">
           <img
-            src="${activeScene.src}?v=31"
+            src="${activeScene.src}?v=32"
             alt="${activeScene.alt}"
             loading="lazy"
             decoding="async"
@@ -627,7 +691,7 @@ function renderTutorialSlide() {
     <div class="tut-card-header">
       <div class="tut-header-top-row">
         <button type="button" class="tut-back-btn" onclick="backToTutorialTopics()">← Tópicos</button>
-        <span class="tutorial-step-counter">Passo ${idx + 1} de ${activeSlides.length}</span>
+        <span class="tutorial-step-counter">Página ${idx + 1} de ${activeSlides.length}</span>
       </div>
       <h4 class="tut-slide-title">${slide.title}</h4>
       <p class="tut-one-liner"><strong>Em uma frase:</strong> ${slide.oneLiner}</p>

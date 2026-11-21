@@ -195,19 +195,20 @@ async function run() {
     await cdp.send('Page.navigate', { url });
     await sleep(2600);
 
-    // Garante splash removido, body.home-active removido, tema claro limpo e patch notes silenciado
+    // Remove splash, body.home-active e QUALQUER modal de patch notes antes de qualquer captura
     await cdp.eval(`(() => {
+      try {
+        const pn = ${JSON.stringify(JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'patch-notes.json'), 'utf8'))[0]?.id || 'latest')};
+        localStorage.setItem('splus_last_seen_patch_id', pn);
+      } catch {}
       if (typeof dismissIntroSplash === 'function') dismissIntroSplash();
-      const splash = document.getElementById('intro-splash');
-      if (splash) splash.remove();
+      document.getElementById('intro-splash')?.remove();
+      document.getElementById('patch-auto-modal')?.remove();
+      document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.add('hidden'));
       document.body.classList.remove('home-active');
       document.documentElement.classList.remove('home-active');
       const root = document.getElementById('app-layout-root');
       if (root) { root.style.opacity = '1'; root.style.visibility = 'visible'; }
-      try { localStorage.setItem('splus_last_seen_patch_id', 'latest-suppressed'); } catch {}
-      const pm = document.getElementById('patch-auto-modal');
-      if (pm) pm.classList.add('hidden');
-      if (typeof closePatchAutoCard === 'function') closePatchAutoCard(true);
       document.body.classList.remove('theme-dark');
       document.body.classList.add('theme-light');
     })()`);

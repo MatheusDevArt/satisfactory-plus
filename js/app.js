@@ -631,7 +631,16 @@ function updateConnectedWiresForNode(nodeId) {
     const toBox = nodeCoords.get(edge.to);
     if (!fromBox || !toBox) return;
 
-    const geom = computeEdgeGeometry(fromBox, toBox, orient, edge);
+    const geom = computeEdgeGeometry(
+      fromBox,
+      toBox,
+      orient,
+      edge,
+      typeof edge._outPct === 'number' ? edge._outPct : 0.5,
+      typeof edge._inPct === 'number' ? edge._inPct : 0.5,
+      edge._outSide || null,
+      edge._inSide || null
+    );
     const groupEl = document.getElementById(`edge-group-${idx}`);
     if (groupEl) {
       groupEl.querySelectorAll('path').forEach(p => p.setAttribute('d', geom.d));
@@ -664,8 +673,8 @@ function initInfiniteCanvasEvents() {
     if (e.button !== 0) return;
     if (e.target.closest('button, input, select, .hud-btn, .empty-card-box, .btn-expand-sidebar, .top-right-floating-actions, .user-dropdown-menu, .modal-backdrop, .map-workspace-view, .library-workspace-view, .calculator-workspace-view, .projects-workspace-view, .reports-workspace-view, .wire-hit-area, .conveyor-edge-group, .wire-belt-pill, #canvas-context-menu, #wire-drop-menu')) return;
 
-    // 1. Clique em uma porta de saída para puxar esteira/conexão (APENAS no Modo Livre)
-    const outPort = e.target.closest('.port-lr-out, .port-rl-out, .port-tb-out, .port-bt-out');
+    // 1. Clique em uma porta de saída para puxar esteira/tubulação (Oficina)
+    const outPort = e.target.closest('.mcard-port-out, .mcard-port-dot[data-dir="out"], .port-lr-out, .port-rl-out, .port-tb-out, .port-bt-out');
     if (outPort) {
       if (AppState.mode !== 'free') return;
       e.preventDefault();
@@ -673,32 +682,16 @@ function initInfiniteCanvasEvents() {
       const cardEl = outPort.closest('.magnific-card');
       if (!cardEl) return;
       const fromNodeId = cardEl.id;
-      const fromBox = AppState.canvas.nodeMap.get(fromNodeId);
-      if (!fromBox) return;
-      const orient = AppState.orientation || 'LR';
-      let startX, startY;
-      if (orient === 'TB') {
-        startX = fromBox.x + fromBox.w / 2;
-        startY = fromBox.y + fromBox.h;
-      } else if (orient === 'BT') {
-        startX = fromBox.x + fromBox.w / 2;
-        startY = fromBox.y;
-      } else if (orient === 'RL') {
-        startX = fromBox.x;
-        startY = fromBox.y + fromBox.h / 2;
-      } else {
-        startX = fromBox.x + fromBox.w;
-        startY = fromBox.y + fromBox.h / 2;
-      }
-
-      AppState.canvas.wiring = { fromNodeId, startX, startY, currX: startX, currY: startY, hoveredCardId: null };
+      const pr = outPort.getBoundingClientRect();
+      const sw = clientToWorld(pr.left + pr.width / 2, pr.top + pr.height / 2);
+      AppState.canvas.wiring = { fromNodeId, startX: sw.x, startY: sw.y, currX: sw.x, currY: sw.y, hoveredCardId: null };
       viewport.classList.add('wiring-active');
       return;
     }
 
     // 2. Clique em um card para arrastar livremente no canvas (Alt + Arrastar = Duplicar)
     const cardEl = e.target.closest('.magnific-card');
-    if (cardEl && !e.target.closest('.mcard-port, .mcard-delete-btn')) {
+    if (cardEl && !e.target.closest('.mcard-port, .mcard-port-dot, .mcard-delete-btn, .mcard-dup-btn')) {
       e.preventDefault();
       let targetNodeId = cardEl.id;
       let box = AppState.canvas.nodeMap.get(targetNodeId);
@@ -731,8 +724,8 @@ function initInfiniteCanvasEvents() {
       return;
     }
 
-    // 3. Clique no fundo vazio: Espaço+arrastar = Pan; sem Espaço na Oficina = seleção por retângulo
-    if (AppState.mode === 'free' && !AppState.canvas.spacePressed) {
+    // 3. Clique no fundo vazio: Shift+arrastar na Oficina = seleção por retângulo; senão = Pan
+    if (AppState.mode === 'free' && e.shiftKey && !AppState.canvas.spacePressed) {
       const rect = viewport.getBoundingClientRect();
       AppState.canvas.marquee = {
         startX: e.clientX - rect.left,
@@ -1531,6 +1524,80 @@ function selectRecipeFromPicker(recipeId) {
   if (!entry || !entry.onSelectExpr) return;
   const fn = new Function('__RID__', entry.onSelectExpr.replace(/__RID__/g, '__RID__'));
   fn(recipeId);
+}
+
+// 7. Seletor de Máquina no mesmo padrão visual do Seletor de Receitas
+function renderMachinePickerTriggerHtml(selectedMachine, machinesList, onSelectExpr) {
+  const key = `mp_${uid()}`;
+  window._machinePickerRegistry = window._machinePickerRegistry || {};
+  window._machinePickerRegistry[key] = {
+    machines: machinesList || [],
+    selectedId: selectedMachine?.id || '',
+    onSelectExpr
+  };
+  return `
+    <button type="button" class="rp-trigger-btn" onclick="openMachinePickerModal('${key}')">
+      <div class="rp-trigger-main">
+        ${selectedMachine ? renderEntityIcon(selectedMachine, 24) : ''}
+        <div class="rp-trigger-text">
+          <strong class="rp-trigger-name">${selectedMachine ? libEsc(selectedMachine.name) : 'Escolher máquina...'}</strong>
+          ${selectedMachine ? `<span class="rp-opt-meta">⚡ ${fmt(selectedMachine.powerConsumption || 0, 0)} MW base</span>` : ''}
+        </div>
+      </div>
+      <span class="calc-pick-caret">▾</span>
+    </button>
+  `;
+}
+
+function openMachinePickerModal(key) {
+  const entry = window._machinePickerRegistry?.[key];
+  if (!entry) return;
+  let modal = document.getElementById('recipe-picker-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'recipe-picker-modal';
+    modal.className = 'modal-backdrop hidden';
+    modal.onclick = (e) => { if (e.target === modal) modal.classList.add('hidden'); };
+    document.body.appendChild(modal);
+  }
+  window._activeMachinePickerKey = key;
+  modal.innerHTML = `
+    <div class="modal-card rp-modal-card">
+      <div class="modal-header">
+        <h3>Escolher Máquina (${entry.machines.length})</h3>
+        <button type="button" class="btn-icon-close" onclick="document.getElementById('recipe-picker-modal').classList.add('hidden')">✕</button>
+      </div>
+      <div class="calc-picker-search-wrap">
+        <input type="text" id="mp-search-input" class="sidebar-input" placeholder="Buscar máquina..." oninput="renderMachinePickerList(this.value)" />
+      </div>
+      <div id="mp-modal-list" class="calc-picker-grid"></div>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+  renderMachinePickerList('');
+  setTimeout(() => document.getElementById('mp-search-input')?.focus(), 30);
+}
+
+function renderMachinePickerList(query) {
+  const listEl = document.getElementById('mp-modal-list');
+  const entry = window._machinePickerRegistry?.[window._activeMachinePickerKey];
+  if (!listEl || !entry) return;
+  const q = Solver.normalizeText(query || '');
+  const list = entry.machines.filter(m => !q || Solver.normalizeText(`${m.name} ${m.nameEn || ''}`).includes(q));
+  listEl.innerHTML = list.map(m => `
+    <button type="button" class="calc-picker-item ${m.id === entry.selectedId ? 'is-selected' : ''}" onclick="selectMachineFromPicker('${m.id}')">
+      ${renderEntityIcon(m, 32)}
+      <span>${libEsc(m.name)}</span>
+    </button>
+  `).join('') || '<div class="calc-empty-note">Nenhuma máquina encontrada.</div>';
+}
+
+function selectMachineFromPicker(machineId) {
+  const entry = window._machinePickerRegistry?.[window._activeMachinePickerKey];
+  document.getElementById('recipe-picker-modal')?.classList.add('hidden');
+  if (!entry || !entry.onSelectExpr) return;
+  const fn = new Function('__MID__', entry.onSelectExpr);
+  fn(machineId);
 }
 
 /* ============================================================================
@@ -2365,10 +2432,7 @@ function renderOficinaBlocksListHtml() {
         specificControls = `
           <div class="field-group">
             <label>Máquina</label>
-            <select class="sidebar-select" onchange="changeFreeBlockMachine('${b.id}', this.value)">
-              <option value="" ${!b.machineId ? 'selected' : ''}>Escolher máquina...</option>
-              ${machines.map(m => `<option value="${m.id}" ${m.id === b.machineId ? 'selected' : ''}>${m.name}</option>`).join('')}
-            </select>
+            ${renderMachinePickerTriggerHtml(machines.find(m => m.id === b.machineId) || null, machines, `changeFreeBlockMachine('${b.id}', __MID__)`)}
           </div>
           ${b.machineId ? `
             <div class="field-group">
@@ -2486,12 +2550,10 @@ function renderFreeMode(sidebarEl, emptyOverlay, autoFit) {
   const blocks = free.blocks || [];
 
   const catCards = [
-    { key: 'all', label: 'Todos', sub: 'Todas as construções e receitas', icon: '📦' },
-    { key: 'maquinas', label: 'Máquinas', sub: 'Produção, mineradoras e extratores', icon: '🏭' },
-    { key: 'receitas', label: 'Receitas', sub: 'Padrão e alternativas (ALT)', icon: '📜' },
-    { key: 'logistica', label: 'Logística', sub: 'Divisores, unificadores e tubulações', icon: '🔀' },
-    { key: 'armazenamento', label: 'Armazenamento', sub: 'Contêineres, tanques e destinos', icon: '🗄️' },
-    { key: 'energia', label: 'Energia', sub: 'Geradores e usinas', icon: '⚡' }
+    { key: 'maquinas', label: 'Máquinas', icon: '🏭' },
+    { key: 'receitas', label: 'Receitas', icon: '📜' },
+    { key: 'logistica_armazenamento', label: 'Logística & Armazenamento', icon: '🔀' },
+    { key: 'energia', label: 'Energia', icon: '⚡' }
   ];
 
   const multiSelCount = Array.isArray(free.selectedIds) ? free.selectedIds.length : 0;
@@ -2538,14 +2600,19 @@ function renderFreeMode(sidebarEl, emptyOverlay, autoFit) {
         <span class="step-badge">OFICINA</span>
         <h4>Adicionar à Oficina</h4>
       </div>
-      <div class="free-add-buttons free-cat-filter-grid">
+      <input
+        type="text"
+        class="sidebar-input"
+        style="margin-bottom:8px;"
+        placeholder="Buscar item, máquina ou receita..."
+        onkeydown="if(event.key==='Enter'){ openAddMachineModal({ quickFilter: 'all', initialSearch: this.value }); }"
+        onfocus="if(!this.dataset.bound){ this.dataset.bound='1'; }"
+      />
+      <div class="oficina-cat-grid-2">
         ${catCards.map(c => `
-          <button type="button" class="empty-step-cta oficina-cat-cta" onclick="openAddMachineModal({ quickFilter: '${c.key}' })">
-            <span class="cta-plus">${c.icon}</span>
-            <div>
-              <strong>${c.label}</strong>
-              <span>${c.sub}</span>
-            </div>
+          <button type="button" class="oficina-cat-tile" onclick="openAddMachineModal({ quickFilter: '${c.key}' })">
+            <span class="oficina-tile-icon">${c.icon}</span>
+            <strong>${c.label}</strong>
           </button>
         `).join('')}
       </div>
@@ -3405,54 +3472,43 @@ function highlightPortPair(portKey, active) {
   });
 }
 
-function computeEdgeGeometry(fromBox, toBox, orientOrIsTB, edge, outPct = 0.5, inPct = 0.5) {
+function getSideAnchorPoint(box, side, pct = 0.5) {
+  const w = box.w || 270;
+  const h = box.h || 260;
+  if (side === 'top') return { x: box.x + w * pct, y: box.y };
+  if (side === 'bottom') return { x: box.x + w * pct, y: box.y + h };
+  if (side === 'left') return { x: box.x, y: box.y + h * pct };
+  return { x: box.x + w, y: box.y + h * pct };
+}
+
+function computeEdgeGeometry(fromBox, toBox, orientOrIsTB, edge, outPct = 0.5, inPct = 0.5, outSide = null, inSide = null) {
   const orient = typeof orientOrIsTB === 'string'
     ? orientOrIsTB
     : (orientOrIsTB ? 'TB' : 'LR');
-  let x1, y1, x2, y2, midX, midY, d, badgeX, badgeY;
-  // Usa as dimensões reais medidas do card e a fração exata da porta na borda
+  const defaultOutSide = orient === 'RL' ? 'left' : (orient === 'TB' ? 'bottom' : (orient === 'BT' ? 'top' : 'right'));
+  const defaultInSide = orient === 'RL' ? 'right' : (orient === 'TB' ? 'top' : (orient === 'BT' ? 'bottom' : 'left'));
+  const p1 = getSideAnchorPoint(fromBox, outSide || defaultOutSide, outPct);
+  const p2 = getSideAnchorPoint(toBox, inSide || defaultInSide, inPct);
+  const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
+  const midX = (x1 + x2) / 2;
+  const midY = (y1 + y2) / 2;
   const fh = fromBox.h || 260;
   const th = toBox.h || 260;
-  const fw = fromBox.w || 270;
-  const tw = toBox.w || 270;
+  let d, badgeX, badgeY;
 
   if (orient === 'LR') {
-    x1 = fromBox.x + fw;
-    y1 = fromBox.y + fh * outPct;
-    x2 = toBox.x;
-    y2 = toBox.y + th * inPct;
-    midX = (x1 + x2) / 2;
-    midY = (y1 + y2) / 2;
     d = buildRoundedOrthogonalPathLR(x1, y1, x2, y2, midX);
     badgeX = x2 >= x1 + 24 ? midX : (x1 + x2) / 2;
     badgeY = x2 >= x1 + 24 ? midY : Math.min(y1, y2) - Math.max(fh, th) / 2 - 26;
   } else if (orient === 'RL') {
-    x1 = fromBox.x;
-    y1 = fromBox.y + fh * outPct;
-    x2 = toBox.x + tw;
-    y2 = toBox.y + th * inPct;
-    midX = (x1 + x2) / 2;
-    midY = (y1 + y2) / 2;
     d = buildRoundedOrthogonalPathRL(x1, y1, x2, y2, midX);
     badgeX = x1 >= x2 + 24 ? midX : (x1 + x2) / 2;
     badgeY = x1 >= x2 + 24 ? midY : Math.min(y1, y2) - Math.max(fh, th) / 2 - 26;
   } else if (orient === 'BT') {
-    x1 = fromBox.x + fw * outPct;
-    y1 = fromBox.y;
-    x2 = toBox.x + tw * inPct;
-    y2 = toBox.y + th;
-    midX = (x1 + x2) / 2;
-    midY = (y1 + y2) / 2;
     d = buildRoundedOrthogonalPathBT(x1, y1, x2, y2, midY);
     badgeX = midX;
     badgeY = y1 >= y2 + 24 ? midY : (y1 + y2) / 2;
   } else {
-    x1 = fromBox.x + fw * outPct;
-    y1 = fromBox.y + fh;
-    x2 = toBox.x + tw * inPct;
-    y2 = toBox.y;
-    midX = (x1 + x2) / 2;
-    midY = (y1 + y2) / 2;
     d = buildRoundedOrthogonalPathTB(x1, y1, x2, y2, midY);
     badgeX = midX;
     badgeY = y2 >= y1 + 24 ? midY : (y1 + y2) / 2;
@@ -3506,8 +3562,30 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, orientOrIsTB, wiresEl, no
     const toSpecs = getNodePortSpecs(toBox.node);
     const outSlot = claimPort(usedOut, edge.from, fromSpecs.outputs, wantType);
     const inSlot = claimPort(usedIn, edge.to, toSpecs.inputs, wantType);
-    const outPct = getPortFraction(outSlot.idx, outSlot.total);
-    const inPct = getPortFraction(inSlot.idx, inSlot.total);
+    let outPct = getPortFraction(outSlot.idx, outSlot.total);
+    let inPct = getPortFraction(inSlot.idx, inSlot.total);
+    let outSide = null;
+    let inSide = null;
+
+    // 11. Portas reais em Divisores (saída cima/direita/baixo), Unificadores (entrada cima/esquerda/baixo) e Junções (4 lados)
+    const fKind = fromBox.node?.kind || '';
+    const tKind = toBox.node?.kind || '';
+    const dyCenter = (toBox.y + (toBox.h || 160) / 2) - (fromBox.y + (fromBox.h || 160) / 2);
+    if (fKind === 'splitter' || fKind === 'smart_splitter' || fKind === 'programmable_splitter' || fKind === 'pipe_junction') {
+      if (dyCenter < -70) { outSide = 'top'; outPct = 0.5; }
+      else if (dyCenter > 70) { outSide = 'bottom'; outPct = 0.5; }
+      else { outSide = orient === 'RL' ? 'left' : 'right'; outPct = 0.5; }
+    }
+    if (tKind === 'merger' || tKind === 'priority_merger' || tKind === 'pipe_junction') {
+      if (dyCenter > 70) { inSide = 'top'; inPct = 0.5; }
+      else if (dyCenter < -70) { inSide = 'bottom'; inPct = 0.5; }
+      else { inSide = orient === 'RL' ? 'right' : 'left'; inPct = 0.5; }
+    }
+
+    edge._outPct = outPct;
+    edge._inPct = inPct;
+    edge._outSide = outSide;
+    edge._inSide = inSide;
 
     // Atualiza bolinhas de porta como ocupadas com tooltip e destaque de par
     if (nodesEl) {
@@ -3538,7 +3616,7 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, orientOrIsTB, wiresEl, no
       ? `onclick="openEdgeBeltMenu(event, '${edge.edgeId}')" oncontextmenu="openEdgeBeltMenu(event, '${edge.edgeId}')"`
       : '';
 
-    const geom = computeEdgeGeometry(fromBox, toBox, orient, edge, outPct, inPct);
+    const geom = computeEdgeGeometry(fromBox, toBox, orient, edge, outPct, inPct, outSide, inSide);
     const { d, badgeX, badgeY } = geom;
 
     if (edge.isPipe) {
@@ -3809,7 +3887,7 @@ function renderMagnificNodeCard(box, orientOrIsTB) {
   const isExtractor = node.kind === 'extractor';
   const isFinalProduct = node.kind === 'final_product' || Boolean(node.isFinalProduct);
   const isConfigurable = Boolean(node.configMeta);
-  const imgSize = isCompact ? 74 : 168;
+  const imgSize = isCompact ? 86 : 196;
 
   const inputsList = node.inputsList || [];
   const outputsList = node.outputsList || [];
@@ -3922,25 +4000,52 @@ function renderMagnificNodeCard(box, orientOrIsTB) {
     : '';
 
   const portSpecs = getNodePortSpecs(node);
-  const renderPortDots = (portsArr, dir) => {
-    const total = portsArr.length;
-    if (total === 0) return '';
-    return portsArr.map((ptype, idx) => {
-      const pct = (getPortFraction(idx, total) * 100).toFixed(2);
-      const isHoriz = orient === 'LR' || orient === 'RL';
-      const isStartEdge = (dir === 'in' && (orient === 'LR' || orient === 'TB')) || (dir === 'out' && (orient === 'RL' || orient === 'BT'));
-      const posStyle = isHoriz
-        ? `top:${pct}%; ${isStartEdge ? 'left:-7px;' : 'right:-7px;'} transform:translateY(-50%);`
-        : `left:${pct}%; ${isStartEdge ? 'top:-7px;' : 'bottom:-7px;'} transform:translateX(-50%);`;
-      const typeCls = ptype === 'fluid' ? 'port-fluid' : 'port-solid';
-      const dirCls = dir === 'out' ? 'mcard-port-out' : 'mcard-port-in';
-      const titleTxt = dir === 'out'
-        ? (ptype === 'fluid' ? 'Saída de tubulação (arraste para conectar)' : 'Saída de esteira (arraste para conectar)')
-        : (ptype === 'fluid' ? 'Entrada de tubulação' : 'Entrada de esteira');
-      return `<div class="mcard-port-dot ${typeCls} ${dirCls} ${AppState.mode === 'free' ? 'mcard-port' : ''}" data-dir="${dir}" data-type="${ptype}" data-idx="${idx}" style="${posStyle}" title="${titleTxt}" onmouseenter="highlightPortPair(this.getAttribute('data-pair'), true)" onmouseleave="highlightPortPair(this.getAttribute('data-pair'), false)"></div>`;
-    }).join('');
+  const makeSideDot = (side, ptype, dir, idx) => {
+    const posMap = {
+      left: 'top:50%; left:-7px; transform:translateY(-50%);',
+      right: 'top:50%; right:-7px; transform:translateY(-50%);',
+      top: 'left:50%; top:-7px; transform:translateX(-50%);',
+      bottom: 'left:50%; bottom:-7px; transform:translateX(-50%);'
+    };
+    const typeCls = ptype === 'fluid' ? 'port-fluid' : 'port-solid';
+    const dirCls = dir === 'out' ? 'mcard-port-out' : 'mcard-port-in';
+    const titleTxt = dir === 'out'
+      ? (ptype === 'fluid' ? 'Saída de tubulação (arraste para conectar)' : 'Saída de esteira (arraste para conectar)')
+      : (ptype === 'fluid' ? 'Entrada de tubulação' : 'Entrada de esteira');
+    return `<div class="mcard-port-dot ${typeCls} ${dirCls} ${AppState.mode === 'free' ? 'mcard-port' : ''}" data-dir="${dir}" data-type="${ptype}" data-idx="${idx}" data-side="${side}" style="${posMap[side]}" title="${titleTxt}" onmouseenter="highlightPortPair(this.getAttribute('data-pair'), true)" onmouseleave="highlightPortPair(this.getAttribute('data-pair'), false)"></div>`;
   };
-  const portsHtml = `${renderPortDots(portSpecs.inputs, 'in')}${renderPortDots(portSpecs.outputs, 'out')}`;
+  let portsHtml = '';
+  if (node.kind === 'splitter' || node.kind === 'smart_splitter' || node.kind === 'programmable_splitter') {
+    const inS = orient === 'RL' ? 'right' : 'left';
+    const outMain = orient === 'RL' ? 'left' : 'right';
+    portsHtml = makeSideDot(inS, 'solid', 'in', 0) + makeSideDot('top', 'solid', 'out', 0) + makeSideDot(outMain, 'solid', 'out', 1) + makeSideDot('bottom', 'solid', 'out', 2);
+  } else if (node.kind === 'merger' || node.kind === 'priority_merger') {
+    const inMain = orient === 'RL' ? 'right' : 'left';
+    const outS = orient === 'RL' ? 'left' : 'right';
+    portsHtml = makeSideDot('top', 'solid', 'in', 0) + makeSideDot(inMain, 'solid', 'in', 1) + makeSideDot('bottom', 'solid', 'in', 2) + makeSideDot(outS, 'solid', 'out', 0);
+  } else if (node.kind === 'pipe_junction') {
+    portsHtml = makeSideDot('left', 'fluid', 'in', 0) + makeSideDot('top', 'fluid', 'out', 0) + makeSideDot('right', 'fluid', 'out', 1) + makeSideDot('bottom', 'fluid', 'in', 1);
+  } else {
+    const renderPortDots = (portsArr, dir) => {
+      const total = portsArr.length;
+      if (total === 0) return '';
+      return portsArr.map((ptype, idx) => {
+        const pct = (getPortFraction(idx, total) * 100).toFixed(2);
+        const isHoriz = orient === 'LR' || orient === 'RL';
+        const isStartEdge = (dir === 'in' && (orient === 'LR' || orient === 'TB')) || (dir === 'out' && (orient === 'RL' || orient === 'BT'));
+        const posStyle = isHoriz
+          ? `top:${pct}%; ${isStartEdge ? 'left:-7px;' : 'right:-7px;'} transform:translateY(-50%);`
+          : `left:${pct}%; ${isStartEdge ? 'top:-7px;' : 'bottom:-7px;'} transform:translateX(-50%);`;
+        const typeCls = ptype === 'fluid' ? 'port-fluid' : 'port-solid';
+        const dirCls = dir === 'out' ? 'mcard-port-out' : 'mcard-port-in';
+        const titleTxt = dir === 'out'
+          ? (ptype === 'fluid' ? 'Saída de tubulação (arraste para conectar)' : 'Saída de esteira (arraste para conectar)')
+          : (ptype === 'fluid' ? 'Entrada de tubulação' : 'Entrada de esteira');
+        return `<div class="mcard-port-dot ${typeCls} ${dirCls} ${AppState.mode === 'free' ? 'mcard-port' : ''}" data-dir="${dir}" data-type="${ptype}" data-idx="${idx}" style="${posStyle}" title="${titleTxt}" onmouseenter="highlightPortPair(this.getAttribute('data-pair'), true)" onmouseleave="highlightPortPair(this.getAttribute('data-pair'), false)"></div>`;
+      }).join('');
+    };
+    portsHtml = `${renderPortDots(portSpecs.inputs, 'in')}${renderPortDots(portSpecs.outputs, 'out')}`;
+  }
   const isMultiSelected = AppState.mode === 'free' && Array.isArray(AppState.free.selectedIds) && node.blockId && AppState.free.selectedIds.includes(node.blockId);
 
   return `
@@ -4206,9 +4311,10 @@ function deleteSelectedFreeBlocks() {
   renderAll(false);
 }
 
-// Atalhos de teclado da Oficina (Ctrl+C, Ctrl+V, Backspace/Delete, Ctrl+Z/Y, Espaço para Pan)
+// Atalhos de teclado: Espaço para mão/pan nas 3 abas de linha; Ctrl+C/V/Z/Y e Backspace na Oficina
 window.addEventListener('keydown', (e) => {
-  if (AppState.mode !== 'free') return;
+  const isCanvasTab = AppState.mode === 'production' || AppState.mode === 'power' || AppState.mode === 'free';
+  if (!isCanvasTab) return;
   const active = document.activeElement;
   const tag = active ? active.tagName : '';
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
@@ -4221,6 +4327,7 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     return;
   }
+  if (AppState.mode !== 'free') return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
     e.preventDefault();
     copySelectedFreeBlocks();
@@ -8641,10 +8748,7 @@ function renderCalcInputsPanelHtml() {
         <div class="calc-card-head"><h4>Entradas</h4></div>
         <div class="field-group">
           <label>Máquina</label>
-          <select class="sidebar-select" onchange="setCalcField('prodMachineId', this.value, true)">
-            <option value="" ${!machine ? 'selected' : ''}>Escolher máquina...</option>
-            ${machines.map(m => `<option value="${m.id}" ${m.id === machine?.id ? 'selected' : ''}>${libEsc(m.name)}</option>`).join('')}
-          </select>
+          ${renderMachinePickerTriggerHtml(machine, machines, `setCalcField('prodMachineId', __MID__, true)`)}
         </div>
         ${machine ? `
           <div class="field-group">

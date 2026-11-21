@@ -8629,3 +8629,228 @@ body.theme-dark #spaces-hud-controls.hud-vertical-icons .zoom-readout {
 .tut-back-btn:hover {
   background: var(--bg-subtle);
 }
+
+
+/* ============================================================================
+ * AJUSTES FINAIS: RAIO PRETO, CURSOR ESPAÇO, CLIQUE ESTEIRA, OFICINA 2x2,
+ * CONFIRMAÇÃO PERSONALIZADA, CALCULADORA FIXA, TUTORIAL SEM SCROLL & COMPACTO
+ * ========================================================================== */
+
+/* 1. Raio preto visível na aba Energia mesmo com fundo laranja ativo */
+#tab-power .tab-power-bolt,
+#tab-power.active .tab-power-bolt,
+#tab-power.active svg.tab-power-bolt {
+  fill: #111827 !important;
+  color: #111827 !important;
+  stroke: none !important;
+}
+
+/* 2. Esteiras e tubulações sempre clicáveis para edição */
+#spaces-wires {
+  pointer-events: none;
+}
+#spaces-wires .wire-hit-area {
+  pointer-events: stroke !important;
+  cursor: pointer !important;
+}
+.wire-belt-pill {
+  pointer-events: auto !important;
+  cursor: pointer;
+}
+
+/* 3. Cursor mão SOMENTE ao segurar Espaço (nas 3 abas de linha) */
+#spaces-viewport {
+  cursor: default !important;
+}
+#spaces-viewport.space-pan-ready {
+  cursor: grab !important;
+}
+#spaces-viewport.space-pan-ready.panning {
+  cursor: grabbing !important;
+}
+
+/* 6. Oficina: 4 cards em 2 por linha no mesmo estilo visual da Produção */
+.oficina-cat-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.oficina-cat-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border-main);
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.12s ease;
+}
+.oficina-cat-tile:hover {
+  border-color: #EA580C;
+  background: var(--bg-subtle);
+  transform: translateY(-1px);
+}
+.oficina-tile-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* 8. Modal de confirmação e toast personalizados (zero alert/confirm nativo) */
+.splus-confirm-card {
+  width: min(440px, calc(100vw - 32px));
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.splus-confirm-msg {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-main);
+}
+.splus-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.splus-account-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 980;
+  padding: 11px 20px;
+  border-radius: 12px;
+  background: var(--bg-panel, #ffffff);
+  color: var(--text-main, #0f172a);
+  border: 1.5px solid var(--border-main);
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.24);
+}
+.splus-account-toast.tone-success {
+  border-color: #059669;
+}
+.splus-account-toast.tone-error {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+.splus-account-toast.hidden {
+  display: none !important;
+}
+
+/* 5, 9, 10. Tutorial amplo, sem scroll, seguindo a identidade visual do site com hover claro */
+.tutorial-dialog {
+  width: min(1080px, 95vw) !important;
+  max-width: 1080px !important;
+  max-height: 92vh !important;
+  display: flex;
+  flex-direction: column;
+}
+.tutorial-body {
+  padding: 16px 22px !important;
+  overflow-y: auto;
+}
+.tut-topics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+  gap: 12px;
+  padding: 8px 2px 4px;
+}
+.tut-topic-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px 15px;
+  border-radius: 13px;
+  border: 1.5px solid var(--border-main) !important;
+  background: var(--bg-card) !important;
+  color: var(--text-main) !important;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+}
+.tut-topic-card:hover {
+  border-color: #EA580C !important;
+  background: var(--bg-subtle) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+}
+.tut-split-layout {
+  gap: 18px !important;
+  align-items: center;
+}
+.tut-figure-box {
+  max-height: 410px;
+}
+.tut-figure-img {
+  max-height: 400px;
+  object-fit: contain;
+}
+.tut-legend-list {
+  gap: 8px !important;
+}
+.tut-legend-item {
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+}
+
+/* 11. Calculadora: layout base fixo compartilhado entre todas as ferramentas (exceto a primeira) */
+.calc-grid-2 {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  align-items: stretch !important;
+}
+.calc-grid-2 .calc-card {
+  min-height: 440px;
+  height: 100%;
+  box-sizing: border-box;
+}
+.calc-grid-2 .calc-result-card {
+  justify-content: space-between;
+}
+
+/* 12. Imagens maiores nos cards (sem aumentar o card) + Modo Compacto horizontal */
+.mcard-image-stage {
+  padding: 4px 6px !important;
+}
+.mcard-image-stage img {
+  max-width: 100%;
+  object-fit: contain;
+}
+#spaces-viewport.compact-mode .magnific-card:not(.compact-card) .mcard-box {
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 10px;
+  padding: 8px 10px;
+}
+#spaces-viewport.compact-mode .magnific-card:not(.compact-card) .mcard-image-stage {
+  width: 68px !important;
+  min-width: 68px !important;
+  height: 68px !important;
+  padding: 2px !important;
+  border-bottom: none !important;
+  flex-shrink: 0;
+}
+#spaces-viewport.compact-mode .magnific-card:not(.compact-card) .mcard-image-stage img {
+  width: 60px !important;
+  height: 60px !important;
+  object-fit: contain;
+}
+#spaces-viewport.compact-mode .magnific-card:not(.compact-card) .mcard-recipe-pill,
+#spaces-viewport.compact-mode .magnific-card:not(.compact-card) .mcard-meta-pill {
+  display: none;
+}
+#spaces-viewport.compact-mode .magnific-card:not(.compact-card) .mcard-io-container {
+  flex: 1;
+  min-width: 0;
+}
