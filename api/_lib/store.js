@@ -19,6 +19,19 @@ function getToken() {
   return process.env.BLOB_READ_WRITE_TOKEN || '';
 }
 
+function getBlobStoreId() {
+  const token = getToken();
+  const m = /^vercel_blob_rw_([a-zA-Z0-9]+)_/i.exec(token);
+  return m ? m[1] : '';
+}
+
+function getDirectBlobUrl(pathname) {
+  const storeId = getBlobStoreId();
+  if (!storeId) return '';
+  const clean = String(pathname || '').replace(/^\/+/, '');
+  return `https://${storeId}.public.blob.vercel-storage.com/${clean}`;
+}
+
 function getSessionSecret() {
   if (process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 16) {
     return process.env.SESSION_SECRET;
@@ -81,8 +94,39 @@ async function readJsonBlob(pathname, useCache = true) {
       return cached.data ? JSON.parse(JSON.stringify(cached.data)) : null;
     }
   }
+
+  const token = getToken();
+  if (!token) {
+    const err = new Error('BLOB_READ_WRITE_TOKEN ausente no ambiente');
+    err.status = 503;
+    logStorageError(`readJsonBlob:no_token:${pathname}`, err);
+    throw new StorageUnavailableError(`readJsonBlob:no_token:${pathname}`, err);
+  }
+
+  // 1) Leitura direta por URL pública (0 chamadas list() / 0 Advanced Operations)
+  const directUrl = getDirectBlobUrl(pathname);
+  if (directUrl) {
+    try {
+      const res = await fetch(`${directUrl}?t=${Date.now()}`, { cache: 'no-store' });
+      if (res.status === 404) {
+        _blobCache.set(pathname, { data: null, exp: Date.now() + 15000 });
+        return null;
+      }
+      if (res.ok) {
+        const parsed = await res.json();
+        _blobCache.set(pathname, { data: parsed, exp: Date.now() + BLOB_CACHE_TTL_MS });
+        return JSON.parse(JSON.stringify(parsed));
+      }
+      // Se 401/403 (store privado) ou 5xx, tenta fallback via list()
+      logStorageError(`readJsonBlob:direct_http_${res.status}:${pathname}`, new Error(`HTTP ${res.status}`));
+    } catch (directErr) {
+      logStorageError(`readJsonBlob:direct_fetch:${pathname}`, directErr);
+    }
+  }
+
+  // 2) Fallback via list() apenas se a leitura direta não conseguiu resolver
   try {
-    const { blobs } = await list({ prefix: pathname, limit: 10, token: getToken() });
+    const { blobs } = await list({ prefix: pathname, limit: 10, token });
     const exact = blobs.find((b) => b.pathname === pathname);
     if (!exact) {
       _blobCache.set(pathname, { data: null, exp: Date.now() + 15000 });
@@ -340,22 +384,32 @@ function sanitizeUser(user) {
   };
 }
 
+let _adminSeedChecked = false;
 async function ensureAdminSeeded() {
+  if (_adminSeedChecked) return;
   const adminUser = String(process.env.ADMIN_USERNAME || '').trim();
   const adminPass = String(process.env.ADMIN_PASSWORD || '');
-  if (!adminUser || !adminPass) return;
+  if (!adminUser || !adminPass) {
+    _adminSeedChecked = true;
+    return;
+  }
   const key = `db/users/${normalizeUsername(adminUser)}.json`;
-  const existing = await readJsonBlob(key);
-  if (!existing) {
-    const userObj = {
-      id: `usr_${crypto.randomBytes(8).toString('hex')}`,
-      username: adminUser,
-      usernameLower: normalizeUsername(adminUser),
-      role: 'admin',
-      passwordHash: hashPassword(adminPass),
-      createdAt: new Date().toISOString()
-    };
-    await writeJsonBlob(key, userObj);
+  try {
+    const existing = await readJsonBlob(key);
+    if (!existing) {
+      const userObj = {
+        id: `usr_${crypto.randomBytes(8).toString('hex')}`,
+        username: adminUser,
+        usernameLower: normalizeUsername(adminUser),
+        role: 'admin',
+        passwordHash: hashPassword(adminPass),
+        createdAt: new Date().toISOString()
+      };
+      await writeJsonBlob(key, userObj);
+    }
+    _adminSeedChecked = true;
+  } catch (err) {
+    logStorageError('ensureAdminSeeded', err);
   }
 }
 
@@ -494,54 +548,32 @@ async function invalidateSession(req, res) {
   if (res) clearSessionCookie(res);
 }
 
-// ---------- Rate Limiting (Blob-backed, strongly consistent via list) ----------
+// ---------- Rate Limiting (In-memory por instância — zero operações no Blob) ----------
+const _rateLimitMap = new Map(); // bucketKey -> number[] (timestamps)
+
 async function checkRateLimit(bucketKey, maxAttempts, windowMs) {
-  const hashKey = crypto.createHash('sha256').update(bucketKey).digest('hex').slice(0, 24);
-  const prefix = `db/ratelimit/${hashKey}/`;
-  const { blobs } = await list({ prefix, limit: 100, token: getToken() });
   const now = Date.now();
-  const valid = [];
-  for (const b of blobs) {
-    const file = b.pathname.slice(prefix.length);
-    const ts = Number(file.split('_')[0]);
-    if (Number.isFinite(ts) && now - ts < windowMs) {
-      valid.push(ts);
-    } else {
-      del(b.url, { token: getToken() }).catch(() => {});
-    }
-  }
-  valid.sort((a, b) => a - b);
+  const arr = (_rateLimitMap.get(bucketKey) || []).filter((ts) => now - ts < windowMs);
+  if (arr.length > 0) _rateLimitMap.set(bucketKey, arr);
+  else _rateLimitMap.delete(bucketKey);
+
   return {
-    blocked: valid.length >= maxAttempts,
-    remaining: Math.max(0, maxAttempts - valid.length),
-    retryAfterMs: valid.length >= maxAttempts ? Math.max(1000, windowMs - (now - valid[0])) : 0,
-    prefix,
-    valid
+    blocked: arr.length >= maxAttempts,
+    remaining: Math.max(0, maxAttempts - arr.length),
+    retryAfterMs: arr.length >= maxAttempts ? Math.max(1000, windowMs - (now - arr[0])) : 0,
+    valid: arr
   };
 }
 
 async function recordRateLimitHit(bucketKey, windowMs) {
-  const hashKey = crypto.createHash('sha256').update(bucketKey).digest('hex').slice(0, 24);
   const now = Date.now();
-  const rand = crypto.randomBytes(4).toString('hex');
-  const pathname = `db/ratelimit/${hashKey}/${now}_${rand}.json`;
-  await put(pathname, '{}', {
-    access: 'public',
-    contentType: 'application/json',
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    cacheControlMaxAge: 0,
-    token: getToken()
-  });
+  const arr = (_rateLimitMap.get(bucketKey) || []).filter((ts) => now - ts < windowMs);
+  arr.push(now);
+  _rateLimitMap.set(bucketKey, arr);
 }
 
 async function clearRateLimit(bucketKey) {
-  const hashKey = crypto.createHash('sha256').update(bucketKey).digest('hex').slice(0, 24);
-  const prefix = `db/ratelimit/${hashKey}/`;
-  const { blobs } = await list({ prefix, limit: 100, token: getToken() });
-  for (const b of blobs) {
-    await del(b.url, { token: getToken() }).catch(() => {});
-  }
+  _rateLimitMap.delete(bucketKey);
 }
 
 // ---------- Magic Bytes Image Validation ----------
@@ -612,6 +644,8 @@ module.exports = {
   REGISTER_IP_LIMIT,
   REGISTER_IP_WINDOW_MS,
   getToken,
+  getBlobStoreId,
+  getDirectBlobUrl,
   hashPassword,
   verifyPassword,
   readJsonBlob,

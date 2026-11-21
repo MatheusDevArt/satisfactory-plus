@@ -1,5 +1,8 @@
 const crypto = require('crypto');
 const {
+  getToken,
+  getBlobStoreId,
+  getDirectBlobUrl,
   LOGIN_FAIL_LIMIT,
   LOGIN_FAIL_WINDOW_MS,
   REGISTER_IP_LIMIT,
@@ -41,6 +44,30 @@ module.exports = async function handler(req, res) {
   }
 
   try {
+    // GET /api/auth?action=health (diagnóstico seguro sem segredos)
+    if (req.method === 'GET' && action === 'health') {
+      const hasBlobToken = Boolean(getToken());
+      const hasStoreId = Boolean(getBlobStoreId());
+      const hasSessionSecret = Boolean(process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 16);
+      let directProbeStatus = null;
+      if (hasStoreId) {
+        try {
+          const probeUrl = getDirectBlobUrl(`db/users/${getReservedAdminUsernameLower()}.json`);
+          const r = await fetch(`${probeUrl}?t=${Date.now()}`, { method: 'HEAD', cache: 'no-store' });
+          directProbeStatus = r.status;
+        } catch {
+          directProbeStatus = 'FETCH_ERROR';
+        }
+      }
+      return sendJson(res, 200, {
+        ok: true,
+        hasBlobToken,
+        hasStoreId,
+        hasSessionSecret,
+        directProbeStatus
+      });
+    }
+
     // GET /api/auth?action=me (não depende de ensureAdminSeeded nem de escrita no Blob!)
     if (req.method === 'GET' && action === 'me') {
       const auth = await getAuthenticatedUser(req, res, true, { allowStatelessFallback: true });
@@ -122,7 +149,41 @@ module.exports = async function handler(req, res) {
         return sendJson(res, 400, { error: 'Informe o nome de usuário e a senha.' });
       }
 
-      const user = await getUserByUsername(lower);
+      let user = null;
+      let storageErr = null;
+      try {
+        user = await getUserByUsername(lower);
+      } catch (err) {
+        if (err instanceof StorageUnavailableError || err?.name === 'StorageUnavailableError') {
+          storageErr = err;
+        } else {
+          throw err;
+        }
+      }
+
+      // Fallback seguro para conta admin configurada em variáveis de ambiente caso o Blob esteja degradado
+      if (!user && lower === getReservedAdminUsernameLower() && process.env.ADMIN_PASSWORD) {
+        const expectedBuf = Buffer.from(String(process.env.ADMIN_PASSWORD), 'utf8');
+        const actualBuf = Buffer.from(password, 'utf8');
+        if (expectedBuf.length === actualBuf.length && crypto.timingSafeEqual(expectedBuf, actualBuf)) {
+          const adminName = String(process.env.ADMIN_USERNAME || 'Sungzeira_').trim();
+          user = {
+            id: `usr_admin_${lower}`,
+            username: adminName,
+            usernameLower: lower,
+            role: 'admin',
+            sessionVersion: 1,
+            createdAt: new Date().toISOString()
+          };
+          await clearRateLimit(failKey);
+          const token = await createSession(user);
+          setSessionCookie(res, token);
+          return sendJson(res, 200, { ok: true, user: sanitizeUser(user) });
+        }
+      }
+
+      if (storageErr) throw storageErr;
+
       const valid = user ? verifyPassword(password, user.passwordHash) : false;
 
       if (!user || !valid) {
