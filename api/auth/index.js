@@ -25,7 +25,8 @@ const {
   invalidateSession,
   checkRateLimit,
   recordRateLimitHit,
-  clearRateLimit
+  clearRateLimit,
+  StorageUnavailableError
 } = require('../_lib/store');
 
 module.exports = async function handler(req, res) {
@@ -40,14 +41,18 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    await ensureAdminSeeded();
-
-    // GET /api/auth?action=me
+    // GET /api/auth?action=me (não depende de ensureAdminSeeded nem de escrita no Blob!)
     if (req.method === 'GET' && action === 'me') {
-      const auth = await getAuthenticatedUser(req, res, true);
+      const auth = await getAuthenticatedUser(req, res, true, { allowStatelessFallback: true });
       if (!auth) return sendJson(res, 200, { authenticated: false, user: null });
-      return sendJson(res, 200, { authenticated: true, user: sanitizeUser(auth.user) });
+      return sendJson(res, 200, {
+        authenticated: true,
+        user: sanitizeUser(auth.user),
+        storageDegraded: Boolean(auth.storageDegraded)
+      });
     }
+
+    await ensureAdminSeeded();
 
     // POST /api/auth?action=register
     if (req.method === 'POST' && action === 'register') {
@@ -158,7 +163,10 @@ module.exports = async function handler(req, res) {
 
       auth.user.passwordHash = hashPassword(newPassword);
       auth.user.passwordUpdatedAt = new Date().toISOString();
+      auth.user.sessionVersion = (Number(auth.user.sessionVersion) || 1) + 1;
       await writeJsonBlob(`db/users/${auth.user.usernameLower}.json`, auth.user);
+      const nextToken = await createSession(auth.user);
+      setSessionCookie(res, nextToken);
       return sendJson(res, 200, { ok: true, message: 'Senha alterada com sucesso.' });
     }
 
@@ -187,6 +195,20 @@ module.exports = async function handler(req, res) {
             .filter((x) => typeof x === 'string' && x.length > 0 && x.length <= 120)
         )].slice(0, 30);
       }
+      if (Array.isArray(body.calcHistory)) {
+        current.calcHistory = body.calcHistory
+          .filter((x) => x && typeof x === 'object' && typeof x.summary === 'string')
+          .slice(0, 20)
+          .map((x) => ({
+            id: String(x.id || '').slice(0, 40),
+            tool: String(x.tool || '').slice(0, 30),
+            label: String(x.label || '').slice(0, 80),
+            summary: String(x.summary || '').slice(0, 140),
+            state: (x.state && typeof x.state === 'object') ? x.state : {},
+            pinned: Boolean(x.pinned),
+            at: String(x.at || '').slice(0, 40)
+          }));
+      }
 
       auth.user.preferences = current;
       await writeJsonBlob(`db/users/${auth.user.usernameLower}.json`, auth.user);
@@ -197,7 +219,22 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     if (err.message === 'PAYLOAD_TOO_LARGE') return sendJson(res, 413, { error: 'Requisição muito grande.' });
     if (err.message === 'INVALID_JSON') return sendJson(res, 400, { error: 'Corpo JSON inválido.' });
-    console.error('[api/auth] error:', err.message);
+    if (err instanceof StorageUnavailableError || err?.name === 'StorageUnavailableError') {
+      console.error('[api/auth] storage unavailable:', JSON.stringify({
+        action,
+        stage: err.stage,
+        errName: err.causeName || err.name,
+        errMessage: err.causeMessage || err.message,
+        status: err.statusCode || 503
+      }));
+      return sendJson(res, 503, { error: 'Armazenamento temporariamente indisponível. Tente novamente.', code: 'STORAGE_UNAVAILABLE' });
+    }
+    console.error('[api/auth] error:', JSON.stringify({
+      action,
+      errName: err?.name || 'Error',
+      errMessage: err?.message || String(err || ''),
+      status: err?.statusCode || err?.status || 500
+    }));
     return sendJson(res, 500, { error: 'Erro interno no servidor de autenticação.' });
   }
 };

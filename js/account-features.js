@@ -43,8 +43,9 @@ const AccountState = {
     list: [],
     loading: false,
     error: '',
+    view: 'active', // 'active' (novo + lido) | 'history' (resolvido)
     filterType: 'all',
-    filterStatus: 'all', // 'all' | 'novo' | 'lido' | 'feito'
+    filterStatus: 'all', // 'all' | 'novo' | 'lido' | 'resolvido'
     filterUser: '',
     filterPeriod: 'all', // 'all' | '24h' | '7d' | '14d'
     searchQuery: '',
@@ -120,6 +121,8 @@ async function apiFetch(url, options = {}) {
   if (res.status === 401 && AccountState.user) {
     // Sessão expirou no servidor sem perder o estado atual do usuário na tela
     AccountState.user = null;
+  try { localStorage.removeItem('splus_user_cache'); } catch {}
+    try { localStorage.removeItem('splus_user_cache'); } catch {}
     updateAuthHeaderUI();
     updateRoleBasedTabs();
     openAuthModal('login', 'Sua sessão expirou. Entre novamente para continuar — seu trabalho atual não foi perdido.');
@@ -156,6 +159,9 @@ function applyUserPreferences(prefs) {
   }
   if (typeof syncLibraryPrefsFromAccount === 'function') {
     syncLibraryPrefsFromAccount(prefs);
+  }
+  if (typeof syncCalcHistoryFromAccount === 'function') {
+    syncCalcHistoryFromAccount(prefs);
   }
 }
 
@@ -258,12 +264,34 @@ window.addEventListener('focus', () => {
   }
 });
 
-async function restoreSessionOnLoad() {
+async function restoreSessionOnLoad(attempt = 0) {
+  // Restaura cache local imediatamente para não piscar deslogado em reconexões
+  if (attempt === 0 && !AccountState.user) {
+    try {
+      const cached = JSON.parse(localStorage.getItem('splus_user_cache') || 'null');
+      if (cached && cached.id && cached.username) {
+        AccountState.user = cached;
+        updateAuthHeaderUI();
+        updateRoleBasedTabs();
+      }
+    } catch {}
+  }
+
+  let shouldRetry = false;
   try {
     const res = await apiFetch('/api/auth?action=me', { method: 'GET' });
-    AccountState.user = res.ok && res.data.authenticated ? res.data.user : null;
+    if (res.status >= 500 || res.status === 0) {
+      shouldRetry = true;
+    } else if (res.ok && res.data.authenticated && res.data.user) {
+      AccountState.user = res.data.user;
+      try { localStorage.setItem('splus_user_cache', JSON.stringify(res.data.user)); } catch {}
+    } else if (res.ok && res.data.authenticated === false) {
+      AccountState.user = null;
+  try { localStorage.removeItem('splus_user_cache'); } catch {}
+      try { localStorage.removeItem('splus_user_cache'); } catch {}
+    }
   } catch {
-    AccountState.user = null;
+    shouldRetry = true;
   } finally {
     AccountState.sessionLoaded = true;
     if (AccountState.user && AccountState.user.preferences) {
@@ -271,9 +299,13 @@ async function restoreSessionOnLoad() {
     }
     updateAuthHeaderUI();
     updateRoleBasedTabs();
-    refreshReportIndicators();
+    if (!shouldRetry) refreshReportIndicators();
     if (typeof updateTopRightFloatingActions === 'function') {
       updateTopRightFloatingActions();
+    }
+    if (shouldRetry && attempt < 2) {
+      const delay = attempt === 0 ? 1500 : 4000;
+      setTimeout(() => restoreSessionOnLoad(attempt + 1), delay);
     }
   }
 }
@@ -617,6 +649,7 @@ async function performLogout() {
     // ignore
   }
   AccountState.user = null;
+  try { localStorage.removeItem('splus_user_cache'); } catch {}
   AccountState.projects.list = [];
   AccountState.projects.activeProjectId = null;
   AccountState.projects.activeProjectName = '';
@@ -779,12 +812,12 @@ function compressImageInBrowser(file, maxSide = 1600, quality = 0.8) {
 
 function reportStatusLabel(status) {
   if (status === 'lido') return 'Lido';
-  if (status === 'feito') return 'Feito';
+  if (status === 'resolvido' || status === 'feito') return 'Resolvido';
   return 'Novo';
 }
 
 function reportStatusBadgeHtml(status) {
-  const st = (status === 'lido' || status === 'feito') ? status : 'novo';
+  const st = (status === 'resolvido' || status === 'feito') ? 'resolvido' : (status === 'lido' ? 'lido' : 'novo');
   return `<span class="report-status-badge status-${st}">${reportStatusLabel(st)}</span>`;
 }
 
@@ -1167,16 +1200,44 @@ async function deleteAdminReportReply(reportId) {
   }
 }
 
-function getFilteredAdminReports() {
+async function emptyAdminReportHistory() {
+  if (!confirm('Apagar definitivamente todos os reports resolvidos do histórico? Esta ação não pode ser desfeita.')) return;
+  AccountState.adminReports.loading = true;
+  renderAdminReportsWorkspace();
+  try {
+    const res = await apiFetch('/api/reports', {
+      method: 'PATCH',
+      body: JSON.stringify({ action: 'empty-history' })
+    });
+    if (!res.ok) {
+      AccountState.adminReports.error = res.data.error || 'Erro ao esvaziar histórico.';
+    }
+    await loadAdminReports();
+  } finally {
+    AccountState.adminReports.loading = false;
+    renderAdminReportsWorkspace();
+  }
+}
+
+function setAdminReportsView(v) {
+  AccountState.adminReports.view = v === 'history' ? 'history' : 'active';
+  AccountState.adminReports.filterStatus = 'all';
+  renderAdminReportsWorkspace();
+}
+
+function getFilteredAdminReports(scopeOverride = null) {
   const st = AccountState.adminReports;
   const now = Date.now();
   const q = Solver.normalizeText(st.searchQuery || '');
   const uFilter = Solver.normalizeText(st.filterUser || '');
+  const viewScope = scopeOverride || st.view || 'active';
 
   return (st.list || []).filter((r) => {
-    const repStatus = (r.status === 'lido' || r.status === 'feito') ? r.status : 'novo';
+    const repStatus = (r.status === 'resolvido' || r.status === 'feito') ? 'resolvido' : (r.status === 'lido' ? 'lido' : 'novo');
+    if (viewScope === 'active' && repStatus === 'resolvido') return false;
+    if (viewScope === 'history' && repStatus !== 'resolvido') return false;
     if (st.filterType !== 'all' && r.type !== st.filterType) return false;
-    if (st.filterStatus !== 'all' && repStatus !== st.filterStatus) return false;
+    if (viewScope === 'active' && st.filterStatus !== 'all' && repStatus !== st.filterStatus) return false;
     if (uFilter && !Solver.normalizeText(r.username || '').includes(uFilter)) return false;
     if (st.filterPeriod !== 'all') {
       const ageMs = now - new Date(r.createdAt).getTime();
@@ -1242,7 +1303,7 @@ function renderAdminReportsMode(sidebarEl, emptyOverlay) {
           <option value="all" ${st.filterStatus === 'all' ? 'selected' : ''}>Todos</option>
           <option value="novo" ${st.filterStatus === 'novo' ? 'selected' : ''}>Novos</option>
           <option value="lido" ${st.filterStatus === 'lido' ? 'selected' : ''}>Lidos</option>
-          <option value="feito" ${st.filterStatus === 'feito' ? 'selected' : ''}>Feitos</option>
+          <option value="resolvido" ${st.filterStatus === 'resolvido' ? 'selected' : ''}>Resolvidos</option>
         </select>
       </div>
 
@@ -1264,8 +1325,9 @@ function renderAdminReportsMode(sidebarEl, emptyOverlay) {
         <span class="step-badge">EXPORTAR</span>
         <h4>Download em .TXT</h4>
       </div>
-      <button type="button" class="btn-mount-flow ready" onclick="downloadAdminReportsTxt(false)">📥 Baixar Filtrados (.txt)</button>
-      <button type="button" class="btn-icon-action" style="width:100%; padding:9px;" onclick="downloadAdminReportsTxt(true)">📄 Baixar Todos (.txt)</button>
+      <button type="button" class="btn-mount-flow ready" onclick="downloadAdminReportsTxt('active')">📥 Baixar Ativos (.txt)</button>
+      <button type="button" class="btn-icon-action" style="width:100%; padding:8px; margin-top:6px;" onclick="downloadAdminReportsTxt('history')">🗂️ Baixar Histórico (.txt)</button>
+      <button type="button" class="btn-icon-action" style="width:100%; padding:8px; margin-top:6px;" onclick="downloadAdminReportsTxt('all')">📄 Baixar Todos (.txt)</button>
     </div>
   `;
 
@@ -1276,31 +1338,38 @@ function renderAdminReportsWorkspace() {
   const view = document.getElementById('reports-workspace-view');
   if (!view) return;
   const st = AccountState.adminReports;
+  const isHistory = st.view === 'history';
   const filtered = getFilteredAdminReports();
 
-  const newCnt = (st.list || []).filter((r) => (r.status || 'novo') === 'novo').length;
-  const readCnt = (st.list || []).filter((r) => r.status === 'lido').length;
-  const doneCnt = (st.list || []).filter((r) => r.status === 'feito').length;
+  const normStatus = (r) => (r.status === 'resolvido' || r.status === 'feito') ? 'resolvido' : (r.status === 'lido' ? 'lido' : 'novo');
+  const activeAll = (st.list || []).filter((r) => normStatus(r) !== 'resolvido');
+  const historyAll = (st.list || []).filter((r) => normStatus(r) === 'resolvido');
+  const newCnt = activeAll.filter((r) => normStatus(r) === 'novo').length;
+  const readCnt = activeAll.filter((r) => normStatus(r) === 'lido').length;
 
   view.innerHTML = `
     <div class="lib-workspace-header">
       <div>
         <h2>🛡️ Reports</h2>
-        <span>${filtered.length} de ${st.list.length} · ${newCnt} novo(s) · ${readCnt} lido(s) · ${doneCnt} feito(s)</span>
+        <span>${activeAll.length} ativo(s) · ${historyAll.length} resolvido(s)</span>
       </div>
       <div class="admin-status-chips">
-        <button type="button" class="am-qf-chip ${st.filterStatus === 'all' ? 'active' : ''}" onclick="AccountState.adminReports.filterStatus='all'; renderAdminReportsWorkspace();">Todos (${st.list.length})</button>
-        <button type="button" class="am-qf-chip ${st.filterStatus === 'novo' ? 'active' : ''}" onclick="AccountState.adminReports.filterStatus='novo'; renderAdminReportsWorkspace();">Novos (${newCnt})</button>
-        <button type="button" class="am-qf-chip ${st.filterStatus === 'lido' ? 'active' : ''}" onclick="AccountState.adminReports.filterStatus='lido'; renderAdminReportsWorkspace();">Lidos (${readCnt})</button>
-        <button type="button" class="am-qf-chip ${st.filterStatus === 'feito' ? 'active' : ''}" onclick="AccountState.adminReports.filterStatus='feito'; renderAdminReportsWorkspace();">Feitos (${doneCnt})</button>
+        <button type="button" class="am-qf-chip ${!isHistory ? 'active' : ''}" onclick="setAdminReportsView('active')">Ativos (${activeAll.length})</button>
+        <button type="button" class="am-qf-chip ${isHistory ? 'active' : ''}" onclick="setAdminReportsView('history')">Histórico (${historyAll.length})</button>
+        ${!isHistory ? `
+          <button type="button" class="am-qf-chip ${st.filterStatus === 'novo' ? 'active' : ''}" onclick="AccountState.adminReports.filterStatus = AccountState.adminReports.filterStatus==='novo' ? 'all' : 'novo'; renderAdminReportsWorkspace();">Novos (${newCnt})</button>
+          <button type="button" class="am-qf-chip ${st.filterStatus === 'lido' ? 'active' : ''}" onclick="AccountState.adminReports.filterStatus = AccountState.adminReports.filterStatus==='lido' ? 'all' : 'lido'; renderAdminReportsWorkspace();">Lidos (${readCnt})</button>
+        ` : (historyAll.length > 0 ? `
+          <button type="button" class="btn-icon-danger" onclick="emptyAdminReportHistory()">🗑️ Esvaziar histórico</button>
+        ` : '')}
       </div>
     </div>
 
     ${st.error ? `<div class="form-alert error">⚠️ ${escText(st.error)}</div>` : ''}
     ${st.loading ? '<div class="picker-empty">⏳ Carregando reports...</div>' : `
       <div class="admin-reports-stack">
-        ${filtered.length === 0 ? '<div class="picker-empty">Nenhum report encontrado com os filtros atuais.</div>' : filtered.map((r) => {
-          const curStatus = (r.status === 'lido' || r.status === 'feito') ? r.status : 'novo';
+        ${filtered.length === 0 ? `<div class="picker-empty">${isHistory ? 'Histórico vazio.' : 'Não há reportes a serem resolvidos'}</div>` : filtered.map((r) => {
+          const curStatus = normStatus(r);
           const isSaving = st.savingId === r.id;
           const isReplying = st.replyingId === r.id;
           return `
@@ -1311,15 +1380,19 @@ function renderAdminReportsWorkspace() {
                 ${reportStatusBadgeHtml(curStatus)}
                 <strong class="report-user-name">👤 ${escText(r.username)}</strong>
                 ${r.rating ? `<span class="report-stars-tag">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)} (${r.rating}/5)</span>` : ''}
-                <span class="report-date-tag">#${escText(r.id)} • ${fmtDateBR(r.createdAt)}</span>
+                <span class="report-date-tag">#${escText(r.id)} • ${fmtDateBR(r.createdAt)}${curStatus === 'resolvido' && r.resolvedAt ? ` • Resolvido em ${fmtDateBR(r.resolvedAt)}` : ''}</span>
               </div>
               <div class="report-head-actions">
-                <button type="button" class="btn-icon-action ${curStatus === 'lido' ? 'is-selected' : ''}" ${isSaving ? 'disabled' : ''} onclick="setAdminReportStatus('${escText(r.id)}', 'lido')">Lido</button>
-                <button type="button" class="btn-icon-action ${curStatus === 'feito' ? 'is-selected' : ''}" ${isSaving ? 'disabled' : ''} onclick="setAdminReportStatus('${escText(r.id)}', 'feito')">Feito</button>
+                ${!isHistory ? `
+                  <button type="button" class="btn-icon-action ${curStatus === 'lido' ? 'is-selected' : ''}" ${isSaving ? 'disabled' : ''} onclick="setAdminReportStatus('${escText(r.id)}', 'lido')">Lido</button>
+                  <button type="button" class="btn-icon-action" ${isSaving ? 'disabled' : ''} onclick="setAdminReportStatus('${escText(r.id)}', 'resolvido')">Resolvido</button>
+                ` : `
+                  <button type="button" class="btn-icon-action" ${isSaving ? 'disabled' : ''} onclick="setAdminReportStatus('${escText(r.id)}', 'lido')">Reabrir</button>
+                `}
                 <button type="button" class="btn-icon-action" ${isSaving ? 'disabled' : ''} onclick="openAdminReplyBox('${escText(r.id)}')">${r.adminReply ? 'Editar resposta' : 'Responder'}</button>
                 <button type="button" class="btn-icon-action" onclick="downloadSingleReportTxt('${escText(r.id)}')">📄 .txt</button>
                 ${(r.images && r.images.length > 0) ? `<button type="button" class="btn-icon-action" onclick="downloadReportImages('${escText(r.id)}')">🖼️ Imagens</button>` : ''}
-                <button type="button" class="btn-icon-danger" onclick="deleteAdminReport('${escText(r.id)}')" title="Excluir report">🗑️</button>
+                <button type="button" class="btn-icon-danger" onclick="deleteAdminReport('${escText(r.id)}')" title="Apagar definitivamente">${isHistory ? 'Apagar definitivamente' : '🗑️'}</button>
               </div>
             </div>
 
@@ -1445,15 +1518,26 @@ function triggerTxtDownload(filename, textContent) {
   }, 150);
 }
 
-function downloadAdminReportsTxt(all = false) {
-  const list = all ? AccountState.adminReports.list : getFilteredAdminReports();
+function downloadAdminReportsTxt(scope = 'active') {
+  let list = [];
+  let label = 'ativos';
+  if (scope === 'all' || scope === true) {
+    list = AccountState.adminReports.list || [];
+    label = 'todos';
+  } else if (scope === 'history') {
+    list = getFilteredAdminReports('history');
+    label = 'historico';
+  } else {
+    list = getFilteredAdminReports('active');
+    label = 'ativos';
+  }
   if (!list.length) {
     alert('Não há reports para baixar.');
     return;
   }
   const content = buildReportsTxtContent(list);
   const stamp = new Date().toISOString().slice(0, 10);
-  triggerTxtDownload(`satisfactory-plus-reports-${all ? 'todos' : 'filtrados'}-${stamp}.txt`, content);
+  triggerTxtDownload(`satisfactory-plus-reports-${label}-${stamp}.txt`, content);
 }
 
 function downloadSingleReportTxt(reportId) {

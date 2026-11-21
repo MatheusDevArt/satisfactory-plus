@@ -1,5 +1,19 @@
 [
   {
+    "id": "2026-11-20-nova-calculadora-login-overclock-slider",
+    "date": "20/11/2026",
+    "title": "Nova Calculadora S+, Slider de Overclock, correção de Login e melhorias visuais",
+    "items": [
+      { "tag": "Novo", "text": "Nova aba Calculadora em 2 colunas com 8 ferramentas reais do jogo: Máquinas para X/min (com divisão fracionária), Clock & Overclock (com Somersloop), Energia completa, Esteiras & Tubos, Armazenamento, Materiais de construção, Triturador SUPIMPA e Calculadora Numérica com teclado físico e histórico fixável." },
+      { "tag": "Novo", "text": "Componente unificado de Overclock (slider de 1% a 250% com botões −/+, atalhos 100/150/200/250% e indicador de Power Shards) aplicado em todo o site." },
+      { "tag": "Melhoria", "text": "Itens selecionados padronizados em todo o site com fundo laranja #EA580C sólido e texto branco, painel de status sempre fixo na base (incluindo Energia) e lista vertical na barra lateral da aba Livre." },
+      { "tag": "Melhoria", "text": "Feedback de conexão no Modo Livre exibe borda verde ou vermelha apenas no card sob o cursor e notificação centralizada \"Conexão incompatível\"." },
+      { "tag": "Melhoria", "text": "Reports atualizados: status \"Resolvido\", separação entre Ativos e Histórico para administradores, reabertura e exclusão." },
+      { "tag": "Correção", "text": "Corrigido o clique em \"Montar Linha de Produção\" e \"Montar Linha de Energia\" após editar campos na barra lateral." },
+      { "tag": "Correção", "text": "Autenticação migrada para sessão assinada com cache e distinção de indisponibilidade (503), eliminando desconexões indevidas e erros internos no login." }
+    ]
+  },
+  {
     "id": "2026-11-20-home-video-validacao-livre-filtros",
     "date": "20/11/2026",
     "title": "Home com vídeo animado, validação de conexões no Modo Livre e filtros atualizados",

@@ -19,6 +19,42 @@ function getToken() {
   return process.env.BLOB_READ_WRITE_TOKEN || '';
 }
 
+function getSessionSecret() {
+  if (process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 16) {
+    return process.env.SESSION_SECRET;
+  }
+  const fallbackSeed = process.env.BLOB_READ_WRITE_TOKEN || process.env.ADMIN_PASSWORD || 'splus-dev-fallback';
+  return crypto.createHash('sha256').update(`splus-session-v2:${fallbackSeed}`).digest('hex');
+}
+
+class StorageUnavailableError extends Error {
+  constructor(stage, cause) {
+    super(`Storage error at ${stage}: ${cause?.message || 'unavailable'}`);
+    this.name = 'StorageUnavailableError';
+    this.stage = stage;
+    this.statusCode = cause?.statusCode || cause?.status || 503;
+    this.causeName = cause?.name || 'Error';
+    this.causeMessage = cause?.message || String(cause || '');
+  }
+}
+
+function logStorageError(stage, err) {
+  console.error('[storage]', JSON.stringify({
+    stage,
+    errName: err?.name || 'Error',
+    errMessage: err?.message || String(err || ''),
+    status: err?.statusCode || err?.status || null,
+    hasBlobToken: Boolean(getToken())
+  }));
+}
+
+const _blobCache = new Map(); // pathname -> { data, exp }
+const BLOB_CACHE_TTL_MS = 45 * 1000;
+
+function invalidateBlobCache(pathname) {
+  if (pathname) _blobCache.delete(pathname);
+}
+
 // ---------- Password Hashing (Node native scrypt, timing-safe) ----------
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -38,34 +74,67 @@ function verifyPassword(password, storedHash) {
 }
 
 // ---------- Blob JSON Helpers ----------
-async function readJsonBlob(pathname) {
-  const { blobs } = await list({ prefix: pathname, limit: 10, token: getToken() });
-  const exact = blobs.find((b) => b.pathname === pathname);
-  if (!exact) return null;
-  const res = await fetch(`${exact.url}?t=${Date.now()}`, { cache: 'no-store' });
-  if (!res.ok) return null;
-  return await res.json();
+async function readJsonBlob(pathname, useCache = true) {
+  if (useCache) {
+    const cached = _blobCache.get(pathname);
+    if (cached && cached.exp > Date.now()) {
+      return cached.data ? JSON.parse(JSON.stringify(cached.data)) : null;
+    }
+  }
+  try {
+    const { blobs } = await list({ prefix: pathname, limit: 10, token: getToken() });
+    const exact = blobs.find((b) => b.pathname === pathname);
+    if (!exact) {
+      _blobCache.set(pathname, { data: null, exp: Date.now() + 15000 });
+      return null;
+    }
+    const res = await fetch(`${exact.url}?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) {
+      const err = new Error(`Blob fetch HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    const parsed = await res.json();
+    _blobCache.set(pathname, { data: parsed, exp: Date.now() + BLOB_CACHE_TTL_MS });
+    return JSON.parse(JSON.stringify(parsed));
+  } catch (err) {
+    logStorageError(`readJsonBlob:${pathname}`, err);
+    throw new StorageUnavailableError(`readJsonBlob:${pathname}`, err);
+  }
 }
 
 async function writeJsonBlob(pathname, obj) {
-  return await put(pathname, JSON.stringify(obj), {
-    access: 'public',
-    contentType: 'application/json; charset=utf-8',
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    cacheControlMaxAge: 0,
-    token: getToken()
-  });
+  try {
+    const res = await put(pathname, JSON.stringify(obj), {
+      access: 'public',
+      contentType: 'application/json; charset=utf-8',
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      cacheControlMaxAge: 0,
+      token: getToken()
+    });
+    _blobCache.set(pathname, { data: obj, exp: Date.now() + BLOB_CACHE_TTL_MS });
+    return res;
+  } catch (err) {
+    logStorageError(`writeJsonBlob:${pathname}`, err);
+    throw new StorageUnavailableError(`writeJsonBlob:${pathname}`, err);
+  }
 }
 
 async function deleteBlobByPathname(pathname) {
-  const { blobs } = await list({ prefix: pathname, limit: 10, token: getToken() });
-  const exact = blobs.find((b) => b.pathname === pathname);
-  if (exact) {
-    await del(exact.url, { token: getToken() });
-    return true;
+  invalidateBlobCache(pathname);
+  try {
+    const { blobs } = await list({ prefix: pathname, limit: 10, token: getToken() });
+    const exact = blobs.find((b) => b.pathname === pathname);
+    if (exact) {
+      await del(exact.url, { token: getToken() });
+      return true;
+    }
+    return false;
+  } catch (err) {
+    logStorageError(`deleteBlobByPathname:${pathname}`, err);
+    throw new StorageUnavailableError(`deleteBlobByPathname:${pathname}`, err);
   }
-  return false;
 }
 
 async function listJsonBlobs(prefix) {
@@ -265,7 +334,8 @@ function sanitizeUser(user) {
     preferences: {
       theme: prefs.theme === 'dark' ? 'dark' : (prefs.theme === 'light' ? 'light' : null),
       libraryFavorites: Array.isArray(prefs.libraryFavorites) ? prefs.libraryFavorites.slice(0, 250) : [],
-      libraryRecents: Array.isArray(prefs.libraryRecents) ? prefs.libraryRecents.slice(0, 30) : []
+      libraryRecents: Array.isArray(prefs.libraryRecents) ? prefs.libraryRecents.slice(0, 30) : [],
+      calcHistory: Array.isArray(prefs.calcHistory) ? prefs.calcHistory.slice(0, 20) : []
     }
   };
 }
@@ -295,58 +365,129 @@ async function getUserByUsername(username) {
   return await readJsonBlob(`db/users/${lower}.json`);
 }
 
-// ---------- Sessions (Persistent 90-day sliding window) ----------
-async function createSession(user) {
-  const rawToken = crypto.randomBytes(32).toString('hex');
-  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-  const now = Date.now();
-  const sessionObj = {
-    tokenHash,
-    userId: user.id,
-    username: user.username,
-    usernameLower: user.usernameLower,
-    role: isAdminUser(user) ? 'admin' : 'user',
-    createdAt: now,
-    lastSeenAt: now,
-    expiresAt: now + SESSION_TTL_MS
-  };
-  await writeJsonBlob(`db/sessions/${tokenHash}.json`, sessionObj);
-  return rawToken;
+// ---------- Sessions (Stateless HMAC-SHA256 Signed Cookie, 90-day sliding window) ----------
+function signSessionToken(payloadObj) {
+  const b64 = Buffer.from(JSON.stringify(payloadObj), 'utf8').toString('base64url');
+  const sig = crypto.createHmac('sha256', getSessionSecret()).update(b64).digest('hex');
+  return `v2.${b64}.${sig}`;
 }
 
-async function getAuthenticatedUser(req, res, renew = true) {
+function verifySignedSessionToken(token) {
+  if (!token || typeof token !== 'string' || !token.startsWith('v2.')) return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const [, b64, sig] = parts;
+  const expected = crypto.createHmac('sha256', getSessionSecret()).update(b64).digest('hex');
+  const a = Buffer.from(sig, 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    return JSON.parse(Buffer.from(b64, 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+async function createSession(user) {
+  const now = Date.now();
+  const payload = {
+    uid: user.id,
+    u: user.username,
+    ul: user.usernameLower || normalizeUsername(user.username),
+    r: isAdminUser(user) ? 'admin' : 'user',
+    sv: Number(user.sessionVersion) || 1,
+    iat: now,
+    exp: now + SESSION_TTL_MS
+  };
+  return signSessionToken(payload);
+}
+
+async function getAuthenticatedUser(req, res, renew = true, options = {}) {
   const cookies = parseCookies(req);
   const rawToken = cookies[SESSION_COOKIE_NAME];
   if (!rawToken || rawToken.length < 32) return null;
+
+  const now = Date.now();
+
+  // Caminho principal: cookie assinado stateless (0 operações de Blob para validar sessão)
+  if (rawToken.startsWith('v2.')) {
+    const payload = verifySignedSessionToken(rawToken);
+    if (!payload || !payload.ul) return null;
+    if (!payload.exp || payload.exp < now) {
+      if (res) clearSessionCookie(res);
+      return null;
+    }
+
+    // Renovação deslizante a cada 24h apenas reemitindo o cookie (sem escrita no Blob)
+    if (renew && now - (payload.iat || 0) > 24 * 60 * 60 * 1000) {
+      const renewed = signSessionToken({
+        ...payload,
+        iat: now,
+        exp: now + SESSION_TTL_MS
+      });
+      if (res) setSessionCookie(res, renewed);
+    }
+
+    // Se allowStatelessFallback (ex.: /api/auth?action=me), tenta ler preferências do cache/Blob,
+    // mas se o Blob estiver indisponível, mantém usuário logado sem devolver 401/500!
+    let user = null;
+    try {
+      user = await getUserByUsername(payload.ul);
+    } catch (err) {
+      if (options.allowStatelessFallback) {
+        return {
+          user: {
+            id: payload.uid,
+            username: payload.u,
+            usernameLower: payload.ul,
+            role: isAdminUser({ usernameLower: payload.ul, role: payload.r }) ? 'admin' : 'user',
+            sessionVersion: payload.sv || 1,
+            preferences: {}
+          },
+          session: payload,
+          storageDegraded: true
+        };
+      }
+      throw err;
+    }
+
+    if (!user) return null;
+    const currentSv = Number(user.sessionVersion) || 1;
+    if ((Number(payload.sv) || 1) !== currentSv) {
+      if (res) clearSessionCookie(res);
+      return null;
+    }
+    if (isAdminUser(user)) user.role = 'admin';
+    return { user, session: payload, storageDegraded: false };
+  }
+
+  // Compatibilidade legada: sessão antiga salva no Blob -> migra automaticamente para cookie v2
   const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
   const session = await readJsonBlob(`db/sessions/${tokenHash}.json`);
   if (!session) return null;
 
-  const now = Date.now();
   if (session.expiresAt < now) {
     await deleteBlobByPathname(`db/sessions/${tokenHash}.json`).catch(() => {});
     if (res) clearSessionCookie(res);
     return null;
   }
 
-  // Renova sessão a cada 24h de uso para evitar escritas desnecessárias
-  if (renew && now - (session.lastSeenAt || 0) > 24 * 60 * 60 * 1000) {
-    session.lastSeenAt = now;
-    session.expiresAt = now + SESSION_TTL_MS;
-    await writeJsonBlob(`db/sessions/${tokenHash}.json`, session).catch(() => {});
-    if (res) setSessionCookie(res, rawToken);
-  }
-
   const user = await getUserByUsername(session.usernameLower);
   if (!user) return null;
   if (isAdminUser(user)) user.role = 'admin';
+
+  // Migra imediatamente para cookie assinado stateless
+  if (res) {
+    const v2Token = await createSession(user);
+    setSessionCookie(res, v2Token);
+  }
   return { user, session, tokenHash };
 }
 
 async function invalidateSession(req, res) {
   const cookies = parseCookies(req);
   const rawToken = cookies[SESSION_COOKIE_NAME];
-  if (rawToken && rawToken.length >= 32) {
+  if (rawToken && rawToken.length >= 32 && !rawToken.startsWith('v2.')) {
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
     await deleteBlobByPathname(`db/sessions/${tokenHash}.json`).catch(() => {});
   }
@@ -499,5 +640,6 @@ module.exports = {
   recordRateLimitHit,
   clearRateLimit,
   detectImageType,
-  cleanupExpiredReports
+  cleanupExpiredReports,
+  StorageUnavailableError
 };

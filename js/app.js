@@ -132,27 +132,58 @@ const AppState = {
     selectedId: null
   },
 
-  // Aba 7: Calculadora (Contas normais + Cálculos rápidos do jogo no Spaces)
+  // Aba 7: Calculadora (Suite completa de cálculos do jogo + Numérica)
   calculator: {
-    mode: 'smart', // 'smart' | 'math'
-    expr: '',
-    exprResult: '0',
-    history: [],
-    smartType: 'energy', // 'energy' | 'machines'
-    energySource: 'extractor', // 'extractor' | 'generator'
-    energyResourceId: '',
+    tool: 'machines', // 'machines' | 'clock' | 'energy' | 'transport' | 'storage' | 'build' | 'sink' | 'numeric'
+    // Máquinas para X/min
+    prodItemId: 'Desc_IronPlateReinforced_C',
+    prodRecipeId: '',
+    prodTargetRate: 10,
+    prodClock: 100,
+    prodSloops: 0,
+    // Clock & Overclock
+    clockMachineId: 'Build_AssemblerMk1_C',
+    clockRecipeId: '',
+    clockCount: 1,
+    clockPercent: 100,
+    clockSloops: 0,
+    // Energia
+    energySource: 'generator', // 'generator' | 'extractor'
+    energyResourceId: 'Desc_Coal_C',
     minerCount: 1,
-    minerMark: 'mk1',
+    minerMark: 'mk2',
     minerPurity: 'normal',
     minerClock: 100,
-    genId: '',
-    genCount: 1,
-    genFuelId: '',
+    genId: 'Build_GeneratorCoal_C',
+    genCount: 8,
+    genFuelId: 'Desc_Coal_C',
     genClock: 100,
-    machineId: '',
-    machineRecipeId: null,
-    machineCount: 1,
-    machineClock: 100
+    genMarginPct: 0,
+    // Esteiras & Tubos
+    transportKind: 'belt', // 'belt' | 'pipe'
+    transportRate: 480,
+    transportTierId: '',
+    // Armazenamento
+    storageId: 'Build_StorageContainerMk1_C',
+    storageItemId: 'Desc_IronPlate_C',
+    storageRate: 60,
+    storageCount: 1,
+    // Materiais de construção
+    buildList: [{ id: 'Build_ConstructorMk1_C', count: 10 }],
+    buildSelectedId: 'Build_ConstructorMk1_C',
+    buildAddCount: 10,
+    // Triturador SUPIMPA
+    sinkItemId: 'Desc_ModularFrameHeavy_C',
+    sinkRate: 10,
+    // Numérica
+    expr: '',
+    exprResult: '0',
+    numHistory: [],
+    convValue: 60,
+    convFrom: 'min', // 'min' | 'sec' | 'hour'
+    convStackSize: 100,
+    // Histórico / Fixados
+    recents: []
   },
 
   // Câmera do Espaço Infinito
@@ -579,8 +610,8 @@ function resetAllCanvasInteractions() {
     AppState.canvas.wiring = null;
     const prev = document.getElementById('wire-preview-path');
     if (prev) prev.remove();
-    document.querySelectorAll('.magnific-card.wire-target-compatible').forEach(el => {
-      el.classList.remove('wire-target-compatible');
+    document.querySelectorAll('.magnific-card.wire-target-compatible, .magnific-card.wire-hover-ok, .magnific-card.wire-hover-bad').forEach(el => {
+      el.classList.remove('wire-target-compatible', 'wire-hover-ok', 'wire-hover-bad');
     });
   }
   const viewportEl = document.getElementById('spaces-viewport');
@@ -661,15 +692,8 @@ function initInfiniteCanvasEvents() {
         startY = fromBox.y + fromBox.h / 2;
       }
 
-      AppState.canvas.wiring = { fromNodeId, startX, startY, currX: startX, currY: startY };
+      AppState.canvas.wiring = { fromNodeId, startX, startY, currX: startX, currY: startY, hoveredCardId: null };
       viewport.classList.add('wiring-active');
-
-      // Destaca máquinas compatíveis como alvo
-      document.querySelectorAll('.magnific-card').forEach(el => {
-        if (el.id !== fromNodeId) {
-          el.classList.add('wire-target-compatible');
-        }
-      });
       return;
     }
 
@@ -725,13 +749,31 @@ function initInfiniteCanvasEvents() {
   });
 
   window.addEventListener('mousemove', (e) => {
-    // Arrastando conexão (esteira)
+    // Arrastando conexão (esteira): destaca SOMENTE a borda do card sob o ponteiro (verde = compatível, vermelho = incompatível)
     if (AppState.canvas.wiring) {
       const w = AppState.canvas.wiring;
       const worldPos = clientToWorld(e.clientX, e.clientY);
       w.currX = worldPos.x;
       w.currY = worldPos.y;
       updateWirePreviewPath(w.startX, w.startY, w.currX, w.currY);
+
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      const targetCard = under ? under.closest('.magnific-card') : null;
+      const nextId = (targetCard && targetCard.id !== w.fromNodeId) ? targetCard.id : null;
+
+      if (w.hoveredCardId !== nextId) {
+        if (w.hoveredCardId) {
+          const prevEl = document.getElementById(w.hoveredCardId);
+          if (prevEl) prevEl.classList.remove('wire-hover-ok', 'wire-hover-bad');
+        }
+        w.hoveredCardId = nextId;
+        if (nextId && targetCard) {
+          const fromBox = AppState.canvas.nodeMap.get(w.fromNodeId);
+          const toBox = AppState.canvas.nodeMap.get(nextId);
+          const check = (fromBox && toBox) ? canConnectNodes(fromBox.node, toBox.node) : { ok: false };
+          targetCard.classList.add(check.ok ? 'wire-hover-ok' : 'wire-hover-bad');
+        }
+      }
       return;
     }
 
@@ -958,14 +1000,77 @@ function renderAll(autoFit = false) {
   }
 }
 
+function commitFocusedSidebarInput() {
+  const active = document.activeElement;
+  if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT') && active.closest('#left-sidebar')) {
+    active.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+}
+
 function mountProductionFlow() {
+  commitFocusedSidebarInput();
+  if (!AppState.production.driver) {
+    if (AppState.pull.targets.length > 0) AppState.production.driver = 'product';
+    else if (AppState.push.inputs.length > 0 && AppState.push.targetItemId) AppState.production.driver = 'input';
+  }
   AppState.production.mounted = true;
   renderAll(true);
 }
 
 function mountPowerFlow() {
+  commitFocusedSidebarInput();
   AppState.power.mounted = true;
   renderAll(true);
+}
+
+function getShardsForClock(clockPct) {
+  const c = Math.max(1, Math.min(250, Number(clockPct) || 100));
+  if (c <= 100) return 0;
+  if (c <= 150) return 1;
+  if (c <= 200) return 2;
+  return 3;
+}
+
+/**
+ * Componente único reutilizável de Overclock em slide (1% a 250%)
+ * com botões -/+, atalhos 100/150/200/250% e contador de Power Shards.
+ */
+function renderOverclockSliderHtml({ value = 100, onChangeExpr, label = 'Overclock (%)' }) {
+  const c = Math.max(1, Math.min(250, Math.round(Number(value) || 100)));
+  const shards = getShardsForClock(c);
+  const shardLabel = shards === 0 ? '0 shards' : `${shards} shard${shards > 1 ? 's' : ''}`;
+  const setVal = (v) => onChangeExpr.replace(/__VAL__/g, String(v));
+
+  return `
+    <div class="oc-slider-wrap">
+      <div class="oc-slider-head">
+        <span class="oc-slider-lbl">${label}</span>
+        <span class="oc-slider-meta">
+          <strong class="oc-slider-val">${c}%</strong>
+          <span class="oc-shard-pill ${shards > 0 ? 'has-shards' : ''}" title="Power Shards necessários">💎 ${shardLabel}</span>
+        </span>
+      </div>
+      <div class="oc-slider-row">
+        <button type="button" class="oc-step-btn" onclick="${setVal(Math.max(1, c - 5))}" title="-5%">−</button>
+        <input
+          type="range"
+          class="oc-range-input"
+          min="1"
+          max="250"
+          step="1"
+          value="${c}"
+          oninput="const p=this.closest('.oc-slider-wrap'); if(p){ const v=Number(this.value); const ve=p.querySelector('.oc-slider-val'); if(ve) ve.textContent=v+'%'; const sp=p.querySelector('.oc-shard-pill'); if(sp){ const s=getShardsForClock(v); sp.textContent='💎 '+s+' shard'+(s===1?'':'s'); sp.classList.toggle('has-shards', s>0); } }"
+          onchange="${onChangeExpr.replace(/__VAL__/g, 'Number(this.value)')}"
+        />
+        <button type="button" class="oc-step-btn" onclick="${setVal(Math.min(250, c + 5))}" title="+5%">+</button>
+      </div>
+      <div class="oc-presets-row">
+        ${[100, 150, 200, 250].map(p => `
+          <button type="button" class="oc-preset-btn ${c === p ? 'active' : ''}" onclick="${setVal(p)}">${p}%</button>
+        `).join('')}
+      </div>
+    </div>
+  `;
 }
 
 function updateTopRightFloatingActions() {
@@ -1028,6 +1133,7 @@ function updateTopRightFloatingActions() {
         <button
           class="btn-floating-primary sidebar-action-btn ${isReady ? 'ready' : 'disabled'}"
           ${!isReady ? 'disabled title="Configure a entrada e o produto abaixo primeiro"' : ''}
+          onmousedown="event.preventDefault()"
           onclick="mountProductionFlow()"
         >
           ${isMounted ? '🔄 Atualizar' : '⚡ Montar Linha'}
@@ -1036,40 +1142,47 @@ function updateTopRightFloatingActions() {
           type="button"
           class="btn-clear-inline"
           ${!hasAnyProd ? 'disabled' : ''}
+          onmousedown="event.preventDefault()"
           onclick="clearCurrentFlow()"
           title="Limpar área de trabalho"
         >Limpar</button>
       </div>
       ${isReady && isMounted ? `
-        <button type="button" class="btn-edit-in-free" onclick="convertProductionToFreeMode()" title="Levar esta linha para o Modo Livre para adicionar divisores e armazenamento">
+        <button type="button" class="btn-edit-in-free" onmousedown="event.preventDefault()" onclick="convertProductionToFreeMode()" title="Levar esta linha para o Modo Livre para adicionar divisores e armazenamento">
           🛠️ Editar no Livre
         </button>
       ` : ''}
       ${saveActionsHtml}
     `;
   } else if (AppState.mode === 'power') {
-    setFooterHtml('');
     const isReady = Boolean(AppState.power.generatorId && AppState.power.fuelItemId);
     const isMounted = Boolean(AppState.power.mounted);
     const hasAnyPower = Boolean(AppState.power.generatorId || isMounted);
-    let summaryHtml = '';
+    let powerFooterHtml = '';
     if (isReady) {
       const pwr = Solver.calculatePowerPlan(AppState.power);
       if (pwr) {
-        summaryHtml = `
-          <div class="flow-quick-summary">
-            <div class="fqs-row"><span>⚡ Geração Bruta:</span><strong>${fmt(pwr.totalGrossMw, 1)} MW (${pwr.intGenerators}x)</strong></div>
-            <div class="fqs-row"><span>🔋 Potência Líquida:</span><strong>${fmt(pwr.netPowerMw, 1)} MW</strong></div>
-            <div class="fqs-row"><span>🔥 Combustível:</span><strong>${fmt(pwr.totalFuelConsumed, 1)}/m ${pwr.fuelItem?.name || ''}</strong></div>
+        const fuelName = pwr.fuelItem?.name || '';
+        const waterPart = pwr.waterRequired > 0
+          ? `<span class="fs-footer-tab">💧 Água: ${fmt(pwr.waterRequired, 1)} m³/min (${pwr.intWaterPumps || 0}×)</span>`
+          : '';
+        powerFooterHtml = `
+          <div class="fs-footer-bar" role="status" aria-label="Resumo de energia">
+            <span class="fs-footer-tab tone-pos">⚡ Bruta: +${fmt(pwr.totalGrossMw, 1)} MW (${pwr.intGenerators}×)</span>
+            <span class="fs-footer-tab tone-pos">🔋 Líquida: +${fmt(pwr.netPowerMw, 1)} MW</span>
+            <span class="fs-footer-tab">🔥 ${fuelName}: ${fmt(pwr.totalFuelConsumed, 1)}/min</span>
+            ${waterPart}
           </div>
         `;
       }
     }
+    setFooterHtml(powerFooterHtml);
     container.innerHTML = `
       <div class="sidebar-action-row">
         <button
           class="btn-floating-primary sidebar-action-btn ${isReady ? 'ready' : 'disabled'}"
           ${!isReady ? 'disabled title="Escolha uma usina abaixo primeiro"' : ''}
+          onmousedown="event.preventDefault()"
           onclick="mountPowerFlow()"
         >
           ${isMounted ? '🔄 Atualizar' : '⚡ Montar Usina'}
@@ -1078,11 +1191,11 @@ function updateTopRightFloatingActions() {
           type="button"
           class="btn-clear-inline"
           ${!hasAnyPower ? 'disabled' : ''}
+          onmousedown="event.preventDefault()"
           onclick="clearCurrentFlow()"
           title="Limpar área de trabalho"
         >Limpar</button>
       </div>
-      ${summaryHtml}
     `;
   } else if (AppState.mode === 'free') {
     const blocks = AppState.free.blocks || [];
@@ -1391,15 +1504,12 @@ function renderPullFlowInsideProduction(sidebarEl, emptyOverlay, autoFit) {
                   }).join('')}
                 </select>
               </div>
-              <div class="field-row-2">
-                <div class="field-group">
-                  <label>Overclock (%)</label>
-                  <input type="number" class="sidebar-input" min="1" max="250" value="${step.clockPercent}" onchange="setPullStepClock('${step.itemId}', this.value)" />
-                </div>
-                <div class="field-group">
-                  <label>Nº Inteiro</label>
-                  <input type="number" class="sidebar-input" min="1" step="1" value="${step.machineCount}" onchange="setPullStepCustomCount('${step.itemId}', this.value)" />
-                </div>
+              <div class="field-group">
+                ${renderOverclockSliderHtml({ value: step.clockPercent, onChangeExpr: `setPullStepClock('${step.itemId}', __VAL__)`, label: 'Overclock' })}
+              </div>
+              <div class="field-group">
+                <label>Nº Inteiro</label>
+                <input type="number" class="sidebar-input" min="1" step="1" value="${step.machineCount}" onchange="setPullStepCustomCount('${step.itemId}', this.value)" />
               </div>
             </div>
           `).join('')}
@@ -1445,15 +1555,12 @@ function renderPullFlowInsideProduction(sidebarEl, emptyOverlay, autoFit) {
                     </div>
                   </div>
                 ` : ''}
-                <div class="field-row-2">
-                  <div class="field-group">
-                    <label>Overclock (%)</label>
-                    <input type="number" class="sidebar-input" min="1" max="250" value="${raw.minerCfg.clockPercent || 100}" onchange="setPullMinerClock('${raw.itemId}', this.value)" />
-                  </div>
-                  <div class="field-group">
-                    <label>Nº Inteiro (${raw.extractorPlan.extractor.name})</label>
-                    <input type="number" class="sidebar-input" min="1" step="1" value="${raw.extractorPlan.machineCount}" onchange="setPullMinerCustomCount('${raw.itemId}', this.value)" />
-                  </div>
+                <div class="field-group">
+                  ${renderOverclockSliderHtml({ value: raw.minerCfg.clockPercent || 100, onChangeExpr: `setPullMinerClock('${raw.itemId}', __VAL__)`, label: 'Overclock' })}
+                </div>
+                <div class="field-group">
+                  <label>Nº Inteiro (${raw.extractorPlan.extractor.name})</label>
+                  <input type="number" class="sidebar-input" min="1" step="1" value="${raw.extractorPlan.machineCount}" onchange="setPullMinerCustomCount('${raw.itemId}', this.value)" />
                 </div>
               </div>
             </div>
@@ -1546,15 +1653,12 @@ function renderPushInputCard(inp) {
               </div>
             </div>
           ` : ''}
-          <div class="field-row-2">
-            <div class="field-group">
-              <label>Nº Máquinas</label>
-              <input type="number" class="sidebar-input" min="1" step="1" value="${Math.max(1, Math.round(inp.extractorCount || 1))}" onchange="updatePushInput('${inp.id}', 'extractorCount', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
-            </div>
-            <div class="field-group">
-              <label>Overclock (%)</label>
-              <input type="number" class="sidebar-input" min="1" max="250" step="1" value="${inp.clockPercent || 100}" onchange="updatePushInput('${inp.id}', 'clockPercent', Math.min(250, Math.max(1, parseFloat(this.value)||100)))" />
-            </div>
+          <div class="field-group">
+            <label>Nº Máquinas</label>
+            <input type="number" class="sidebar-input" min="1" step="1" value="${Math.max(1, Math.round(inp.extractorCount || 1))}" onchange="updatePushInput('${inp.id}', 'extractorCount', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
+          </div>
+          <div class="field-group">
+            ${renderOverclockSliderHtml({ value: inp.clockPercent || 100, onChangeExpr: `updatePushInput('${inp.id}', 'clockPercent', __VAL__)`, label: 'Overclock' })}
           </div>
         </div>
       ` : `
@@ -1591,15 +1695,12 @@ function renderPushStageConfigCard(step) {
         </select>
       </div>
 
-      <div class="field-row-2">
-        <div class="field-group">
-          <label>Overclock da Etapa (%)</label>
-          <input type="number" class="sidebar-input" min="1" max="250" value="${step.clockPercent}" onchange="setPushStepClock('${step.itemId}', this.value)" />
-        </div>
-        <div class="field-group">
-          <label>Nº Inteiro (${step.machine?.name || 'Máq.'})</label>
-          <input type="number" class="sidebar-input" min="1" step="1" value="${step.machineCount}" onchange="setPushStepCustomCount('${step.itemId}', this.value)" />
-        </div>
+      <div class="field-group">
+        ${renderOverclockSliderHtml({ value: step.clockPercent, onChangeExpr: `setPushStepClock('${step.itemId}', __VAL__)`, label: 'Overclock' })}
+      </div>
+      <div class="field-group">
+        <label>Nº Inteiro (${step.machine?.name || 'Máq.'})</label>
+        <input type="number" class="sidebar-input" min="1" step="1" value="${step.machineCount}" onchange="setPushStepCustomCount('${step.itemId}', this.value)" />
       </div>
     </div>
   `;
@@ -1735,15 +1836,12 @@ function renderPowerMode(sidebarEl, emptyOverlay, autoFit) {
                   <button class="seg-btn ${p.purity === 'pure' ? 'active' : ''}" onclick="setPowerParam('purity', 'pure')">Puro</button>
                 </div>
               </div>
-              <div class="field-row-2">
-                <div class="field-group">
-                  <label>Nº Mineradoras</label>
-                  <input type="number" class="sidebar-input" min="1" step="1" value="${p.minerCount}" onchange="setPowerParam('minerCount', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
-                </div>
-                <div class="field-group">
-                  <label>Overclock Mineradora (%)</label>
-                  <input type="number" class="sidebar-input" min="1" max="250" value="${p.minerClock}" onchange="setPowerParam('minerClock', Math.min(250, Math.max(1, parseFloat(this.value)||100)))" />
-                </div>
+              <div class="field-group">
+                <label>Nº Mineradoras</label>
+                <input type="number" class="sidebar-input" min="1" step="1" value="${p.minerCount}" onchange="setPowerParam('minerCount', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
+              </div>
+              <div class="field-group">
+                ${renderOverclockSliderHtml({ value: p.minerClock, onChangeExpr: `setPowerParam('minerClock', __VAL__)`, label: 'Overclock Mineradora' })}
               </div>
             </div>
           ` : `
@@ -1773,15 +1871,12 @@ function renderPowerMode(sidebarEl, emptyOverlay, autoFit) {
             </div>
           ` : ''}
 
-          <div class="field-row-2">
-            <div class="field-group">
-              <label>Overclock Geradores (%)</label>
-              <input type="number" class="sidebar-input" min="1" max="250" value="${p.clockPercent}" onchange="setPowerParam('clockPercent', Math.min(250, Math.max(1, parseFloat(this.value)||100)))" />
-            </div>
-            <div class="field-group">
-              <label>Nº Inteiro de Usinas</label>
-              <input type="number" class="sidebar-input" min="1" step="1" value="${powerPlan ? powerPlan.generatorCount : p.generatorCount}" onchange="setPowerGeneratorCountOverride(this.value)" />
-            </div>
+          <div class="field-group">
+            ${renderOverclockSliderHtml({ value: p.clockPercent, onChangeExpr: `setPowerParam('clockPercent', __VAL__)`, label: 'Overclock Geradores' })}
+          </div>
+          <div class="field-group">
+            <label>Nº Inteiro de Usinas</label>
+            <input type="number" class="sidebar-input" min="1" step="1" value="${powerPlan ? powerPlan.generatorCount : p.generatorCount}" onchange="setPowerGeneratorCountOverride(this.value)" />
           </div>
         </div>
 
@@ -1797,22 +1892,12 @@ function renderPowerMode(sidebarEl, emptyOverlay, autoFit) {
               </div>
               ${p.manualWaterPumps ? `<button class="btn-small-accent" onclick="setPowerParam('manualWaterPumps', null)">Auto</button>` : ''}
             </div>
-            <div class="field-row-2">
-              <div class="field-group">
-                <label>Overclock Bomba d'Água (%)</label>
-                <input type="number" class="sidebar-input" min="1" max="250" value="${p.waterExtractorClock || 100}" onchange="setPowerWaterClock(this.value)" />
-              </div>
-              <div class="field-group">
-                <label>Nº Bombas d'Água</label>
-                <input type="number" class="sidebar-input" min="1" step="1" value="${powerPlan.intWaterPumps}" onchange="setPowerParam('manualWaterPumps', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
-              </div>
+            <div class="field-group">
+              ${renderOverclockSliderHtml({ value: p.waterExtractorClock || 100, onChangeExpr: `setPowerWaterClock(__VAL__)`, label: "Overclock Bomba d'Água" })}
             </div>
-            <div class="quick-clock-row">
-              <span>Clocks:</span>
-              <button type="button" class="mini-clock-chip ${(p.waterExtractorClock || 100) === 75 ? 'active' : ''}" onclick="setPowerWaterClock(75)">75% (90m³)</button>
-              <button type="button" class="mini-clock-chip ${(p.waterExtractorClock || 100) === 100 ? 'active' : ''}" onclick="setPowerWaterClock(100)">100% (120m³)</button>
-              <button type="button" class="mini-clock-chip ${(p.waterExtractorClock || 100) === 150 ? 'active' : ''}" onclick="setPowerWaterClock(150)">150% (180m³)</button>
-              <button type="button" class="mini-clock-chip ${(p.waterExtractorClock || 100) === 250 ? 'active' : ''}" onclick="setPowerWaterClock(250)">250% (300m³)</button>
+            <div class="field-group">
+              <label>Nº Bombas d'Água</label>
+              <input type="number" class="sidebar-input" min="1" step="1" value="${powerPlan.intWaterPumps}" onchange="setPowerParam('manualWaterPumps', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
             </div>
           </div>
         ` : ''}
@@ -1940,15 +2025,12 @@ function renderFreeMode(sidebarEl, emptyOverlay, autoFit) {
 
         ${specificControls}
 
-        <div class="field-row-2">
-          <div class="field-group">
-            <label>Nº de Máquinas</label>
-            <input type="number" class="sidebar-input" min="1" step="1" value="${b.count}" onchange="updateFreeBlock('${b.id}', 'count', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
-          </div>
-          <div class="field-group">
-            <label>Overclock (%)</label>
-            <input type="number" class="sidebar-input" min="1" max="250" value="${b.clockPercent}" onchange="updateFreeBlock('${b.id}', 'clockPercent', Math.min(250, Math.max(1, parseFloat(this.value)||100)))" />
-          </div>
+        <div class="field-group">
+          <label>Nº de Máquinas</label>
+          <input type="number" class="sidebar-input" min="1" step="1" value="${b.count}" onchange="updateFreeBlock('${b.id}', 'count', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
+        </div>
+        <div class="field-group">
+          ${renderOverclockSliderHtml({ value: b.clockPercent, onChangeExpr: `updateFreeBlock('${b.id}', 'clockPercent', __VAL__)`, label: 'Overclock' })}
         </div>
 
         <div class="field-row-2">
@@ -3442,16 +3524,7 @@ function renderMachineInspectorContent() {
 
       <div class="inspector-form-grid">
         <div class="field-group">
-          <label>Overclock da Bomba d'Água (%) — 1% a 250%</label>
-          <input type="number" class="sidebar-input" min="1" max="250" value="${clock}" onchange="setPowerWaterClock(this.value)" />
-          <div class="quick-clock-row" style="margin-top:6px;">
-            <button type="button" class="mini-clock-chip ${clock === 50 ? 'active' : ''}" onclick="setPowerWaterClock(50)">50% (60 m³/m)</button>
-            <button type="button" class="mini-clock-chip ${clock === 75 ? 'active' : ''}" onclick="setPowerWaterClock(75)">75% (90 m³/m)</button>
-            <button type="button" class="mini-clock-chip ${clock === 100 ? 'active' : ''}" onclick="setPowerWaterClock(100)">100% (120 m³/m)</button>
-            <button type="button" class="mini-clock-chip ${clock === 150 ? 'active' : ''}" onclick="setPowerWaterClock(150)">150% (180 m³/m)</button>
-            <button type="button" class="mini-clock-chip ${clock === 200 ? 'active' : ''}" onclick="setPowerWaterClock(200)">200% (240 m³/m)</button>
-            <button type="button" class="mini-clock-chip ${clock === 250 ? 'active' : ''}" onclick="setPowerWaterClock(250)">250% (300 m³/m)</button>
-          </div>
+          ${renderOverclockSliderHtml({ value: clock, onChangeExpr: `setPowerWaterClock(__VAL__)`, label: "Overclock da Bomba d'Água" })}
         </div>
 
         <div class="field-row-2">
@@ -3490,14 +3563,7 @@ function renderMachineInspectorContent() {
 
       <div class="inspector-form-grid">
         <div class="field-group">
-          <label>Overclock dos Geradores (%) — 1% a 250%</label>
-          <input type="number" class="sidebar-input" min="1" max="250" value="${clock}" onchange="setPowerParam('clockPercent', Math.min(250, Math.max(1, parseFloat(this.value)||100)))" />
-          <div class="quick-clock-row" style="margin-top:6px;">
-            <button type="button" class="mini-clock-chip ${clock === 100 ? 'active' : ''}" onclick="setPowerParam('clockPercent', 100)">100%</button>
-            <button type="button" class="mini-clock-chip ${clock === 150 ? 'active' : ''}" onclick="setPowerParam('clockPercent', 150)">150%</button>
-            <button type="button" class="mini-clock-chip ${clock === 200 ? 'active' : ''}" onclick="setPowerParam('clockPercent', 200)">200%</button>
-            <button type="button" class="mini-clock-chip ${clock === 250 ? 'active' : ''}" onclick="setPowerParam('clockPercent', 250)">250%</button>
-          </div>
+          ${renderOverclockSliderHtml({ value: clock, onChangeExpr: `setPowerParam('clockPercent', __VAL__)`, label: 'Overclock dos Geradores' })}
         </div>
 
         <div class="field-row-2">
@@ -3551,15 +3617,12 @@ function renderMachineInspectorContent() {
               <button class="seg-btn ${p.purity === 'pure' ? 'active' : ''}" onclick="setPowerParam('purity', 'pure')">Puro</button>
             </div>
           </div>
-          <div class="field-row-2">
-            <div class="field-group">
-              <label>Nº de Mineradoras</label>
-              <input type="number" class="sidebar-input" min="1" step="1" value="${p.minerCount}" onchange="setPowerParam('minerCount', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
-            </div>
-            <div class="field-group">
-              <label>Overclock Mineradora (%)</label>
-              <input type="number" class="sidebar-input" min="1" max="250" value="${p.minerClock}" onchange="setPowerParam('minerClock', Math.min(250, Math.max(1, parseFloat(this.value)||100)))" />
-            </div>
+          <div class="field-group">
+            <label>Nº de Mineradoras</label>
+            <input type="number" class="sidebar-input" min="1" step="1" value="${p.minerCount}" onchange="setPowerParam('minerCount', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
+          </div>
+          <div class="field-group">
+            ${renderOverclockSliderHtml({ value: p.minerClock, onChangeExpr: `setPowerParam('minerClock', __VAL__)`, label: 'Overclock Mineradora' })}
           </div>
         ` : `
           <div class="field-group">
@@ -3626,23 +3689,18 @@ function renderMachineInspectorContent() {
               </div>
             </div>
           ` : ''}
+          <div class="field-group">
+            ${renderOverclockSliderHtml({ value: mCfg.clockPercent || 100, onChangeExpr: `setPullMinerClock('${itemId}', __VAL__)`, label: 'Overclock' })}
+          </div>
           <div class="field-row-2">
-            <div class="field-group">
-              <label>Overclock (%)</label>
-              <input type="number" class="sidebar-input" min="1" max="250" value="${mCfg.clockPercent || 100}" onchange="setPullMinerClock('${itemId}', this.value)" />
-            </div>
             <div class="field-group">
               <label>Nº Inteiro de Extratores</label>
               <input type="number" class="sidebar-input" min="1" step="1" value="${mCfg.customCount || ''}" placeholder="Automático" onchange="setPullMinerCustomCount('${itemId}', this.value)" />
             </div>
-          </div>
-          <div class="quick-clock-row">
-            <span>Clocks rápidos:</span>
-            <button type="button" class="mini-clock-chip ${(mCfg.clockPercent || 100) === 100 ? 'active' : ''}" onclick="setPullMinerClock('${itemId}', 100)">100%</button>
-            <button type="button" class="mini-clock-chip ${(mCfg.clockPercent || 100) === 150 ? 'active' : ''}" onclick="setPullMinerClock('${itemId}', 150)">150%</button>
-            <button type="button" class="mini-clock-chip ${(mCfg.clockPercent || 100) === 200 ? 'active' : ''}" onclick="setPullMinerClock('${itemId}', 200)">200%</button>
-            <button type="button" class="mini-clock-chip ${(mCfg.clockPercent || 100) === 250 ? 'active' : ''}" onclick="setPullMinerClock('${itemId}', 250)">250%</button>
-            <button type="button" class="mini-clock-chip" onclick="setPullMinerCustomCount('${itemId}', null)">🔄 Nº Auto</button>
+            <div class="field-group">
+              <label>Modo de Quantidade</label>
+              <button type="button" class="btn-small-accent" style="height:34px;" onclick="setPullMinerCustomCount('${itemId}', null)">🔄 Nº Automático</button>
+            </div>
           </div>
         </div>
         <div class="inspector-footer">
@@ -3686,15 +3744,7 @@ function renderMachineInspectorContent() {
         </div>
 
         <div class="field-group">
-          <label>Overclock da Máquina (%) — 1% a 250%</label>
-          <input type="number" class="sidebar-input" min="1" max="250" value="${clock}" onchange="handleInspectorStageClock('${meta.mode}', '${itemId}', this.value)" />
-          <div class="quick-clock-row" style="margin-top:6px;">
-            <button type="button" class="mini-clock-chip ${clock === 50 ? 'active' : ''}" onclick="handleInspectorStageClock('${meta.mode}', '${itemId}', 50)">50%</button>
-            <button type="button" class="mini-clock-chip ${clock === 100 ? 'active' : ''}" onclick="handleInspectorStageClock('${meta.mode}', '${itemId}', 100)">100%</button>
-            <button type="button" class="mini-clock-chip ${clock === 150 ? 'active' : ''}" onclick="handleInspectorStageClock('${meta.mode}', '${itemId}', 150)">150%</button>
-            <button type="button" class="mini-clock-chip ${clock === 200 ? 'active' : ''}" onclick="handleInspectorStageClock('${meta.mode}', '${itemId}', 200)">200%</button>
-            <button type="button" class="mini-clock-chip ${clock === 250 ? 'active' : ''}" onclick="handleInspectorStageClock('${meta.mode}', '${itemId}', 250)">250%</button>
-          </div>
+          ${renderOverclockSliderHtml({ value: clock, onChangeExpr: `handleInspectorStageClock('${meta.mode}', '${itemId}', __VAL__)`, label: 'Overclock da Máquina' })}
         </div>
 
         <div class="field-row-2">
@@ -3819,22 +3869,12 @@ function renderMachineInspectorContent() {
       <div class="inspector-form-grid">
         ${typeSpecificHtml}
 
-        <div class="field-row-2">
-          <div class="field-group">
-            <label>Nº Inteiro de Máquinas</label>
-            <input type="number" class="sidebar-input" min="1" step="1" value="${b.count}" onchange="updateFreeBlock('${b.id}', 'count', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
-          </div>
-          <div class="field-group">
-            <label>Overclock (%)</label>
-            <input type="number" class="sidebar-input" min="1" max="250" value="${b.clockPercent}" onchange="updateFreeBlock('${b.id}', 'clockPercent', Math.min(250, Math.max(1, parseFloat(this.value)||100)))" />
-          </div>
+        <div class="field-group">
+          <label>Nº Inteiro de Máquinas</label>
+          <input type="number" class="sidebar-input" min="1" step="1" value="${b.count}" onchange="updateFreeBlock('${b.id}', 'count', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
         </div>
-        <div class="quick-clock-row">
-          <span>Clocks rápidos:</span>
-          <button type="button" class="mini-clock-chip ${b.clockPercent === 100 ? 'active' : ''}" onclick="updateFreeBlock('${b.id}', 'clockPercent', 100)">100%</button>
-          <button type="button" class="mini-clock-chip ${b.clockPercent === 150 ? 'active' : ''}" onclick="updateFreeBlock('${b.id}', 'clockPercent', 150)">150%</button>
-          <button type="button" class="mini-clock-chip ${b.clockPercent === 200 ? 'active' : ''}" onclick="updateFreeBlock('${b.id}', 'clockPercent', 200)">200%</button>
-          <button type="button" class="mini-clock-chip ${b.clockPercent === 250 ? 'active' : ''}" onclick="updateFreeBlock('${b.id}', 'clockPercent', 250)">250%</button>
+        <div class="field-group">
+          ${renderOverclockSliderHtml({ value: b.clockPercent, onChangeExpr: `updateFreeBlock('${b.id}', 'clockPercent', __VAL__)`, label: 'Overclock' })}
         </div>
         <div class="field-row-2">
           <div class="field-group">
@@ -4340,15 +4380,15 @@ function updateWirePreviewPath(x1, y1, x2, y2) {
 }
 
 let _connErrTimer = null;
-function showConnectionErrorToast(message) {
+function showConnectionErrorToast(message = 'Conexão incompatível') {
   const el = document.getElementById('connection-error-toast');
   if (!el) return;
-  el.textContent = message;
+  el.textContent = message || 'Conexão incompatível';
   el.classList.remove('hidden');
   if (_connErrTimer) clearTimeout(_connErrTimer);
   _connErrTimer = setTimeout(() => {
     el.classList.add('hidden');
-  }, 4200);
+  }, 2200);
 }
 
 const SOLID_ONLY_FREE_KINDS = new Set([
@@ -4430,6 +4470,8 @@ function validateFreeConnection(fromNode, toNode) {
   return { ok: true };
 }
 
+const canConnectNodes = validateFreeConnection;
+
 function handleWireDropOnCard(fromNodeId, toNodeId) {
   const fromBox = AppState.canvas.nodeMap.get(fromNodeId);
   const toBox = AppState.canvas.nodeMap.get(toNodeId);
@@ -4439,9 +4481,9 @@ function handleWireDropOnCard(fromNodeId, toNodeId) {
     return;
   }
 
-  const check = validateFreeConnection(fromBox.node, toBox.node);
+  const check = canConnectNodes(fromBox.node, toBox.node);
   if (!check.ok) {
-    showConnectionErrorToast(check.reason);
+    showConnectionErrorToast('Conexão incompatível');
     return;
   }
 
@@ -6856,29 +6898,273 @@ document.addEventListener('keydown', (e) => {
 });
 
 /* ============================================================================
- * ABA 7: 🧮 CALCULADORA NO SPACES (CONTAS NORMAIS + CÁLCULOS RÁPIDOS DO JOGO)
+ * ABA 7: 🧮 CALCULADORA S+ (SUITE COMPLETA DO JOGO + NUMÉRICA)
  * ========================================================================== */
 
-function setCalcMode(m) {
-  AppState.calculator.mode = m;
+const CALC_STORAGE_KEY = 'splus_calc_history_v1';
+
+const CALC_GROUPS = [
+  {
+    title: 'Produção',
+    tools: [
+      { id: 'machines', label: 'Máquinas para X/min' },
+      { id: 'clock', label: 'Clock & Overclock' }
+    ]
+  },
+  {
+    title: 'Energia',
+    tools: [
+      { id: 'energy', label: 'Energia completa' }
+    ]
+  },
+  {
+    title: 'Logística',
+    tools: [
+      { id: 'transport', label: 'Esteiras & Tubos' },
+      { id: 'storage', label: 'Armazenamento' }
+    ]
+  },
+  {
+    title: 'Construção',
+    tools: [
+      { id: 'build', label: 'Materiais' }
+    ]
+  },
+  {
+    title: 'Projeto espacial',
+    tools: [
+      { id: 'sink', label: 'Triturador SUPIMPA' }
+    ]
+  },
+  {
+    title: 'Numérica',
+    tools: [
+      { id: 'numeric', label: 'Calculadora numérica' }
+    ]
+  }
+];
+
+// Capacidades oficiais de armazenamento do Satisfactory 1.0 (slots sólidos ou m³ fluidos)
+const OFFICIAL_STORAGE_CAPACITY = {
+  Build_StorageContainerMk1_C: { kind: 'solid', slots: 24 },
+  Build_StorageContainerMk2_C: { kind: 'solid', slots: 48 },
+  Build_PipeStorageTank_C: { kind: 'fluid', m3: 400 },
+  Build_IndustrialTank_C: { kind: 'fluid', m3: 2400 }
+};
+
+function loadCalcHistoryLocal() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CALC_STORAGE_KEY) || '[]');
+    if (Array.isArray(raw)) AppState.calculator.recents = raw.slice(0, 20);
+  } catch {}
+}
+
+function persistCalcHistory() {
+  const list = (AppState.calculator.recents || []).slice(0, 20);
+  AppState.calculator.recents = list;
+  try { localStorage.setItem(CALC_STORAGE_KEY, JSON.stringify(list)); } catch {}
+  if (typeof saveAccountPreferences === 'function') {
+    saveAccountPreferences({ calcHistory: list });
+  }
+}
+
+function syncCalcHistoryFromAccount(prefs) {
+  if (!prefs || !Array.isArray(prefs.calcHistory) || prefs.calcHistory.length === 0) return;
+  const existing = AppState.calculator.recents || [];
+  const merged = [...prefs.calcHistory];
+  existing.forEach(item => {
+    if (!merged.some(m => m.id === item.id || m.summary === item.summary)) {
+      merged.push(item);
+    }
+  });
+  AppState.calculator.recents = merged.slice(0, 20);
+  try { localStorage.setItem(CALC_STORAGE_KEY, JSON.stringify(AppState.calculator.recents)); } catch {}
+  if (AppState.mode === 'calculator') renderCalcRecentsStrip();
+}
+
+function restoreCalcFromUrlHash() {
+  try {
+    const hash = window.location.hash || '';
+    if (!hash.startsWith('#calc=')) return;
+    const payload = JSON.parse(decodeURIComponent(atob(hash.slice(6))));
+    if (payload && typeof payload === 'object' && payload.tool) {
+      Object.assign(AppState.calculator, payload);
+      AppState.mode = 'calculator';
+    }
+  } catch {}
+}
+
+loadCalcHistoryLocal();
+restoreCalcFromUrlHash();
+
+function setCalcTool(toolId) {
+  AppState.calculator.tool = toolId;
   renderAll(false);
 }
 
-function setCalcSmartType(t) {
-  AppState.calculator.smartType = t;
-  renderCalculatorWorkspace();
-}
-
-function updateCalcField(field, val) {
+function setCalcField(field, val, fullRerender = true) {
   AppState.calculator[field] = val;
   if (field === 'genId') {
     const g = Solver.getPowerGenerators().find(x => x.id === val);
-    if (g && g.fuels.length > 0) AppState.calculator.genFuelId = g.fuels[0].itemId;
-  } else if (field === 'machineId') {
+    if (g && g.fuels?.length > 0) AppState.calculator.genFuelId = g.fuels[0].itemId;
+  } else if (field === 'clockMachineId') {
     const recs = Solver.getRecipesByMachine(val);
-    AppState.calculator.machineRecipeId = recs[0] ? recs[0].id : null;
+    AppState.calculator.clockRecipeId = recs.find(r => !r.isAlternate)?.id || recs[0]?.id || '';
+    const m = Solver.getMachine(val);
+    const maxSloop = Number(m?.sloopSlots) || 0;
+    if (AppState.calculator.clockSloops > maxSloop) AppState.calculator.clockSloops = maxSloop;
+  } else if (field === 'prodItemId') {
+    const recs = Solver.indexes.recipesByProduct.get(val) || [];
+    AppState.calculator.prodRecipeId = recs.find(r => !r.isAlternate)?.id || recs[0]?.id || '';
+    AppState.calculator.prodSloops = 0;
+  } else if (field === 'prodRecipeId') {
+    const rec = Solver.getRecipe(val);
+    const m = rec ? Solver.getMachine(rec.machine) : null;
+    const maxSloop = Number(m?.sloopSlots) || 0;
+    if (AppState.calculator.prodSloops > maxSloop) AppState.calculator.prodSloops = maxSloop;
+  } else if (field === 'transportKind') {
+    const { belts, pipes } = Solver.getBeltsAndPipes();
+    const list = val === 'pipe' ? pipes : belts;
+    AppState.calculator.transportTierId = list[list.length - 1]?.id || '';
   }
+
+  if (fullRerender) {
+    renderCalculatorWorkspace();
+  } else {
+    updateCalcResultOnly();
+  }
+}
+
+function stepCalcNumber(field, delta, minVal = 1, maxVal = 999999) {
+  const cur = Number(AppState.calculator[field]) || 0;
+  const next = Math.max(minVal, Math.min(maxVal, Number((cur + delta).toFixed(4))));
+  AppState.calculator[field] = next;
   renderCalculatorWorkspace();
+}
+
+function openCalcItemPicker(field, filterFn) {
+  const items = Object.values(window.SATISFACTORY_DATA?.items || {})
+    .filter(it => !filterFn || filterFn(it))
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+  openGenericPickerModal('Selecionar Item', items, (selected) => {
+    setCalcField(field, selected.id, true);
+  });
+}
+
+function openCalcBuildingPicker(field) {
+  const data = window.SATISFACTORY_DATA || {};
+  const list = [
+    ...Object.values(data.machines || {}),
+    ...Object.values(data.generators || {}),
+    ...Object.values(data.extractors || {}),
+    ...Object.values(data.logistics || {})
+  ].filter(b => Array.isArray(b.buildCost) && b.buildCost.length > 0)
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+  openGenericPickerModal('Selecionar Construção', list, (selected) => {
+    setCalcField(field, selected.id, true);
+  });
+}
+
+function openGenericPickerModal(title, entities, onSelect) {
+  let modal = document.getElementById('calc-picker-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'calc-picker-modal';
+    modal.className = 'modal-backdrop hidden';
+    modal.onclick = (e) => { if (e.target === modal) modal.classList.add('hidden'); };
+    document.body.appendChild(modal);
+  }
+  window._calcPickerEntities = entities;
+  window._calcPickerOnSelect = onSelect;
+  modal.innerHTML = `
+    <div class="modal-card calc-picker-card">
+      <div class="modal-header">
+        <h3>${title}</h3>
+        <button type="button" class="btn-icon-close" onclick="document.getElementById('calc-picker-modal').classList.add('hidden')">✕</button>
+      </div>
+      <div class="calc-picker-search-wrap">
+        <input type="text" id="calc-picker-search" class="sidebar-input" placeholder="Buscar..." oninput="filterCalcPickerList(this.value)" />
+      </div>
+      <div id="calc-picker-grid" class="calc-picker-grid"></div>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+  filterCalcPickerList('');
+  setTimeout(() => document.getElementById('calc-picker-search')?.focus(), 30);
+}
+
+function filterCalcPickerList(query) {
+  const grid = document.getElementById('calc-picker-grid');
+  if (!grid) return;
+  const q = Solver.normalizeText(query || '');
+  const list = (window._calcPickerEntities || []).filter(e => {
+    if (!q) return true;
+    return Solver.normalizeText(`${e.name} ${e.nameEn || ''} ${e.category || ''}`).includes(q);
+  }).slice(0, 80);
+
+  grid.innerHTML = list.map(e => `
+    <button type="button" class="calc-picker-item" onclick="selectCalcPickerEntity('${e.id}')">
+      ${renderEntityIcon(e, 32)}
+      <span>${libEsc(e.name)}</span>
+    </button>
+  `).join('') || '<div class="calc-empty-note">Nenhum resultado.</div>';
+}
+
+function selectCalcPickerEntity(id) {
+  const entity = (window._calcPickerEntities || []).find(e => e.id === id);
+  const modal = document.getElementById('calc-picker-modal');
+  if (modal) modal.classList.add('hidden');
+  if (entity && typeof window._calcPickerOnSelect === 'function') {
+    window._calcPickerOnSelect(entity);
+  }
+}
+
+function formatFractionalMachines(exactCount, clockPct = 100) {
+  if (!Number.isFinite(exactCount) || exactCount <= 0) return null;
+  const whole = Math.floor(exactCount);
+  const frac = exactCount - whole;
+  if (frac < 0.001 || frac > 0.999) {
+    return {
+      isFractional: false,
+      totalInt: Math.max(1, Math.round(exactCount)),
+      mixedText: `${Math.max(1, Math.round(exactCount))} a ${fmt(clockPct, 2)}%`,
+      uniformText: `${Math.max(1, Math.round(exactCount))} a ${fmt(clockPct, 2)}%`
+    };
+  }
+  const totalInt = Math.ceil(exactCount);
+  const lastClock = frac * clockPct;
+  const uniformClock = (exactCount / totalInt) * clockPct;
+  const mixedText = whole > 0
+    ? `${whole} a ${fmt(clockPct, 0)}% + 1 a ${fmt(lastClock, 2)}%`
+    : `1 a ${fmt(lastClock, 2)}%`;
+  const uniformText = `${totalInt} a ${fmt(uniformClock, 2)}%`;
+  return { isFractional: true, totalInt, mixedText, uniformText };
+}
+
+function addCalcBuildRow() {
+  const c = AppState.calculator;
+  const id = c.buildSelectedId;
+  const count = Math.max(1, Math.round(Number(c.buildAddCount) || 1));
+  if (!id) return;
+  const existing = c.buildList.find(r => r.id === id);
+  if (existing) existing.count += count;
+  else c.buildList.push({ id, count });
+  renderCalculatorWorkspace();
+}
+
+function removeCalcBuildRow(idx) {
+  AppState.calculator.buildList.splice(idx, 1);
+  renderCalculatorWorkspace();
+}
+
+function updateCalcBuildRowCount(idx, val) {
+  const n = Math.max(1, Math.round(Number(val) || 1));
+  if (AppState.calculator.buildList[idx]) {
+    AppState.calculator.buildList[idx].count = n;
+    updateCalcResultOnly();
+  }
 }
 
 function appendCalcKey(k) {
@@ -6893,26 +7179,963 @@ function appendCalcKey(k) {
   } else {
     AppState.calculator.expr = String(AppState.calculator.expr || '') + k;
   }
-  renderCalculatorWorkspace();
+  const inp = document.getElementById('calc-num-expr-input');
+  const res = document.getElementById('calc-num-result-readout');
+  if (inp) inp.value = AppState.calculator.expr;
+  if (res) res.textContent = `= ${AppState.calculator.exprResult}`;
 }
 
 function evalMathExpr() {
   const raw = String(AppState.calculator.expr || '').replace(/,/g, '.').replace(/[^0-9+\-*/().%\s]/g, '');
   if (!raw.trim()) return;
   try {
-    const val = Function(`"use strict"; return (${raw});`)();
+    // Trata % como /100
+    const normalized = raw.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');
+    const val = Function(`"use strict"; return (${normalized});`)();
     if (typeof val === 'number' && Number.isFinite(val)) {
       const formatted = fmt(val, 4);
       AppState.calculator.exprResult = formatted;
-      AppState.calculator.history.unshift(`${raw} = ${formatted}`);
-      if (AppState.calculator.history.length > 10) AppState.calculator.history.pop();
+      AppState.calculator.numHistory.unshift(`${raw} = ${formatted}`);
+      if (AppState.calculator.numHistory.length > 12) AppState.calculator.numHistory.pop();
     } else {
       AppState.calculator.exprResult = 'Erro';
     }
   } catch {
     AppState.calculator.exprResult = 'Erro';
   }
-  renderCalculatorWorkspace();
+  updateCalcResultOnly();
+  const res = document.getElementById('calc-num-result-readout');
+  if (res) res.textContent = `= ${AppState.calculator.exprResult}`;
+}
+
+// Teclado físico na Calculadora Numérica (ativo somente na aba Calculadora -> Numérica e sem outro input focado)
+window.addEventListener('keydown', (e) => {
+  if (AppState.mode !== 'calculator' || AppState.calculator.tool !== 'numeric') return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const active = document.activeElement;
+  const tag = active ? active.tagName : '';
+  const isCalcInput = active && active.id === 'calc-num-expr-input';
+  if ((tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') && !isCalcInput) return;
+
+  const key = e.key;
+  if (key === 'Enter' || key === '=') {
+    e.preventDefault();
+    evalMathExpr();
+    return;
+  }
+  if (isCalcInput) return; // deixa o input nativo lidar com digitação normal
+
+  if (/^[0-9+\-*/().%]$/.test(key)) {
+    e.preventDefault();
+    appendCalcKey(key);
+  } else if (key === ',') {
+    e.preventDefault();
+    appendCalcKey('.');
+  } else if (key === 'Backspace') {
+    e.preventDefault();
+    appendCalcKey('BACK');
+  } else if (key === 'Delete' || key === 'Escape') {
+    e.preventDefault();
+    appendCalcKey('C');
+  }
+});
+
+function getCurrentCalcSnapshot() {
+  const c = AppState.calculator;
+  const res = computeCalcToolResult();
+  return {
+    id: `calc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    tool: c.tool,
+    label: res.title || c.tool,
+    summary: `${res.heroLabel || ''}: ${res.heroValue || '—'}`.trim(),
+    state: { ...c, recents: undefined, numHistory: undefined },
+    pinned: false,
+    at: new Date().toISOString()
+  };
+}
+
+function pinCurrentCalc(pinFlag = true) {
+  const snap = getCurrentCalcSnapshot();
+  snap.pinned = pinFlag;
+  const list = (AppState.calculator.recents || []).filter(r => r.summary !== snap.summary);
+  list.unshift(snap);
+  list.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+  AppState.calculator.recents = list.slice(0, 20);
+  persistCalcHistory();
+  renderCalcRecentsStrip();
+  if (typeof showAccountToast === 'function') showAccountToast(pinFlag ? 'Cálculo fixado.' : 'Salvo nos recentes.', 'success');
+}
+
+function removeCalcRecent(id) {
+  AppState.calculator.recents = (AppState.calculator.recents || []).filter(r => r.id !== id);
+  persistCalcHistory();
+  renderCalcRecentsStrip();
+}
+
+function restoreCalcRecent(id) {
+  const entry = (AppState.calculator.recents || []).find(r => r.id === id);
+  if (!entry || !entry.state) return;
+  Object.assign(AppState.calculator, entry.state);
+  renderAll(false);
+}
+
+function copyCurrentCalcResult() {
+  const res = computeCalcToolResult();
+  const lines = [
+    `${res.title}`,
+    `${res.heroLabel}: ${res.heroValue}`,
+    ...(res.rows || []).map(r => `${r.label}: ${r.value}`)
+  ].join('\n');
+  navigator.clipboard?.writeText(lines).then(() => {
+    if (typeof showAccountToast === 'function') showAccountToast('Resultado copiado.', 'success');
+  }).catch(() => {});
+}
+
+function shareCurrentCalcLink() {
+  const snap = getCurrentCalcSnapshot();
+  try {
+    const encoded = btoa(encodeURIComponent(JSON.stringify(snap.state)));
+    const url = `${window.location.origin}${window.location.pathname}#calc=${encoded}`;
+    navigator.clipboard?.writeText(url).then(() => {
+      if (typeof showAccountToast === 'function') showAccountToast('Link copiado.', 'success');
+    }).catch(() => {});
+  } catch {}
+}
+
+function openCalcInProduction(itemId, targetRate, recipeId) {
+  if (!itemId) return;
+  AppState.production.driver = 'output';
+  AppState.production.mounted = true;
+  AppState.pull.targets = [{ id: uid(), itemId, rate: Math.max(0.1, Number(targetRate) || 10) }];
+  AppState.pull.recipeOverrides = recipeId ? { [itemId]: recipeId } : {};
+  AppState.pull.stepSettings = {};
+  AppState.canvas.customPositions = {};
+  switchMode('production');
+}
+
+function openCalcInPower(genId, fuelId, count, clock) {
+  if (genId) AppState.power.generatorId = genId;
+  if (fuelId) AppState.power.fuelItemId = fuelId;
+  if (count) AppState.power.manualGenerators = Math.max(1, Math.round(count));
+  if (clock) AppState.power.clockPercent = Math.max(1, Math.min(250, Math.round(clock)));
+  AppState.power.mounted = true;
+  switchMode('power');
+}
+
+function computeCalcToolResult() {
+  const c = AppState.calculator;
+  const data = window.SATISFACTORY_DATA || {};
+  const powerExp = data.rules?.powerExponent || 1.321929;
+
+  if (c.tool === 'machines') {
+    const item = Solver.getItem(c.prodItemId);
+    const recipes = Solver.indexes.recipesByProduct.get(c.prodItemId) || [];
+    const recipe = recipes.find(r => r.id === c.prodRecipeId) || recipes.find(r => !r.isAlternate) || recipes[0] || null;
+    const machine = recipe ? Solver.getMachine(recipe.machine) : null;
+    const prodEntry = recipe ? (recipe.products || []).find(p => p.item === c.prodItemId) : null;
+    const targetRate = Math.max(0.01, Number(c.prodTargetRate) || 0);
+    const clock = Math.max(1, Math.min(250, Number(c.prodClock) || 100));
+    const maxSloop = Number(machine?.sloopSlots) || 0;
+    const sloops = Math.max(0, Math.min(maxSloop, Number(c.prodSloops) || 0));
+    const sloopMult = maxSloop > 0 ? (1 + sloops / maxSloop) : 1;
+
+    if (!item || !recipe || !machine || !prodEntry) {
+      return { title: 'Máquinas para X/min', heroLabel: 'Selecione um produto', heroValue: '—', rows: [] };
+    }
+
+    const ratePerMachine = prodEntry.ratePerMin * (clock / 100) * sloopMult;
+    const exactMachines = ratePerMachine > 0 ? (targetRate / ratePerMachine) : 0;
+    const frac = formatFractionalMachines(exactMachines, clock);
+    const baseMw = recipe.avgPowerMw ?? machine.powerConsumption ?? 0;
+    const mwPerMachine = baseMw * Math.pow(clock / 100, powerExp) * Math.pow(sloopMult, 2);
+    const totalMw = exactMachines * mwPerMachine;
+    const totalShards = getShardsForClock(clock) * (frac?.totalInt || 1);
+    const totalSloops = sloops * (frac?.totalInt || 1);
+
+    const rows = [
+      { label: 'Máquina', value: `${machine.name} (${fmt(ratePerMachine, 2)} ${item.unit || 'un'}/min cada)` },
+      { label: 'Máquinas exatas', value: `${fmt(exactMachines, 2)}x` }
+    ];
+    if (frac?.isFractional) {
+      rows.push({ label: 'Opção mista', value: frac.mixedText, highlight: true });
+      rows.push({ label: 'Opção uniforme', value: frac.uniformText, highlight: true });
+    }
+    rows.push({ label: 'Energia total', value: `⚡ ${fmt(totalMw, 1)} MW (${fmt(mwPerMachine, 1)} MW/máq)` });
+    if (totalShards > 0) rows.push({ label: 'Power Shards', value: `💎 ${totalShards}` });
+    if (totalSloops > 0) rows.push({ label: 'Somersloops', value: `🔮 ${totalSloops}` });
+
+    (recipe.ingredients || []).forEach(ing => {
+      const it = Solver.getItem(ing.item);
+      const req = ing.ratePerMin * (clock / 100) * exactMachines;
+      rows.push({ label: `Consome ${it ? it.name : ing.item}`, value: `${fmt(req, 2)} ${it?.unit || 'un'}/min` });
+    });
+    (recipe.products || []).filter(p => p.item !== c.prodItemId).forEach(by => {
+      const it = Solver.getItem(by.item);
+      const out = by.ratePerMin * (clock / 100) * sloopMult * exactMachines;
+      rows.push({ label: `Subproduto ${it ? it.name : by.item}`, value: `${fmt(out, 2)} ${it?.unit || 'un'}/min` });
+    });
+
+    return {
+      title: `${item.name} — ${fmt(targetRate, 1)} ${item.unit || 'un'}/min`,
+      heroLabel: `${machine.name} necessárias`,
+      heroValue: `${fmt(exactMachines, 2)}x`,
+      rows,
+      planAction: { itemId: item.id, rate: targetRate, recipeId: recipe.id }
+    };
+  }
+
+  if (c.tool === 'clock') {
+    const machine = Solver.getMachine(c.clockMachineId);
+    const recs = machine ? Solver.getRecipesByMachine(machine.id) : [];
+    const recipe = recs.find(r => r.id === c.clockRecipeId) || recs.find(r => !r.isAlternate) || recs[0] || null;
+    const count = Math.max(0.01, Number(c.clockCount) || 1);
+    const clock = Math.max(1, Math.min(250, Number(c.clockPercent) || 100));
+    const maxSloop = Number(machine?.sloopSlots) || 0;
+    const sloops = Math.max(0, Math.min(maxSloop, Number(c.clockSloops) || 0));
+    const sloopMult = maxSloop > 0 ? (1 + sloops / maxSloop) : 1;
+
+    if (!machine || !recipe) {
+      return { title: 'Clock & Overclock', heroLabel: 'Selecione máquina e receita', heroValue: '—', rows: [] };
+    }
+
+    const baseMw = recipe.avgPowerMw ?? machine.powerConsumption ?? 0;
+    const mwPerMachine = baseMw * Math.pow(clock / 100, powerExp) * Math.pow(sloopMult, 2);
+    const totalMw = mwPerMachine * count;
+    const baseTotalMw = baseMw * count;
+    const deltaPct = baseTotalMw > 0 ? ((totalMw / baseTotalMw - 1) * 100) : 0;
+    const mainProd = recipe.products?.[0];
+    const mainItem = mainProd ? Solver.getItem(mainProd.item) : null;
+    const mainOut = mainProd ? mainProd.ratePerMin * (clock / 100) * sloopMult * count : 0;
+    const frac = formatFractionalMachines(count, clock);
+
+    const rows = [
+      { label: 'Energia por máquina', value: `⚡ ${fmt(mwPerMachine, 2)} MW (base ${fmt(baseMw, 1)} MW)` },
+      { label: 'Energia total', value: `⚡ ${fmt(totalMw, 2)} MW (${deltaPct >= 0 ? '+' : ''}${fmt(deltaPct, 1)}%)` },
+      { label: 'Power Shards', value: `💎 ${getShardsForClock(clock) * Math.ceil(count)} (${getShardsForClock(clock)}/máq)` }
+    ];
+    if (frac?.isFractional) {
+      rows.push({ label: 'Opção mista', value: frac.mixedText, highlight: true });
+      rows.push({ label: 'Opção uniforme', value: frac.uniformText, highlight: true });
+    }
+    if (maxSloop > 0) {
+      rows.push({ label: 'Somersloop', value: `${sloops}/${maxSloop} (${fmt(sloopMult * 100, 0)}% saída • ${fmt(Math.pow(sloopMult, 2) * 100, 0)}% energia)` });
+    }
+    (recipe.products || []).forEach(p => {
+      const it = Solver.getItem(p.item);
+      rows.push({ label: `Produz ${it ? it.name : p.item}`, value: `${fmt(p.ratePerMin * (clock / 100) * sloopMult * count, 2)} ${it?.unit || 'un'}/min` });
+    });
+    (recipe.ingredients || []).forEach(i => {
+      const it = Solver.getItem(i.item);
+      rows.push({ label: `Consome ${it ? it.name : i.item}`, value: `${fmt(i.ratePerMin * (clock / 100) * count, 2)} ${it?.unit || 'un'}/min` });
+    });
+
+    return {
+      title: `${fmt(count, 2)}x ${machine.name} (${clock}%)`,
+      heroLabel: mainItem ? `Saída de ${mainItem.name}` : 'Energia total',
+      heroValue: mainItem ? `${fmt(mainOut, 2)} ${mainItem.unit || 'un'}/min` : `⚡ ${fmt(totalMw, 1)} MW`,
+      rows,
+      planAction: mainItem ? { itemId: mainItem.id, rate: mainOut, recipeId: recipe.id } : null
+    };
+  }
+
+  if (c.tool === 'energy') {
+    const gens = Solver.getPowerGenerators();
+    const waterPump = data.extractors?.Build_WaterPump_C;
+    const pumpRate = waterPump?.baseRatePerMin || 120;
+    const pumpMw = waterPump?.powerConsumption || 20;
+
+    if (c.energySource === 'generator') {
+      const gen = gens.find(g => g.id === c.genId) || gens[0];
+      if (!gen) return { title: 'Energia completa', heroLabel: 'Gerador', heroValue: '—', rows: [] };
+      const fuelObj = (gen.fuels || []).find(f => f.itemId === c.genFuelId) || gen.fuels?.[0];
+      const fuelItem = fuelObj ? Solver.getItem(fuelObj.itemId) : null;
+      const count = Math.max(1, Number(c.genCount) || 1);
+      const clock = Math.max(1, Math.min(250, Number(c.genClock) || 100));
+      const marginPct = Math.max(0, Math.min(100, Number(c.genMarginPct) || 0));
+      const clockMult = clock / 100;
+
+      const grossMw = (gen.powerProduction || 0) * clockMult * count;
+      const totalFuel = (fuelObj?.ratePerMin || 0) * clockMult * count;
+      const totalWater = (fuelObj?.waterPerMin || 0) * clockMult * count;
+      const waterPumps = totalWater > 0 ? Math.ceil(totalWater / pumpRate) : 0;
+      const waterPower = waterPumps * pumpMw;
+      const netMw = grossMw - waterPower;
+      const safeMw = netMw * (1 - marginPct / 100);
+
+      const rows = [
+        { label: 'Geração bruta', value: `⚡ ${fmt(grossMw, 1)} MW (${fmt((gen.powerProduction || 0) * clockMult, 1)} MW/usina)` },
+        { label: `Consumo (${fuelItem?.name || 'Combustível'})`, value: `${fmt(totalFuel, 2)} ${fuelItem?.unit || 'un'}/min` }
+      ];
+      if (totalWater > 0) {
+        rows.push({ label: 'Água necessária', value: `💧 ${fmt(totalWater, 1)} m³/min (${waterPumps}x Bomba • −${fmt(waterPower, 1)} MW)` });
+      }
+      rows.push({ label: 'Potência líquida', value: `🔋 ${fmt(netMw, 1)} MW`, highlight: true });
+      if (marginPct > 0) {
+        rows.push({ label: `Com margem (${marginPct}%)`, value: `🛡️ ${fmt(safeMw, 1)} MW disponíveis` });
+      }
+      if (getShardsForClock(clock) > 0) {
+        rows.push({ label: 'Power Shards', value: `💎 ${getShardsForClock(clock) * Math.ceil(count)}` });
+      }
+
+      return {
+        title: `${count}x ${gen.name} (${clock}%)`,
+        heroLabel: 'Geração bruta',
+        heroValue: `⚡ ${fmt(grossMw, 1)} MW`,
+        rows,
+        powerAction: { genId: gen.id, fuelId: fuelObj?.itemId, count, clock }
+      };
+    } else {
+      const exMap = data.extractors || {};
+      const isOil = c.energyResourceId === 'Desc_LiquidOil_C';
+      const exObj = isOil
+        ? exMap.Build_OilPump_C
+        : (c.minerMark === 'mk1' ? exMap.Build_MinerMk1_C : (c.minerMark === 'mk3' ? exMap.Build_MinerMk3_C : exMap.Build_MinerMk2_C));
+      const baseRate = exObj?.baseRatePerMin || 0;
+      const purityMult = data.rules?.purityMultipliers?.[c.minerPurity] || 1;
+      const count = Math.max(1, Number(c.minerCount) || 1);
+      const clock = Math.max(1, Math.min(250, Number(c.minerClock) || 100));
+      const totalExtracted = baseRate * purityMult * (clock / 100) * count;
+      const resItem = Solver.getItem(c.energyResourceId);
+
+      let gen = gens.find(g => g.id === 'Build_GeneratorCoal_C');
+      let fuelId = 'Desc_Coal_C';
+      let gensSupported = 0;
+      let waterNeeded = 0;
+      let note = '';
+
+      if (c.energyResourceId === 'Desc_Coal_C') {
+        const cf = (gen?.fuels || []).find(f => f.itemId === 'Desc_Coal_C');
+        gensSupported = cf?.ratePerMin ? (totalExtracted / cf.ratePerMin) : 0;
+        waterNeeded = gensSupported * (cf?.waterPerMin || 0);
+      } else if (c.energyResourceId === 'Desc_LiquidOil_C') {
+        gen = gens.find(g => g.id === 'Build_GeneratorFuel_C');
+        fuelId = 'Desc_LiquidFuel_C';
+        const fuelRec = data.recipes?.Recipe_LiquidFuel_C;
+        const oilIn = fuelRec?.ingredients?.[0]?.ratePerMin || 0;
+        const fuelOut = fuelRec?.products?.[0]?.ratePerMin || 0;
+        const fg = (gen?.fuels || []).find(f => f.itemId === 'Desc_LiquidFuel_C');
+        const fuelProduced = oilIn > 0 ? totalExtracted * (fuelOut / oilIn) : 0;
+        gensSupported = fg?.ratePerMin ? (fuelProduced / fg.ratePerMin) : 0;
+        note = `Refinaria produz ${fmt(fuelProduced, 1)} m³/min de Combustível`;
+      }
+
+      const grossMw = gensSupported * (gen?.powerProduction || 0);
+      const waterPumps = waterNeeded > 0 ? Math.ceil(waterNeeded / pumpRate) : 0;
+      const exPower = (exObj?.powerConsumption || 0) * Math.pow(clock / 100, powerExp) * count;
+      const netMw = grossMw - exPower - (waterPumps * pumpMw);
+      const frac = formatFractionalMachines(gensSupported, 100);
+
+      const rows = [
+        { label: `Extração (${resItem?.name || ''})`, value: `${fmt(totalExtracted, 1)} ${resItem?.unit || 'un'}/min` },
+        { label: `${gen?.name || 'Geradores'} suportados`, value: `${fmt(gensSupported, 2)}x` }
+      ];
+      if (frac?.isFractional) {
+        rows.push({ label: 'Opção mista', value: frac.mixedText, highlight: true });
+        rows.push({ label: 'Opção uniforme', value: frac.uniformText, highlight: true });
+      }
+      if (waterNeeded > 0) {
+        rows.push({ label: 'Água necessária', value: `💧 ${fmt(waterNeeded, 1)} m³/min (${waterPumps}x Bomba)` });
+      }
+      rows.push({ label: 'Potência líquida est.', value: `🔋 ${fmt(netMw, 1)} MW`, highlight: true });
+      if (note) rows.push({ label: 'Processo', value: note });
+
+      return {
+        title: `${count}x ${exObj?.name || 'Extrator'} (${resItem?.name || ''})`,
+        heroLabel: 'Geração bruta',
+        heroValue: `⚡ ${fmt(grossMw, 1)} MW`,
+        rows,
+        powerAction: gen ? { genId: gen.id, fuelId, count: Math.max(1, Math.floor(gensSupported)), clock: 100 } : null
+      };
+    }
+  }
+
+  if (c.tool === 'transport') {
+    const { belts, pipes } = Solver.getBeltsAndPipes();
+    const list = c.transportKind === 'pipe' ? pipes : belts;
+    const tier = list.find(t => t.id === c.transportTierId) || list[list.length - 1];
+    const rate = Math.max(0.1, Number(c.transportRate) || 0);
+    const unit = c.transportKind === 'pipe' ? 'm³/min' : 'un/min';
+
+    if (!tier || !tier.ratePerMin) {
+      return { title: 'Esteiras & Tubos', heroLabel: 'Selecione um nível', heroValue: '—', rows: [] };
+    }
+
+    const exactLines = rate / tier.ratePerMin;
+    const intLines = Math.ceil(exactLines);
+    const loadPerLine = intLines > 0 ? (rate / intLines) : 0;
+    const satPct = (loadPerLine / tier.ratePerMin) * 100;
+    const bestFit = list.find(t => t.ratePerMin >= rate) || list[list.length - 1];
+
+    const rows = [
+      { label: 'Capacidade por linha', value: `${fmt(tier.ratePerMin, 0)} ${unit}` },
+      { label: 'Linhas exatas', value: `${fmt(exactLines, 2)}x` },
+      { label: 'Carga por linha', value: `${fmt(loadPerLine, 1)} ${unit} (${fmt(satPct, 1)}% saturação)` },
+      { label: 'Melhor nível único', value: `${bestFit.name} (${fmt(bestFit.ratePerMin, 0)} ${unit})` }
+    ];
+
+    return {
+      title: `${fmt(rate, 1)} ${unit} — ${tier.name}`,
+      heroLabel: c.transportKind === 'pipe' ? 'Tubulações necessárias' : 'Esteiras necessárias',
+      heroValue: `${intLines}x ${tier.shortName || tier.name}`,
+      rows
+    };
+  }
+
+  if (c.tool === 'storage') {
+    const capInfo = OFFICIAL_STORAGE_CAPACITY[c.storageId] || OFFICIAL_STORAGE_CAPACITY.Build_StorageContainerMk1_C;
+    const building = data.logistics?.[c.storageId];
+    const item = Solver.getItem(c.storageItemId);
+    const rate = Math.max(0.1, Number(c.storageRate) || 60);
+    const count = Math.max(1, Math.round(Number(c.storageCount) || 1));
+
+    const totalCapacity = capInfo.kind === 'fluid'
+      ? (capInfo.m3 * count)
+      : (capInfo.slots * (Number(item?.stackSize) || 100) * count);
+    const unit = capInfo.kind === 'fluid' ? 'm³' : 'un';
+    const minutes = totalCapacity / rate;
+    const hrs = Math.floor(minutes / 60);
+    const mins = Math.floor(minutes % 60);
+    const secs = Math.round((minutes - Math.floor(minutes)) * 60);
+    const timeStr = hrs > 0 ? `${hrs}h ${mins}m ${secs}s` : (mins > 0 ? `${mins}m ${secs}s` : `${secs}s`);
+
+    const rows = [
+      { label: 'Capacidade total', value: `${fmt(totalCapacity, 0)} ${unit}` },
+      { label: 'Vazão', value: `${fmt(rate, 1)} ${unit}/min` }
+    ];
+    if (capInfo.kind === 'solid' && item) {
+      rows.push({ label: 'Pilha do item', value: `${item.stackSize} un/pilha • ${capInfo.slots * count} slots` });
+    }
+    rows.push({ label: 'Tempo em minutos', value: `${fmt(minutes, 2)} min` });
+
+    return {
+      title: `${count}x ${building?.name || 'Armazenamento'}`,
+      heroLabel: 'Tempo para encher / esvaziar',
+      heroValue: timeStr,
+      rows
+    };
+  }
+
+  if (c.tool === 'build') {
+    const allBuildings = {
+      ...(data.machines || {}),
+      ...(data.generators || {}),
+      ...(data.extractors || {}),
+      ...(data.logistics || {})
+    };
+    const totals = new Map();
+    let totalCount = 0;
+    (c.buildList || []).forEach(row => {
+      const b = allBuildings[row.id];
+      const qty = Math.max(1, Math.round(Number(row.count) || 1));
+      if (!b || !Array.isArray(b.buildCost)) return;
+      totalCount += qty;
+      b.buildCost.forEach(bc => {
+        totals.set(bc.item, (totals.get(bc.item) || 0) + bc.amount * qty);
+      });
+    });
+
+    const rows = Array.from(totals.entries())
+      .map(([itemId, amount]) => {
+        const it = Solver.getItem(itemId);
+        const stacks = it?.stackSize ? Math.ceil(amount / it.stackSize) : null;
+        return {
+          label: it ? it.name : itemId,
+          value: `${fmt(amount, 0)}x${stacks ? ` (${stacks} pilhas)` : ''}`,
+          icon: it
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+
+    return {
+      title: `Lista de Construção (${totalCount} estruturas)`,
+      heroLabel: 'Tipos de materiais',
+      heroValue: `${rows.length} itens`,
+      rows
+    };
+  }
+
+  if (c.tool === 'sink') {
+    const item = Solver.getItem(c.sinkItemId);
+    const rate = Math.max(0.1, Number(c.sinkRate) || 0);
+    const ptsEach = Number(item?.sinkPoints) || 0;
+    const ptsMin = ptsEach * rate;
+    const ptsHour = ptsMin * 60;
+
+    const rows = [
+      { label: 'Item', value: item ? item.name : '—' },
+      { label: 'Pontos por unidade', value: ptsEach > 0 ? `${fmt(ptsEach, 0)} pts` : 'Não triturável' },
+      { label: 'Taxa de entrada', value: `${fmt(rate, 2)} ${item?.unit || 'un'}/min` },
+      { label: 'Pontos por hora', value: `${fmt(ptsHour, 0)} pts/h`, highlight: true }
+    ];
+
+    return {
+      title: `Triturador SUPIMPA — ${item?.name || ''}`,
+      heroLabel: 'Pontos por minuto',
+      heroValue: `${fmt(ptsMin, 0)} pts/min`,
+      rows
+    };
+  }
+
+  // Numérica
+  const v = Number(c.convValue) || 0;
+  const perMin = c.convFrom === 'sec' ? v * 60 : (c.convFrom === 'hour' ? v / 60 : v);
+  const stackSize = Math.max(1, Number(c.convStackSize) || 100);
+  return {
+    title: 'Calculadora Numérica',
+    heroLabel: 'Resultado',
+    heroValue: c.exprResult || '0',
+    rows: [
+      { label: 'Por minuto', value: `${fmt(perMin, 3)} /min` },
+      { label: 'Por segundo', value: `${fmt(perMin / 60, 4)} /s` },
+      { label: 'Por hora', value: `${fmt(perMin * 60, 2)} /h` },
+      { label: `Pilhas/min (${stackSize}/pilha)`, value: `${fmt(perMin / stackSize, 3)} pilhas/min` }
+    ]
+  };
+}
+
+function renderCalcResultPanelHtml() {
+  const res = computeCalcToolResult();
+  const c = AppState.calculator;
+
+  return `
+    <div class="calc-card calc-result-card">
+      <div class="calc-card-head">
+        <h4>Resultado</h4>
+        <span class="calc-card-sub">${libEsc(res.title || '')}</span>
+      </div>
+      <div class="calc-result-hero">
+        <span class="calc-hero-lbl">${libEsc(res.heroLabel || '')}</span>
+        <strong class="calc-hero-val">${libEsc(res.heroValue || '—')}</strong>
+      </div>
+      <div class="calc-result-rows">
+        ${(res.rows || []).map(r => `
+          <div class="calc-res-row ${r.highlight ? 'is-highlight' : ''}">
+            <span class="calc-res-lbl">${r.icon ? renderEntityIcon(r.icon, 20) : ''}${libEsc(r.label)}</span>
+            <strong class="calc-res-val">${libEsc(r.value)}</strong>
+          </div>
+        `).join('') || '<div class="calc-empty-note">Configure os campos à esquerda.</div>'}
+      </div>
+      ${c.tool === 'numeric' && c.numHistory.length > 0 ? `
+        <div class="calc-num-history">
+          <div class="calc-num-hist-title">Histórico numérico</div>
+          ${c.numHistory.slice(0, 6).map(h => `<div class="calc-num-hist-row">${libEsc(h)}</div>`).join('')}
+        </div>
+      ` : ''}
+      <div class="calc-actions-bar">
+        ${res.planAction ? `<button type="button" class="calc-act-btn primary" onclick="openCalcInProduction('${res.planAction.itemId}', ${res.planAction.rate}, '${res.planAction.recipeId || ''}')">🏭 Planejar</button>` : ''}
+        ${res.powerAction ? `<button type="button" class="calc-act-btn primary" onclick="openCalcInPower('${res.powerAction.genId}', '${res.powerAction.fuelId || ''}', ${res.powerAction.count}, ${res.powerAction.clock})">⚡ Energia</button>` : ''}
+        <button type="button" class="calc-act-btn" onclick="copyCurrentCalcResult()">Copiar</button>
+        <button type="button" class="calc-act-btn" onclick="pinCurrentCalc(true)">Fixar</button>
+        <button type="button" class="calc-act-btn" onclick="shareCurrentCalcLink()">Link</button>
+      </div>
+    </div>
+  `;
+}
+
+function updateCalcResultOnly() {
+  const el = document.getElementById('calc-result-panel');
+  if (el) el.innerHTML = renderCalcResultPanelHtml();
+}
+
+function renderCalcRecentsStrip() {
+  const strip = document.getElementById('calc-recents-strip');
+  if (!strip) return;
+  const list = AppState.calculator.recents || [];
+  if (list.length === 0) {
+    strip.innerHTML = '<div class="calc-recents-empty">Use "Fixar" para salvar cálculos frequentes aqui.</div>';
+    return;
+  }
+  strip.innerHTML = list.map(r => `
+    <div class="calc-recent-chip ${r.pinned ? 'is-pinned' : ''}">
+      <button type="button" class="calc-recent-main" onclick="restoreCalcRecent('${r.id}')">
+        ${r.pinned ? '📌 ' : ''}<strong>${libEsc(r.label)}</strong> · ${libEsc(r.summary)}
+      </button>
+      <button type="button" class="calc-recent-del" onclick="removeCalcRecent('${r.id}')" title="Remover">✕</button>
+    </div>
+  `).join('');
+}
+
+function renderCalcInputsPanelHtml() {
+  const c = AppState.calculator;
+  const data = window.SATISFACTORY_DATA || {};
+
+  if (c.tool === 'machines') {
+    const item = Solver.getItem(c.prodItemId);
+    const recipes = Solver.indexes.recipesByProduct.get(c.prodItemId) || [];
+    const recipe = recipes.find(r => r.id === c.prodRecipeId) || recipes.find(r => !r.isAlternate) || recipes[0] || null;
+    const machine = recipe ? Solver.getMachine(recipe.machine) : null;
+    const maxSloop = Number(machine?.sloopSlots) || 0;
+
+    return `
+      <div class="calc-card">
+        <div class="calc-card-head"><h4>Entradas</h4></div>
+        <div class="field-group">
+          <label>Produto</label>
+          <button type="button" class="calc-entity-pick-btn" onclick="openCalcItemPicker('prodItemId', it => (Solver.indexes.recipesByProduct.get(it.id)||[]).length > 0)">
+            ${item ? renderEntityIcon(item, 28) : ''}
+            <span>${item ? libEsc(item.name) : 'Selecionar produto'}</span>
+            <span class="calc-pick-caret">▾</span>
+          </button>
+        </div>
+        ${recipes.length > 0 ? `
+          <div class="field-group">
+            <label>Receita (${recipes.length})</label>
+            <select class="sidebar-select" onchange="setCalcField('prodRecipeId', this.value, true)">
+              ${recipes.map(r => {
+                const m = Solver.getMachine(r.machine);
+                return `<option value="${r.id}" ${r.id === recipe?.id ? 'selected' : ''}>${r.isAlternate ? '★ [Alt] ' : ''}${libEsc(r.cleanName || r.name)} — ${m ? libEsc(m.name) : ''}</option>`;
+              }).join('')}
+            </select>
+          </div>
+        ` : ''}
+        <div class="field-group">
+          <label>Meta (${item?.unit || 'un'}/min)</label>
+          <div class="calc-qty-row">
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('prodTargetRate', -10, 0.1)">−</button>
+            <input type="number" class="sidebar-input" min="0.1" step="any" value="${c.prodTargetRate}" oninput="setCalcField('prodTargetRate', Math.max(0.01, parseFloat(this.value)||0), false)" />
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('prodTargetRate', 10, 0.1)">+</button>
+          </div>
+        </div>
+        <div class="field-group">
+          ${renderOverclockSliderHtml({ value: c.prodClock, onChangeExpr: `setCalcField('prodClock', __VAL__, true)`, label: 'Overclock' })}
+        </div>
+        ${maxSloop > 0 ? `
+          <div class="field-group">
+            <label>Somersloop (0–${maxSloop})</label>
+            <div class="btn-group-row">
+              ${Array.from({ length: maxSloop + 1 }, (_, i) => `
+                <button type="button" class="seg-btn ${Number(c.prodSloops) === i ? 'active' : ''}" onclick="setCalcField('prodSloops', ${i}, true)">${i}</button>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  if (c.tool === 'clock') {
+    const machines = Solver.getProductionMachines();
+    const machine = machines.find(m => m.id === c.clockMachineId) || machines[0];
+    const recs = machine ? Solver.getRecipesByMachine(machine.id) : [];
+    const recipe = recs.find(r => r.id === c.clockRecipeId) || recs.find(r => !r.isAlternate) || recs[0] || null;
+    const maxSloop = Number(machine?.sloopSlots) || 0;
+
+    return `
+      <div class="calc-card">
+        <div class="calc-card-head"><h4>Entradas</h4></div>
+        <div class="field-group">
+          <label>Máquina</label>
+          <select class="sidebar-select" onchange="setCalcField('clockMachineId', this.value, true)">
+            ${machines.map(m => `<option value="${m.id}" ${m.id === machine?.id ? 'selected' : ''}>${libEsc(m.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Receita</label>
+          <select class="sidebar-select" onchange="setCalcField('clockRecipeId', this.value, true)">
+            ${recs.map(r => `<option value="${r.id}" ${r.id === recipe?.id ? 'selected' : ''}>${r.isAlternate ? '★ [Alt] ' : ''}${libEsc(r.cleanName || r.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Quantidade de máquinas</label>
+          <div class="calc-qty-row">
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('clockCount', -1, 0.1)">−</button>
+            <input type="number" class="sidebar-input" min="0.1" step="any" value="${c.clockCount}" oninput="setCalcField('clockCount', Math.max(0.01, parseFloat(this.value)||1), false)" />
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('clockCount', 1, 0.1)">+</button>
+          </div>
+        </div>
+        <div class="field-group">
+          ${renderOverclockSliderHtml({ value: c.clockPercent, onChangeExpr: `setCalcField('clockPercent', __VAL__, true)`, label: 'Overclock' })}
+        </div>
+        ${maxSloop > 0 ? `
+          <div class="field-group">
+            <label>Somersloop (0–${maxSloop})</label>
+            <div class="btn-group-row">
+              ${Array.from({ length: maxSloop + 1 }, (_, i) => `
+                <button type="button" class="seg-btn ${Number(c.clockSloops) === i ? 'active' : ''}" onclick="setCalcField('clockSloops', ${i}, true)">${i}</button>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  if (c.tool === 'energy') {
+    const gens = Solver.getPowerGenerators();
+    const gen = gens.find(g => g.id === c.genId) || gens[0];
+    const isOil = c.energyResourceId === 'Desc_LiquidOil_C';
+
+    return `
+      <div class="calc-card">
+        <div class="calc-card-head"><h4>Entradas</h4></div>
+        <div class="btn-group-row" style="margin-bottom:12px;">
+          <button type="button" class="seg-btn ${c.energySource === 'generator' ? 'active' : ''}" onclick="setCalcField('energySource', 'generator', true)">Por Geradores</button>
+          <button type="button" class="seg-btn ${c.energySource === 'extractor' ? 'active' : ''}" onclick="setCalcField('energySource', 'extractor', true)">Por Extração</button>
+        </div>
+        ${c.energySource === 'generator' ? `
+          <div class="field-group">
+            <label>Gerador</label>
+            <select class="sidebar-select" onchange="setCalcField('genId', this.value, true)">
+              ${gens.map(g => `<option value="${g.id}" ${g.id === gen?.id ? 'selected' : ''}>${libEsc(g.name)} (${fmt(g.powerProduction, 0)} MW)</option>`).join('')}
+            </select>
+          </div>
+          <div class="field-group">
+            <label>Combustível</label>
+            <select class="sidebar-select" onchange="setCalcField('genFuelId', this.value, true)">
+              ${(gen?.fuels || []).map(f => {
+                const it = Solver.getItem(f.itemId);
+                return `<option value="${f.itemId}" ${f.itemId === c.genFuelId ? 'selected' : ''}>${libEsc(it ? it.name : f.itemId)} (${fmt(f.ratePerMin, 2)}/min)</option>`;
+              }).join('')}
+            </select>
+          </div>
+          <div class="field-row-2">
+            <div class="field-group">
+              <label>Quantidade</label>
+              <div class="calc-qty-row">
+                <button type="button" class="oc-step-btn" onclick="stepCalcNumber('genCount', -1, 1)">−</button>
+                <input type="number" class="sidebar-input" min="1" step="1" value="${c.genCount}" oninput="setCalcField('genCount', Math.max(1, parseFloat(this.value)||1), false)" />
+                <button type="button" class="oc-step-btn" onclick="stepCalcNumber('genCount', 1, 1)">+</button>
+              </div>
+            </div>
+            <div class="field-group">
+              <label>Margem (%)</label>
+              <input type="number" class="sidebar-input" min="0" max="90" step="5" value="${c.genMarginPct}" oninput="setCalcField('genMarginPct', Math.max(0, Math.min(90, parseFloat(this.value)||0)), false)" />
+            </div>
+          </div>
+          <div class="field-group">
+            ${renderOverclockSliderHtml({ value: c.genClock, onChangeExpr: `setCalcField('genClock', __VAL__, true)`, label: 'Overclock' })}
+          </div>
+        ` : `
+          <div class="field-group">
+            <label>Recurso</label>
+            <div class="btn-group-row">
+              <button type="button" class="seg-btn ${c.energyResourceId === 'Desc_Coal_C' ? 'active' : ''}" onclick="setCalcField('energyResourceId', 'Desc_Coal_C', true)">Carvão</button>
+              <button type="button" class="seg-btn ${c.energyResourceId === 'Desc_LiquidOil_C' ? 'active' : ''}" onclick="setCalcField('energyResourceId', 'Desc_LiquidOil_C', true)">Petróleo</button>
+            </div>
+          </div>
+          ${!isOil ? `
+            <div class="field-group">
+              <label>Mineradora</label>
+              <div class="btn-group-row">
+                <button type="button" class="seg-btn ${c.minerMark === 'mk1' ? 'active' : ''}" onclick="setCalcField('minerMark', 'mk1', true)">v.1</button>
+                <button type="button" class="seg-btn ${c.minerMark === 'mk2' ? 'active' : ''}" onclick="setCalcField('minerMark', 'mk2', true)">v.2</button>
+                <button type="button" class="seg-btn ${c.minerMark === 'mk3' ? 'active' : ''}" onclick="setCalcField('minerMark', 'mk3', true)">v.3</button>
+              </div>
+            </div>
+          ` : ''}
+          <div class="field-group">
+            <label>Pureza</label>
+            <div class="btn-group-row">
+              <button type="button" class="seg-btn ${c.minerPurity === 'impure' ? 'active' : ''}" onclick="setCalcField('minerPurity', 'impure', true)">Impuro</button>
+              <button type="button" class="seg-btn ${c.minerPurity === 'normal' ? 'active' : ''}" onclick="setCalcField('minerPurity', 'normal', true)">Normal</button>
+              <button type="button" class="seg-btn ${c.minerPurity === 'pure' ? 'active' : ''}" onclick="setCalcField('minerPurity', 'pure', true)">Puro</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label>Nº Extratores</label>
+            <div class="calc-qty-row">
+              <button type="button" class="oc-step-btn" onclick="stepCalcNumber('minerCount', -1, 1)">−</button>
+              <input type="number" class="sidebar-input" min="1" step="1" value="${c.minerCount}" oninput="setCalcField('minerCount', Math.max(1, parseFloat(this.value)||1), false)" />
+              <button type="button" class="oc-step-btn" onclick="stepCalcNumber('minerCount', 1, 1)">+</button>
+            </div>
+          </div>
+          <div class="field-group">
+            ${renderOverclockSliderHtml({ value: c.minerClock, onChangeExpr: `setCalcField('minerClock', __VAL__, true)`, label: 'Overclock' })}
+          </div>
+        `}
+      </div>
+    `;
+  }
+
+  if (c.tool === 'transport') {
+    const { belts, pipes } = Solver.getBeltsAndPipes();
+    const list = c.transportKind === 'pipe' ? pipes : belts;
+    const selected = list.find(t => t.id === c.transportTierId) || list[list.length - 1];
+    return `
+      <div class="calc-card">
+        <div class="calc-card-head"><h4>Entradas</h4></div>
+        <div class="btn-group-row" style="margin-bottom:12px;">
+          <button type="button" class="seg-btn ${c.transportKind === 'belt' ? 'active' : ''}" onclick="setCalcField('transportKind', 'belt', true)">Esteiras (Sólidos)</button>
+          <button type="button" class="seg-btn ${c.transportKind === 'pipe' ? 'active' : ''}" onclick="setCalcField('transportKind', 'pipe', true)">Tubos (Fluidos)</button>
+        </div>
+        <div class="field-group">
+          <label>Nível</label>
+          <select class="sidebar-select" onchange="setCalcField('transportTierId', this.value, true)">
+            ${list.map(t => `<option value="${t.id}" ${t.id === selected?.id ? 'selected' : ''}>${libEsc(t.name)} (${fmt(t.ratePerMin, 0)}/min)</option>`).join('')}
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Vazão desejada (${c.transportKind === 'pipe' ? 'm³/min' : 'un/min'})</label>
+          <div class="calc-qty-row">
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('transportRate', -60, 1)">−</button>
+            <input type="number" class="sidebar-input" min="0.1" step="any" value="${c.transportRate}" oninput="setCalcField('transportRate', Math.max(0.1, parseFloat(this.value)||0.1), false)" />
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('transportRate', 60, 1)">+</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (c.tool === 'storage') {
+    const storageIds = Object.keys(OFFICIAL_STORAGE_CAPACITY);
+    const capInfo = OFFICIAL_STORAGE_CAPACITY[c.storageId] || OFFICIAL_STORAGE_CAPACITY.Build_StorageContainerMk1_C;
+    const item = Solver.getItem(c.storageItemId);
+    return `
+      <div class="calc-card">
+        <div class="calc-card-head"><h4>Entradas</h4></div>
+        <div class="field-group">
+          <label>Contêiner / Tanque</label>
+          <select class="sidebar-select" onchange="setCalcField('storageId', this.value, true)">
+            ${storageIds.map(id => {
+              const b = data.logistics?.[id];
+              return `<option value="${id}" ${id === c.storageId ? 'selected' : ''}>${libEsc(b?.name || id)}</option>`;
+            }).join('')}
+          </select>
+        </div>
+        ${capInfo.kind === 'solid' ? `
+          <div class="field-group">
+            <label>Item armazenado</label>
+            <button type="button" class="calc-entity-pick-btn" onclick="openCalcItemPicker('storageItemId', it => !it.isFluid)">
+              ${item ? renderEntityIcon(item, 28) : ''}
+              <span>${item ? `${libEsc(item.name)} (${item.stackSize}/pilha)` : 'Selecionar item'}</span>
+              <span class="calc-pick-caret">▾</span>
+            </button>
+          </div>
+        ` : ''}
+        <div class="field-row-2">
+          <div class="field-group">
+            <label>Nº Contêineres</label>
+            <div class="calc-qty-row">
+              <button type="button" class="oc-step-btn" onclick="stepCalcNumber('storageCount', -1, 1)">−</button>
+              <input type="number" class="sidebar-input" min="1" step="1" value="${c.storageCount}" oninput="setCalcField('storageCount', Math.max(1, Math.round(parseFloat(this.value)||1)), false)" />
+              <button type="button" class="oc-step-btn" onclick="stepCalcNumber('storageCount', 1, 1)">+</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label>Vazão (${capInfo.kind === 'fluid' ? 'm³/min' : 'un/min'})</label>
+            <input type="number" class="sidebar-input" min="0.1" step="any" value="${c.storageRate}" oninput="setCalcField('storageRate', Math.max(0.1, parseFloat(this.value)||1), false)" />
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (c.tool === 'build') {
+    const allBuildings = {
+      ...(data.machines || {}),
+      ...(data.generators || {}),
+      ...(data.extractors || {}),
+      ...(data.logistics || {})
+    };
+    const selB = allBuildings[c.buildSelectedId];
+    return `
+      <div class="calc-card">
+        <div class="calc-card-head"><h4>Estruturas</h4></div>
+        <div class="field-group">
+          <label>Adicionar construção</label>
+          <button type="button" class="calc-entity-pick-btn" onclick="openCalcBuildingPicker('buildSelectedId')">
+            ${selB ? renderEntityIcon(selB, 28) : ''}
+            <span>${selB ? libEsc(selB.name) : 'Selecionar estrutura'}</span>
+            <span class="calc-pick-caret">▾</span>
+          </button>
+        </div>
+        <div class="field-row-2">
+          <div class="field-group">
+            <label>Quantidade</label>
+            <input type="number" class="sidebar-input" min="1" step="1" value="${c.buildAddCount}" oninput="AppState.calculator.buildAddCount = Math.max(1, Math.round(parseFloat(this.value)||1))" />
+          </div>
+          <div class="field-group">
+            <label>&nbsp;</label>
+            <button type="button" class="calc-act-btn primary" style="width:100%;height:36px;" onclick="addCalcBuildRow()">+ Adicionar</button>
+          </div>
+        </div>
+        <div class="calc-build-list">
+          ${(c.buildList || []).map((row, idx) => {
+            const b = allBuildings[row.id];
+            return `
+              <div class="calc-build-row">
+                ${b ? renderEntityIcon(b, 24) : ''}
+                <span class="calc-build-name">${libEsc(b?.name || row.id)}</span>
+                <input type="number" class="sidebar-input calc-build-qty" min="1" step="1" value="${row.count}" oninput="updateCalcBuildRowCount(${idx}, this.value)" />
+                <button type="button" class="btn-icon-danger" onclick="removeCalcBuildRow(${idx})">✕</button>
+              </div>
+            `;
+          }).join('') || '<div class="calc-empty-note">Adicione estruturas acima.</div>'}
+        </div>
+      </div>
+    `;
+  }
+
+  if (c.tool === 'sink') {
+    const item = Solver.getItem(c.sinkItemId);
+    return `
+      <div class="calc-card">
+        <div class="calc-card-head"><h4>Entradas</h4></div>
+        <div class="field-group">
+          <label>Item para triturar</label>
+          <button type="button" class="calc-entity-pick-btn" onclick="openCalcItemPicker('sinkItemId', it => (Number(it.sinkPoints)||0) > 0)">
+            ${item ? renderEntityIcon(item, 28) : ''}
+            <span>${item ? `${libEsc(item.name)} (${fmt(item.sinkPoints, 0)} pts)` : 'Selecionar item'}</span>
+            <span class="calc-pick-caret">▾</span>
+          </button>
+        </div>
+        <div class="field-group">
+          <label>Taxa (${item?.unit || 'un'}/min)</label>
+          <div class="calc-qty-row">
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('sinkRate', -10, 0.1)">−</button>
+            <input type="number" class="sidebar-input" min="0.1" step="any" value="${c.sinkRate}" oninput="setCalcField('sinkRate', Math.max(0.1, parseFloat(this.value)||0), false)" />
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('sinkRate', 10, 0.1)">+</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Numérica (única com visor escuro + teclado físico + conversor de unidades)
+  const keys = ['7','8','9','/','4','5','6','*','1','2','3','-','0','.','(',')','+','%','C','BACK','='];
+  return `
+    <div class="calc-card">
+      <div class="calc-card-head">
+        <h4>Numérica</h4>
+        <span class="calc-card-sub">Teclado físico ativo</span>
+      </div>
+      <div class="calc-num-screen">
+        <input
+          id="calc-num-expr-input"
+          type="text"
+          class="calc-expr-input"
+          value="${libEsc(c.expr)}"
+          oninput="AppState.calculator.expr = this.value"
+          placeholder="0"
+        />
+        <div id="calc-num-result-readout" class="calc-result-readout">= ${libEsc(c.exprResult)}</div>
+      </div>
+      <div class="calc-keypad">
+        ${keys.map(k => `
+          <button type="button" class="calc-key ${k === '=' ? 'eq' : (k === 'C' || k === 'BACK' ? 'fn' : '')}" onclick="appendCalcKey('${k}')">
+            ${k === 'BACK' ? '⌫' : k}
+          </button>
+        `).join('')}
+      </div>
+      <div class="calc-conv-box">
+        <div class="calc-conv-title">Conversão de vazão</div>
+        <div class="field-row-2">
+          <div class="field-group">
+            <label>Valor</label>
+            <input type="number" class="sidebar-input" step="any" value="${c.convValue}" oninput="setCalcField('convValue', parseFloat(this.value)||0, false)" />
+          </div>
+          <div class="field-group">
+            <label>Unidade</label>
+            <select class="sidebar-select" onchange="setCalcField('convFrom', this.value, false)">
+              <option value="min" ${c.convFrom === 'min' ? 'selected' : ''}>/min</option>
+              <option value="sec" ${c.convFrom === 'sec' ? 'selected' : ''}>/s</option>
+              <option value="hour" ${c.convFrom === 'hour' ? 'selected' : ''}>/h</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function renderCalculatorMode(sidebarEl, emptyOverlay) {
@@ -6920,22 +8143,18 @@ function renderCalculatorMode(sidebarEl, emptyOverlay) {
   emptyOverlay.innerHTML = '';
 
   const c = AppState.calculator;
-  sidebarEl.innerHTML = `
-    <div class="sidebar-step-block">
-      <div class="step-header-row">
-        <span class="step-badge">CALCULADORA</span>
-        <h4>Modo de Cálculo</h4>
-      </div>
+  sidebarEl.innerHTML = CALC_GROUPS.map(grp => `
+    <div class="calc-sb-group">
+      <div class="calc-sb-group-title">${grp.title}</div>
       <div class="library-cat-list">
-        <button type="button" class="library-cat-btn ${c.mode === 'smart' ? 'active' : ''}" onclick="setCalcMode('smart')">
-          <span>⚡ Cálculos do Jogo</span>
-        </button>
-        <button type="button" class="library-cat-btn ${c.mode === 'math' ? 'active' : ''}" onclick="setCalcMode('math')">
-          <span>🔢 Calculadora Numérica</span>
-        </button>
+        ${grp.tools.map(t => `
+          <button type="button" class="library-cat-btn ${c.tool === t.id ? 'active' : ''}" onclick="setCalcTool('${t.id}')">
+            <span>${t.label}</span>
+          </button>
+        `).join('')}
       </div>
     </div>
-  `;
+  `).join('');
 
   renderCalculatorWorkspace();
 }
@@ -6943,296 +8162,20 @@ function renderCalculatorMode(sidebarEl, emptyOverlay) {
 function renderCalculatorWorkspace() {
   const view = document.getElementById('calculator-workspace-view');
   if (!view) return;
-  const c = AppState.calculator;
-
-  const modeTabsHtml = `
-    <div class="calc-shell-header">
-      <span class="calc-brand-tag">🧮 CALCULADORA S+</span>
-      <div class="calc-mode-pills">
-        <button type="button" class="calc-pill-btn ${c.mode === 'smart' ? 'active' : ''}" onclick="setCalcMode('smart')">⚡ Jogo</button>
-        <button type="button" class="calc-pill-btn ${c.mode === 'math' ? 'active' : ''}" onclick="setCalcMode('math')">🔢 Normal</button>
-      </div>
-    </div>
-  `;
-
-  if (c.mode === 'math') {
-    const keys = ['7','8','9','/','4','5','6','*','1','2','3','-','0','.','(',')','+','C','BACK','='];
-    view.innerHTML = `
-      <div class="calc-fixed-shell">
-        ${modeTabsHtml}
-        <div class="calc-visor">
-          <input
-            type="text"
-            class="calc-expr-input"
-            value="${c.expr}"
-            oninput="AppState.calculator.expr = this.value"
-            onkeydown="if(event.key==='Enter') evalMathExpr()"
-            placeholder="0"
-          />
-          <div class="calc-result-readout">= ${c.exprResult}</div>
-        </div>
-        <div class="calc-shell-body">
-          <div class="calc-keypad">
-            ${keys.map(k => `
-              <button type="button" class="calc-key ${k === '=' ? 'eq' : (k === 'C' || k === 'BACK' ? 'fn' : '')}" onclick="appendCalcKey('${k}')">
-                ${k === 'BACK' ? '⌫' : k}
-              </button>
-            `).join('')}
-          </div>
-          ${c.history.length > 0 ? `
-            <div class="calc-history">
-              <strong>Histórico:</strong>
-              ${c.history.slice(0, 4).map(h => `<div class="calc-hist-item">${h}</div>`).join('')}
-            </div>
-          ` : ''}
-        </div>
-      </div>
-    `;
-    return;
-  }
-
-  const gens = Solver.getPowerGenerators();
-  const prodMachines = Solver.getProductionMachines();
-  const selectedGen = c.genId ? gens.find(g => g.id === c.genId) : null;
-  const selectedMachine = c.machineId ? prodMachines.find(m => m.id === c.machineId) : null;
-  const machineRecipes = selectedMachine ? Solver.getRecipesByMachine(selectedMachine.id) : [];
-  const selectedRecipe = selectedMachine
-    ? (machineRecipes.find(r => r.id === c.machineRecipeId) || machineRecipes.find(r => !r.isAlternate) || machineRecipes[0] || null)
-    : null;
-
-  let visorFormula = '';
-  let visorAnswer = '';
-  let inputsHtml = '';
-  let detailsHtml = '';
-
-  if (c.smartType === 'energy') {
-    const rawEnergyItems = [
-      { id: 'Desc_Coal_C', name: 'Carvão (Mineradora)' },
-      { id: 'Desc_LiquidOil_C', name: 'Petróleo Bruto (Extrator)' },
-      { id: 'Desc_OreUranium_C', name: 'Urânio (Mineradora)' }
-    ];
-
-    inputsHtml = `
-      <div class="calc-source-toggle">
-        <button type="button" class="cat-chip ${c.energySource === 'extractor' ? 'active' : ''}" onclick="updateCalcField('energySource', 'extractor')">⛏️ A partir da Extração</button>
-        <button type="button" class="cat-chip ${c.energySource === 'generator' ? 'active' : ''}" onclick="updateCalcField('energySource', 'generator')">⚡ A partir dos Geradores</button>
-      </div>
-    `;
-
-    if (c.energySource === 'extractor') {
-      const hasResource = Boolean(c.energyResourceId);
-      const isOil = c.energyResourceId === 'Desc_LiquidOil_C';
-      const exMap = (window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.extractors) || {};
-      const mk1Rate = exMap.Build_MinerMk1_C?.baseRatePerMin || 60;
-      const mk2Rate = exMap.Build_MinerMk2_C?.baseRatePerMin || 120;
-      const mk3Rate = exMap.Build_MinerMk3_C?.baseRatePerMin || 240;
-      const oilRate = exMap.Build_OilPump_C?.baseRatePerMin || 120;
-      const count = Number(c.minerCount) || 1;
-
-      inputsHtml += `
-        <div class="field-row-2">
-          <div class="field-group"><label>Recurso</label><select class="sidebar-select" onchange="updateCalcField('energyResourceId', this.value)"><option value="" ${!hasResource ? 'selected' : ''}>Selecione um recurso</option>${rawEnergyItems.map(it => `<option value="${it.id}" ${it.id===c.energyResourceId?'selected':''}>${it.name}</option>`).join('')}</select></div>
-          <div class="field-group"><label>Quantidade</label><input type="number" class="sidebar-input" min="1" value="${hasResource ? count : ''}" placeholder="1" ${!hasResource ? 'disabled' : ''} oninput="updateCalcField('minerCount', Math.max(1, Number(this.value)||1))" /></div>
-        </div>
-      `;
-
-      if (!hasResource) {
-        visorFormula = 'Selecione um recurso para calcular';
-        visorAnswer = '—';
-        detailsHtml = `<div class="calc-mini-stats"><div class="calc-mini-row"><span>Escolha um recurso acima para ver a geração real.</span></div></div>`;
-      } else {
-        const baseRate = isOil ? oilRate : (c.minerMark === 'mk1' ? mk1Rate : (c.minerMark === 'mk2' ? mk2Rate : mk3Rate));
-        const purityMult = c.minerPurity === 'impure' ? 0.5 : (c.minerPurity === 'pure' ? 2.0 : 1.0);
-        const clockMult = (Number(c.minerClock) || 100) / 100;
-        const ratePerEx = baseRate * purityMult * clockMult;
-        const totalExtracted = ratePerEx * count;
-
-        let genUsed = gens.find(g => g.id === 'Build_GeneratorCoal_C');
-        const coalFuel = (genUsed?.fuels || []).find(f => f.itemId === 'Desc_Coal_C');
-        let gensSupported = totalExtracted / (coalFuel?.ratePerMin || 15);
-        let waterNeeded = gensSupported * (coalFuel?.waterPerMin || 45);
-        let extraNote = '';
-
-        if (c.energyResourceId === 'Desc_LiquidOil_C') {
-          genUsed = gens.find(g => g.id === 'Build_GeneratorFuel_C');
-          const fuelRecipe = window.SATISFACTORY_DATA?.recipes?.Recipe_LiquidFuel_C;
-          const oilIn = fuelRecipe?.ingredients?.[0]?.ratePerMin || 60;
-          const fuelOut = fuelRecipe?.products?.[0]?.ratePerMin || 40;
-          const fuelGenRate = (genUsed?.fuels || []).find(f => f.itemId === 'Desc_LiquidFuel_C')?.ratePerMin || 20;
-          const fuelProduced = totalExtracted * (fuelOut / oilIn);
-          gensSupported = fuelProduced / fuelGenRate;
-          waterNeeded = 0;
-          extraNote = `Produz ${fmt(fuelProduced, 1)} m³/m de Combustível (Refinaria)`;
-        } else if (c.energyResourceId === 'Desc_OreUranium_C') {
-          genUsed = gens.find(g => g.id === 'Build_GeneratorNuclear_C');
-          const nucFuel = (genUsed?.fuels || []).find(f => f.itemId === 'Desc_NuclearFuelRod_C');
-          gensSupported = totalExtracted / 25;
-          waterNeeded = gensSupported * (nucFuel?.waterPerMin || 240);
-          extraNote = 'Estimativa via Barra de Combustível de Urânio';
-        }
-
-        const mwGenerated = gensSupported * (genUsed?.powerProduction || 75);
-        const resObj = Solver.getItem(c.energyResourceId);
-        const isFractional = Math.abs(gensSupported - Math.round(gensSupported)) > 0.001;
-
-        visorFormula = `${count}x Extrator de ${resObj?.name || ''} (${fmt(totalExtracted, 1)}/m)`;
-        visorAnswer = `⚡ ${fmt(mwGenerated, 1)} MW`;
-
-        inputsHtml += `
-          <div class="field-row-2">
-            ${!isOil ? `<div class="field-group"><label>Mineradora</label><select class="sidebar-select" onchange="updateCalcField('minerMark', this.value)"><option value="mk1" ${c.minerMark==='mk1'?'selected':''}>v.1 (${mk1Rate}/m)</option><option value="mk2" ${c.minerMark==='mk2'?'selected':''}>v.2 (${mk2Rate}/m)</option><option value="mk3" ${c.minerMark==='mk3'?'selected':''}>v.3 (${mk3Rate}/m)</option></select></div>` : `<div class="field-group"><label>Extrator</label><input type="text" class="sidebar-input" value="Extrator de Petróleo" disabled /></div>`}
-            <div class="field-group"><label>Pureza / Clock (%)</label>
-              <div style="display:flex; gap:4px;">
-                <select class="sidebar-select" onchange="updateCalcField('minerPurity', this.value)"><option value="impure" ${c.minerPurity==='impure'?'selected':''}>Impuro</option><option value="normal" ${c.minerPurity==='normal'?'selected':''}>Normal</option><option value="pure" ${c.minerPurity==='pure'?'selected':''}>Puro</option></select>
-                <input type="number" class="sidebar-input" style="width:70px;" min="1" max="250" value="${c.minerClock}" oninput="updateCalcField('minerClock', Math.min(250, Math.max(1, Number(this.value)||100)))" />
-              </div>
-            </div>
-          </div>
-        `;
-
-        detailsHtml = `
-          <div class="calc-mini-stats">
-            <div class="calc-mini-row"><span>Extraído Total:</span><strong>${fmt(totalExtracted, 1)} ${resObj?.unit || 'un'}/min</strong></div>
-            <div class="calc-mini-row"><span>${genUsed?.name || 'Geradores'} Suportados:</span><strong>${fmt(gensSupported, 2)}x${isFractional ? ' (não inteira)' : ''}</strong></div>
-            <div class="calc-mini-row"><span>Energia Gerada:</span><strong>⚡ ${fmt(mwGenerated, 1)} MW</strong></div>
-            ${waterNeeded > 0 ? `<div class="calc-mini-row"><span>Água Necessária:</span><strong>💧 ${fmt(waterNeeded, 1)} m³/min (${Math.ceil(waterNeeded / 120)}x Bomba)</strong></div>` : ''}
-            ${extraNote ? `<div class="calc-mini-row"><span>Nota:</span><strong>${extraNote}</strong></div>` : ''}
-          </div>
-        `;
-      }
-    } else {
-      // A partir dos Geradores
-      const count = Number(c.genCount) || 1;
-      inputsHtml += `
-        <div class="field-row-2">
-          <div class="field-group"><label>Gerador</label><select class="sidebar-select" onchange="updateCalcField('genId', this.value)"><option value="" ${!selectedGen ? 'selected' : ''}>Selecione um gerador</option>${gens.map(g => `<option value="${g.id}" ${g.id===c.genId?'selected':''}>${g.name}</option>`).join('')}</select></div>
-          <div class="field-group"><label>Quantidade</label><input type="number" class="sidebar-input" min="1" value="${selectedGen ? count : ''}" placeholder="1" ${!selectedGen ? 'disabled' : ''} oninput="updateCalcField('genCount', Math.max(1, Number(this.value)||1))" /></div>
-        </div>
-      `;
-
-      if (!selectedGen) {
-        visorFormula = 'Selecione um gerador para calcular';
-        visorAnswer = '—';
-        detailsHtml = `<div class="calc-mini-stats"><div class="calc-mini-row"><span>Escolha um gerador acima para ver consumo e geração reais.</span></div></div>`;
-      } else {
-        const fuelObj = (selectedGen.fuels || []).find(f => f.itemId === c.genFuelId) || selectedGen.fuels?.[0];
-        const fuelItem = fuelObj ? Solver.getItem(fuelObj.itemId) : null;
-        const clockMult = (Number(c.genClock) || 100) / 100;
-        const totalFuel = (fuelObj?.ratePerMin || 0) * clockMult * count;
-        const totalMw = (selectedGen.powerProduction || 0) * clockMult * count;
-        const totalWater = (fuelObj?.waterPerMin || 0) * clockMult * count;
-        const buildMaterials = (selectedGen.buildCost || []).map(bc => {
-          const it = Solver.getItem(bc.item);
-          return `${fmt(bc.amount * count, 0)}x ${it ? it.name : bc.item}`;
-        }).join(' • ');
-
-        visorFormula = `${count}x ${selectedGen.name} (${c.genClock}%)`;
-        visorAnswer = `⚡ ${fmt(totalMw, 1)} MW`;
-
-        inputsHtml += `
-          <div class="field-row-2">
-            <div class="field-group"><label>Combustível</label><select class="sidebar-select" onchange="updateCalcField('genFuelId', this.value)">${(selectedGen.fuels||[]).map(f => `<option value="${f.itemId}" ${f.itemId===fuelObj?.itemId?'selected':''}>${Solver.getItem(f.itemId)?.name || f.itemId}</option>`).join('')}</select></div>
-            <div class="field-group"><label>Overclock (%)</label><input type="number" class="sidebar-input" min="1" max="250" value="${c.genClock}" oninput="updateCalcField('genClock', Math.min(250, Math.max(1, Number(this.value)||100)))" /></div>
-          </div>
-        `;
-
-        detailsHtml = `
-          <div class="calc-mini-stats">
-            <div class="calc-mini-row"><span>Energia Gerada:</span><strong>⚡ ${fmt(totalMw, 1)} MW</strong></div>
-            <div class="calc-mini-row"><span>Consumo (${fuelItem?.name || ''}):</span><strong>${fmt(totalFuel, 2)} ${fuelItem?.unit || 'un'}/min</strong></div>
-            ${totalWater > 0 ? `<div class="calc-mini-row"><span>Água Consumida:</span><strong>💧 ${fmt(totalWater, 1)} m³/min (${Math.ceil(totalWater / 120)}x Bomba)</strong></div>` : ''}
-            ${buildMaterials ? `<div class="calc-mini-row stack"><span>Criar ${count}x ${selectedGen.name}:</span><strong>${buildMaterials}</strong></div>` : ''}
-          </div>
-        `;
-      }
-    }
-  } else {
-    // Modo Máquinas: Seleciona Máquina + Receita/Produto + Quantidade + Clock
-    const count = Number(c.machineCount) || 1;
-    const clock = Number(c.machineClock) || 100;
-
-    inputsHtml = `
-      <div class="field-row-2">
-        <div class="field-group"><label>Máquina</label><select class="sidebar-select" onchange="updateCalcField('machineId', this.value)"><option value="" ${!selectedMachine ? 'selected' : ''}>Selecione uma máquina</option>${prodMachines.map(m => `<option value="${m.id}" ${m.id===selectedMachine?.id?'selected':''}>${m.name}</option>`).join('')}</select></div>
-        <div class="field-group"><label>Quantidade</label><input type="number" class="sidebar-input" min="1" value="${selectedMachine ? count : ''}" placeholder="1" ${!selectedMachine ? 'disabled' : ''} oninput="updateCalcField('machineCount', Math.max(1, Number(this.value)||1))" /></div>
-      </div>
-    `;
-
-    if (!selectedMachine) {
-      visorFormula = 'Selecione uma máquina para calcular';
-      visorAnswer = '—';
-      detailsHtml = `<div class="calc-mini-stats"><div class="calc-mini-row"><span>Escolha uma máquina acima para ver produção e consumo reais.</span></div></div>`;
-    } else {
-      const clockMult = clock / 100;
-      const baseMw = selectedRecipe?.avgPowerMw ?? selectedMachine.powerConsumption ?? 0;
-      const pwrPerMach = baseMw * Math.pow(clockMult, 1.321929);
-      const totalMw = pwrPerMach * count;
-
-      const prodsText = selectedRecipe
-        ? (selectedRecipe.products || []).map(p => {
-            const it = Solver.getItem(p.item);
-            return `${fmt(p.ratePerMin * clockMult * count, 1)} ${it?.unit || 'un'}/min ${it ? it.name : p.item}`;
-          }).join(' + ')
-        : '—';
-
-      const ingsText = selectedRecipe
-        ? (selectedRecipe.ingredients || []).map(i => {
-            const it = Solver.getItem(i.item);
-            return `${fmt(i.ratePerMin * clockMult * count, 1)} ${it?.unit || 'un'}/min ${it ? it.name : i.item}`;
-          }).join(' + ')
-        : '—';
-
-      const buildMaterials = (selectedMachine.buildCost || []).map(bc => {
-        const it = Solver.getItem(bc.item);
-        return `${fmt(bc.amount * count, 0)}x ${it ? it.name : bc.item}`;
-      }).join(' • ');
-
-      const mainOut = selectedRecipe?.products?.[0];
-      const mainOutItem = mainOut ? Solver.getItem(mainOut.item) : null;
-      const mainOutRate = mainOut ? mainOut.ratePerMin * clockMult * count : 0;
-
-      visorFormula = `${count}x ${selectedMachine.name} (${selectedRecipe?.cleanName || ''})`;
-      visorAnswer = mainOut ? `${fmt(mainOutRate, 1)} ${mainOutItem?.unit || ''}/m` : '—';
-
-      inputsHtml += `
-        <div class="field-row-2">
-          <div class="field-group"><label>Produto / Receita</label><select class="sidebar-select" onchange="updateCalcField('machineRecipeId', this.value)">${machineRecipes.map(r => `<option value="${r.id}" ${r.id===selectedRecipe?.id?'selected':''}>${r.isAlternate ? '⭐ ' : ''}${r.cleanName || r.name}</option>`).join('')}</select></div>
-          <div class="field-group"><label>Overclock (%)</label><input type="number" class="sidebar-input" min="1" max="250" value="${clock}" oninput="updateCalcField('machineClock', Math.min(250, Math.max(1, Number(this.value)||100)))" /></div>
-        </div>
-      `;
-
-      detailsHtml = `
-        <div class="calc-mini-stats">
-          <div class="calc-mini-row stack"><span>Gerado (${count}x ${selectedMachine.name}):</span><strong>${prodsText}</strong></div>
-          <div class="calc-mini-row stack"><span>Recursos Consumidos:</span><strong>${ingsText}</strong></div>
-          <div class="calc-mini-row"><span>Energia Consumida:</span><strong>⚡ ${fmt(totalMw, 1)} MW</strong></div>
-          ${buildMaterials ? `<div class="calc-mini-row stack"><span>Criar ${count}x ${selectedMachine.name}:</span><strong>${buildMaterials}</strong></div>` : ''}
-        </div>
-      `;
-    }
-  }
 
   view.innerHTML = `
-    <div class="calc-fixed-shell">
-      ${modeTabsHtml}
-      <div class="calc-visor">
-        <div class="calc-visor-formula">${visorFormula}</div>
-        <div class="calc-result-readout">= ${visorAnswer}</div>
+    <div class="calc-shell">
+      <div class="calc-grid-2">
+        <div id="calc-inputs-panel">${renderCalcInputsPanelHtml()}</div>
+        <div id="calc-result-panel">${renderCalcResultPanelHtml()}</div>
       </div>
-
-      <div class="calc-smart-tabs compact two-cols">
-        <button type="button" class="cat-chip ${c.smartType === 'energy' ? 'active' : ''}" onclick="setCalcSmartType('energy')">⚡ Energia</button>
-        <button type="button" class="cat-chip ${c.smartType === 'machines' ? 'active' : ''}" onclick="setCalcSmartType('machines')">🏭 Máquinas</button>
-      </div>
-
-      <div class="calc-shell-body">
-        <div class="calc-compact-inputs">
-          ${inputsHtml}
-        </div>
-        ${detailsHtml}
+      <div class="calc-recents-wrap">
+        <div class="calc-recents-head">Recentes &amp; Fixados</div>
+        <div id="calc-recents-strip" class="calc-recents-strip"></div>
       </div>
     </div>
   `;
+  renderCalcRecentsStrip();
 }
 
 /* ============================================================================

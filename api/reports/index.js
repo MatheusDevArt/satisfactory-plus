@@ -17,14 +17,22 @@ const {
   getAuthenticatedUser,
   detectImageType,
   checkRateLimit,
-  recordRateLimitHit
+  recordRateLimitHit,
+  StorageUnavailableError
 } = require('../_lib/store');
 
 const VALID_TYPES = new Set(['bug', 'suggestion', 'rating']);
-const VALID_STATUSES = new Set(['novo', 'lido', 'feito']);
+const VALID_STATUSES = new Set(['novo', 'lido', 'resolvido']);
 const MAX_ADMIN_REPLY_CHARS = 1000;
 const ADMIN_ACTION_LIMIT = 120;
 const ADMIN_ACTION_WINDOW_MS = 10 * 60 * 1000;
+
+function normalizeReportStatus(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (s === 'feito' || s === 'resolvido') return 'resolvido';
+  if (s === 'lido') return 'lido';
+  return 'novo';
+}
 
 function computeDaysRemaining(expiresAt) {
   const diff = new Date(expiresAt).getTime() - Date.now();
@@ -43,7 +51,7 @@ function getLatestAdminUpdateMs(rep) {
 }
 
 function formatReportForClient(rep) {
-  const status = VALID_STATUSES.has(rep.status) ? rep.status : 'novo';
+  const status = normalizeReportStatus(rep.status);
   const adminReply = (rep.adminReply && typeof rep.adminReply.text === 'string' && rep.adminReply.text.trim())
     ? {
         text: rep.adminReply.text,
@@ -66,6 +74,7 @@ function formatReportForClient(rep) {
     techInfo: rep.techInfo || null,
     status,
     statusUpdatedAt: rep.statusUpdatedAt || null,
+    resolvedAt: status === 'resolvido' ? (rep.resolvedAt || rep.statusUpdatedAt || null) : null,
     adminReply,
     userSeenAt: rep.userSeenAt || null,
     hasUnreadUpdate,
@@ -362,6 +371,21 @@ module.exports = async function handler(req, res) {
         return sendJson(res, 200, { ok: true, updated: count });
       }
 
+      if (action === 'empty-history') {
+        const allActive = await loadAllValidReportsAndCleanup();
+        let deleted = 0;
+        for (const entry of allActive) {
+          if (normalizeReportStatus(entry.rep.status) === 'resolvido') {
+            for (const img of (entry.rep.images || [])) {
+              if (img.blobUrl) await del(img.blobUrl, { token: getToken() }).catch(() => {});
+            }
+            await del(entry.blobUrl, { token: getToken() }).catch(() => {});
+            deleted++;
+          }
+        }
+        return sendJson(res, 200, { ok: true, deleted });
+      }
+
       const id = String(body.id || '').trim();
       if (!id || !/^rep_[a-z0-9_]+$/i.test(id)) {
         return sendJson(res, 400, { error: 'ID de report inválido.' });
@@ -377,12 +401,18 @@ module.exports = async function handler(req, res) {
       }
 
       if (action === 'set-status') {
-        const status = String(body.status || '').trim().toLowerCase();
+        const rawSt = String(body.status || '').trim().toLowerCase();
+        const status = rawSt === 'feito' ? 'resolvido' : rawSt;
         if (!VALID_STATUSES.has(status)) {
-          return sendJson(res, 400, { error: 'Status inválido. Use novo, lido ou feito.' });
+          return sendJson(res, 400, { error: 'Status inválido. Use novo, lido ou resolvido.' });
         }
         rep.status = status;
         rep.statusUpdatedAt = nowIso;
+        if (status === 'resolvido') {
+          rep.resolvedAt = nowIso;
+        } else {
+          rep.resolvedAt = null;
+        }
         await writeJsonBlob(`db/reports/${id}.json`, rep);
         return sendJson(res, 200, { ok: true, report: formatReportForClient(rep) });
       }
@@ -448,6 +478,9 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     if (err.message === 'PAYLOAD_TOO_LARGE') return sendJson(res, 413, { error: 'Tamanho total da requisição excedeu o limite permitido (4 MB).' });
     if (err.message === 'INVALID_JSON') return sendJson(res, 400, { error: 'Dados enviados em formato inválido.' });
+    if (err instanceof StorageUnavailableError || err?.name === 'StorageUnavailableError') {
+      return sendJson(res, 503, { error: 'Armazenamento temporariamente indisponível.', code: 'STORAGE_UNAVAILABLE' });
+    }
     console.error('[api/reports] error:', err.message);
     return sendJson(res, 500, { error: 'Erro interno ao processar reports.' });
   }

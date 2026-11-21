@@ -51,7 +51,7 @@ const TUTORIAL_SLIDES = [
       '<strong>⚡ Energia</strong>: planeja geradores, combustível e consumo de água.',
       '<strong>🛠️ Livre</strong>: monte máquinas e esteiras manualmente do seu jeito.',
       '<strong>🗺️ Mapa</strong>: encontre nós de recurso no mapa do jogo e envie para a produção.',
-      '<strong>📜 Receitas</strong>, <strong>📚 Biblioteca</strong> e <strong>🧮 Calculadora</strong>: consulte receitas, itens e faça contas rápidas.'
+      '<strong>📜 Receitas</strong>, <strong>📚 Biblioteca</strong> e <strong>🧮 Calculadora</strong>: consulte receitas, itens e use a nova suíte de calculadoras (máquinas, overclock com slider, energia, esteiras, armazenamento, materiais, SUPIMPA e numérica com teclado físico).'
     ],
     tip: 'Ao entrar na sua conta, aparece também a aba <strong>📁 Projetos</strong> para abrir fábricas salvas.'
   },
@@ -243,9 +243,9 @@ const TUTORIAL_SLIDES = [
       }
     ],
     legend: [
-      '<strong>Porta de saída</strong>: arraste até outra máquina (conexões incompatíveis entre sólido/fluido ou mineradoras são bloqueadas com aviso) ou solte no vazio para abrir o modal <strong>Adicionar Máquina</strong>.',
+      '<strong>Porta de saída</strong>: arraste até outra máquina — a borda do card sob o cursor fica verde (compatível) ou vermelha (incompatível), e ligações inválidas exibem o aviso <strong>Conexão incompatível</strong> no centro da tela.',
       '<strong>Etiqueta clicável</strong>: clique na etiqueta da esteira para trocar a versão, <strong>Inserir Divisor no meio</strong> ou remover a ligação.',
-      '<strong>Categorias na barra lateral</strong>: filtre rapidamente por <strong>Todos</strong>, <strong>Máquinas</strong>, <strong>Receitas</strong> (incluindo ALT), <strong>Logística</strong>, <strong>Armazenamento</strong> e <strong>Energia</strong>.'
+      '<strong>Categorias na barra lateral</strong>: lista vertical com <strong>Todos</strong>, <strong>Máquinas</strong>, <strong>Receitas</strong> (incluindo ALT), <strong>Logística</strong>, <strong>Armazenamento</strong> e <strong>Energia</strong>.'
     ],
     tip: 'Segure <strong>Alt</strong> enquanto arrasta um card para duplicar a máquina rapidamente.',
     tryAction: { label: 'Experimentar no modo Livre', mode: 'free' }
