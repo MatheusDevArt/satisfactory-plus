@@ -1,5 +1,5 @@
 const { list } = require('@vercel/blob');
-const { getToken, applySecurityHeaders } = require('../_lib/store');
+const { getToken, fetchBlobUrl, applySecurityHeaders } = require('../_lib/store');
 
 const MIME_MAP = {
   png: 'image/png',
@@ -43,7 +43,7 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    const upstream = await fetch(exact.url);
+    const upstream = await fetchBlobUrl(exact.url);
     if (!upstream.ok) {
       res.statusCode = 404;
       res.end('Imagem indisponível');

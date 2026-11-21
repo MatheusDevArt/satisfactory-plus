@@ -25,11 +25,36 @@ function getBlobStoreId() {
   return m ? m[1] : '';
 }
 
-function getDirectBlobUrl(pathname) {
+function getDirectBlobUrl(pathname, isPrivate = false) {
   const storeId = getBlobStoreId();
   if (!storeId) return '';
   const clean = String(pathname || '').replace(/^\/+/, '');
-  return `https://${storeId}.public.blob.vercel-storage.com/${clean}`;
+  const sub = isPrivate ? 'private' : 'public';
+  return `https://${storeId}.${sub}.blob.vercel-storage.com/${clean}`;
+}
+
+let _blobAccessMode = 'public'; // 'public' | 'private' (auto-detectado)
+
+async function fetchBlobUrl(url, token = getToken()) {
+  const sep = url.includes('?') ? '&' : '?';
+  const target = `${url}${sep}t=${Date.now()}`;
+  const isPrivateHost = /\.private\.blob\.vercel-storage\.com/i.test(url);
+
+  if (isPrivateHost && token) {
+    return await fetch(target, {
+      cache: 'no-store',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  }
+
+  let res = await fetch(target, { cache: 'no-store' });
+  if ((res.status === 401 || res.status === 403) && token) {
+    res = await fetch(target, {
+      cache: 'no-store',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  }
+  return res;
 }
 
 function getSessionSecret() {
@@ -103,11 +128,11 @@ async function readJsonBlob(pathname, useCache = true) {
     throw new StorageUnavailableError(`readJsonBlob:no_token:${pathname}`, err);
   }
 
-  // 1) Leitura direta por URL pública (0 chamadas list() / 0 Advanced Operations)
-  const directUrl = getDirectBlobUrl(pathname);
+  // 1) Leitura direta por URL (0 chamadas list() / 0 Advanced Operations)
+  const directUrl = getDirectBlobUrl(pathname, _blobAccessMode === 'private');
   if (directUrl) {
     try {
-      const res = await fetch(`${directUrl}?t=${Date.now()}`, { cache: 'no-store' });
+      const res = await fetchBlobUrl(directUrl, token);
       if (res.status === 404) {
         _blobCache.set(pathname, { data: null, exp: Date.now() + 15000 });
         return null;
@@ -117,14 +142,13 @@ async function readJsonBlob(pathname, useCache = true) {
         _blobCache.set(pathname, { data: parsed, exp: Date.now() + BLOB_CACHE_TTL_MS });
         return JSON.parse(JSON.stringify(parsed));
       }
-      // Se 401/403 (store privado) ou 5xx, tenta fallback via list()
       logStorageError(`readJsonBlob:direct_http_${res.status}:${pathname}`, new Error(`HTTP ${res.status}`));
     } catch (directErr) {
       logStorageError(`readJsonBlob:direct_fetch:${pathname}`, directErr);
     }
   }
 
-  // 2) Fallback via list() apenas se a leitura direta não conseguiu resolver
+  // 2) Fallback via list() + fetch autenticado (suporta store público e privado)
   try {
     const { blobs } = await list({ prefix: pathname, limit: 10, token });
     const exact = blobs.find((b) => b.pathname === pathname);
@@ -132,7 +156,10 @@ async function readJsonBlob(pathname, useCache = true) {
       _blobCache.set(pathname, { data: null, exp: Date.now() + 15000 });
       return null;
     }
-    const res = await fetch(`${exact.url}?t=${Date.now()}`, { cache: 'no-store' });
+    if (/\.private\.blob\.vercel-storage\.com/i.test(exact.url)) {
+      _blobAccessMode = 'private';
+    }
+    const res = await fetchBlobUrl(exact.url, token);
     if (!res.ok) {
       const err = new Error(`Blob fetch HTTP ${res.status}`);
       err.status = res.status;
@@ -148,18 +175,34 @@ async function readJsonBlob(pathname, useCache = true) {
 }
 
 async function writeJsonBlob(pathname, obj) {
+  const token = getToken();
+  const payload = JSON.stringify(obj);
+  const opts = {
+    access: _blobAccessMode,
+    contentType: 'application/json; charset=utf-8',
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    cacheControlMaxAge: 0,
+    token
+  };
   try {
-    const res = await put(pathname, JSON.stringify(obj), {
-      access: 'public',
-      contentType: 'application/json; charset=utf-8',
-      addRandomSuffix: false,
-      allowOverwrite: true,
-      cacheControlMaxAge: 0,
-      token: getToken()
-    });
+    const res = await put(pathname, payload, opts);
     _blobCache.set(pathname, { data: obj, exp: Date.now() + BLOB_CACHE_TTL_MS });
     return res;
   } catch (err) {
+    const msg = String(err?.message || '').toLowerCase();
+    if (msg.includes('private') || msg.includes('public') || msg.includes('access')) {
+      const altAccess = _blobAccessMode === 'public' ? 'private' : 'public';
+      try {
+        const res = await put(pathname, payload, { ...opts, access: altAccess });
+        _blobAccessMode = altAccess;
+        _blobCache.set(pathname, { data: obj, exp: Date.now() + BLOB_CACHE_TTL_MS });
+        return res;
+      } catch (err2) {
+        logStorageError(`writeJsonBlob:${pathname}`, err2);
+        throw new StorageUnavailableError(`writeJsonBlob:${pathname}`, err2);
+      }
+    }
     logStorageError(`writeJsonBlob:${pathname}`, err);
     throw new StorageUnavailableError(`writeJsonBlob:${pathname}`, err);
   }
@@ -195,7 +238,7 @@ async function listJsonBlobs(prefix) {
 }
 
 async function fetchJsonFromBlobUrl(url) {
-  const res = await fetch(`${url}?t=${Date.now()}`, { cache: 'no-store' });
+  const res = await fetchBlobUrl(url);
   if (!res.ok) return null;
   return await res.json();
 }
@@ -646,6 +689,7 @@ module.exports = {
   getToken,
   getBlobStoreId,
   getDirectBlobUrl,
+  fetchBlobUrl,
   hashPassword,
   verifyPassword,
   readJsonBlob,
