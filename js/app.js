@@ -172,9 +172,11 @@ const AppState = {
     buildList: [{ id: 'Build_ConstructorMk1_C', count: 10 }],
     buildSelectedId: 'Build_ConstructorMk1_C',
     buildAddCount: 10,
-    // Triturador SUPIMPA
+    // Triturador SUPIMPA & Fases do Elevador Espacial
     sinkItemId: 'Desc_ModularFrameHeavy_C',
     sinkRate: 10,
+    elevatorPhase: 1,
+    elevatorTargetHours: 2,
     // Numérica
     expr: '',
     exprResult: '0',
@@ -6933,6 +6935,7 @@ const CALC_GROUPS = [
   {
     title: 'Projeto espacial',
     tools: [
+      { id: 'elevator', label: 'Fases do Elevador' },
       { id: 'sink', label: 'Triturador SUPIMPA' }
     ]
   },
@@ -7654,6 +7657,59 @@ function computeCalcToolResult() {
     };
   }
 
+  if (c.tool === 'elevator') {
+    const phases = Array.isArray(data.spaceElevatorPhases) ? data.spaceElevatorPhases : [];
+    const ph = phases.find(p => Number(p.phase) === Number(c.elevatorPhase)) || phases[0];
+    const hours = Math.max(0.1, Number(c.elevatorTargetHours) || 1);
+    const totalMins = hours * 60;
+    if (!ph) {
+      return { title: 'Fases do Elevador', heroLabel: 'Fase', heroValue: '—', rows: [] };
+    }
+    const rows = (ph.requirements || []).map(req => {
+      const it = Solver.getItem(req.item);
+      const ratePerMin = req.amount / totalMins;
+      return {
+        label: `${it ? it.name : req.item} (${fmt(req.amount, 0)}x)`,
+        value: `${fmt(ratePerMin, 2)} /min`,
+        icon: it,
+        highlight: true
+      };
+    });
+    const firstReq = ph.requirements?.[0];
+    return {
+      title: `${ph.name} (${ph.unlocks})`,
+      heroLabel: `Concluir em ${fmt(hours, 1)}h (${fmt(totalMins, 0)} min)`,
+      heroValue: `${ph.requirements.length} peças`,
+      rows,
+      planAction: firstReq ? { itemId: firstReq.item, rate: Number((firstReq.amount / totalMins).toFixed(2)), recipeId: '' } : null
+    };
+  }
+
+  if (c.tool === 'elevator') {
+    const phases = Array.isArray(data.spaceElevatorPhases) ? data.spaceElevatorPhases : [];
+    return `
+      <div class="calc-card">
+        <div class="calc-card-head"><h4>Entradas</h4></div>
+        <div class="field-group">
+          <label>Fase do Projeto Montagem (1.0)</label>
+          <div class="btn-group-row">
+            ${phases.map(p => `
+              <button type="button" class="seg-btn ${Number(c.elevatorPhase) === Number(p.phase) ? 'active' : ''}" onclick="setCalcField('elevatorPhase', ${p.phase}, true)">Fase ${p.phase}</button>
+            `).join('')}
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Tempo alvo (horas)</label>
+          <div class="calc-qty-row">
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('elevatorTargetHours', -0.5, 0.5)">−</button>
+            <input type="number" class="sidebar-input" min="0.1" step="0.5" value="${c.elevatorTargetHours}" oninput="setCalcField('elevatorTargetHours', Math.max(0.1, parseFloat(this.value)||1), false)" />
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('elevatorTargetHours', 0.5, 0.5)">+</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   if (c.tool === 'sink') {
     const item = Solver.getItem(c.sinkItemId);
     const rate = Math.max(0.1, Number(c.sinkRate) || 0);
@@ -8061,6 +8117,59 @@ function renderCalcInputsPanelHtml() {
               </div>
             `;
           }).join('') || '<div class="calc-empty-note">Adicione estruturas acima.</div>'}
+        </div>
+      </div>
+    `;
+  }
+
+  if (c.tool === 'elevator') {
+    const phases = Array.isArray(data.spaceElevatorPhases) ? data.spaceElevatorPhases : [];
+    const ph = phases.find(p => Number(p.phase) === Number(c.elevatorPhase)) || phases[0];
+    const hours = Math.max(0.1, Number(c.elevatorTargetHours) || 1);
+    const totalMins = hours * 60;
+    if (!ph) {
+      return { title: 'Fases do Elevador', heroLabel: 'Fase', heroValue: '—', rows: [] };
+    }
+    const rows = (ph.requirements || []).map(req => {
+      const it = Solver.getItem(req.item);
+      const ratePerMin = req.amount / totalMins;
+      return {
+        label: `${it ? it.name : req.item} (${fmt(req.amount, 0)}x)`,
+        value: `${fmt(ratePerMin, 2)} /min`,
+        icon: it,
+        highlight: true
+      };
+    });
+    const firstReq = ph.requirements?.[0];
+    return {
+      title: `${ph.name} (${ph.unlocks})`,
+      heroLabel: `Concluir em ${fmt(hours, 1)}h (${fmt(totalMins, 0)} min)`,
+      heroValue: `${ph.requirements.length} peças`,
+      rows,
+      planAction: firstReq ? { itemId: firstReq.item, rate: Number((firstReq.amount / totalMins).toFixed(2)), recipeId: '' } : null
+    };
+  }
+
+  if (c.tool === 'elevator') {
+    const phases = Array.isArray(data.spaceElevatorPhases) ? data.spaceElevatorPhases : [];
+    return `
+      <div class="calc-card">
+        <div class="calc-card-head"><h4>Entradas</h4></div>
+        <div class="field-group">
+          <label>Fase do Projeto Montagem (1.0)</label>
+          <div class="btn-group-row">
+            ${phases.map(p => `
+              <button type="button" class="seg-btn ${Number(c.elevatorPhase) === Number(p.phase) ? 'active' : ''}" onclick="setCalcField('elevatorPhase', ${p.phase}, true)">Fase ${p.phase}</button>
+            `).join('')}
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Tempo alvo (horas)</label>
+          <div class="calc-qty-row">
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('elevatorTargetHours', -0.5, 0.5)">−</button>
+            <input type="number" class="sidebar-input" min="0.1" step="0.5" value="${c.elevatorTargetHours}" oninput="setCalcField('elevatorTargetHours', Math.max(0.1, parseFloat(this.value)||1), false)" />
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('elevatorTargetHours', 0.5, 0.5)">+</button>
+          </div>
         </div>
       </div>
     `;

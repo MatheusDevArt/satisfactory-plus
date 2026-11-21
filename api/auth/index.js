@@ -46,62 +46,11 @@ module.exports = async function handler(req, res) {
   try {
     // GET /api/auth?action=health (diagnóstico seguro sem segredos)
     if (req.method === 'GET' && action === 'health') {
-      const hasBlobToken = Boolean(getToken());
-      const hasStoreId = Boolean(getBlobStoreId());
-      const hasSessionSecret = Boolean(process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 16);
-      let directProbeStatus = null;
-      let listOk = false;
-      let listErrName = null;
-      let listErrMessage = null;
-      if (hasStoreId) {
-        try {
-          const probeUrl = getDirectBlobUrl(`db/users/${getReservedAdminUsernameLower()}.json`);
-          const r = await fetch(`${probeUrl}?t=${Date.now()}`, { method: 'HEAD', cache: 'no-store' });
-          directProbeStatus = r.status;
-        } catch {
-          directProbeStatus = 'FETCH_ERROR';
-        }
-      }
-      let sampleBlobHost = null;
-      let sampleFetchNoAuth = null;
-      let sampleFetchWithAuth = null;
-      let sampleFetchBodySnippet = null;
-      if (hasBlobToken) {
-        try {
-          const { list } = require('@vercel/blob');
-          const resList = await list({ prefix: 'db/users/', limit: 1, token: getToken() });
-          listOk = true;
-          const first = resList.blobs && resList.blobs[0];
-          if (first && first.url) {
-            sampleBlobHost = new URL(first.url).host;
-            const r1 = await fetch(first.url, { cache: 'no-store' });
-            sampleFetchNoAuth = r1.status;
-            if (!r1.ok) {
-              const r2 = await fetch(first.url, { cache: 'no-store', headers: { Authorization: `Bearer ${getToken()}` } });
-              sampleFetchWithAuth = r2.status;
-              if (!r2.ok) {
-                sampleFetchBodySnippet = (await r2.text()).slice(0, 180);
-              }
-            }
-          }
-        } catch (err) {
-          listErrName = err?.name || 'Error';
-          listErrMessage = String(err?.message || '').slice(0, 220);
-        }
-      }
       return sendJson(res, 200, {
         ok: true,
-        hasBlobToken,
-        hasStoreId,
-        hasSessionSecret,
-        directProbeStatus,
-        listOk,
-        listErrName,
-        listErrMessage,
-        sampleBlobHost,
-        sampleFetchNoAuth,
-        sampleFetchWithAuth,
-        sampleFetchBodySnippet
+        hasBlobToken: Boolean(getToken()),
+        hasStoreId: Boolean(getBlobStoreId()),
+        hasSessionSecret: Boolean(process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 16)
       });
     }
 
