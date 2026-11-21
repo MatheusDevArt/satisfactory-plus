@@ -19,6 +19,38 @@ function getToken() {
   return process.env.BLOB_READ_WRITE_TOKEN || '';
 }
 
+function getRedisConfig() {
+  const url = (process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL || '').replace(/\/+$/, '');
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN || '';
+  return (url && token) ? { url, token } : null;
+}
+
+async function redisCmd(args) {
+  const cfg = getRedisConfig();
+  if (!cfg) return null;
+  const res = await fetch(cfg.url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${cfg.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(args),
+    cache: 'no-store'
+  });
+  if (!res.ok) {
+    const err = new Error(`Redis HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  const data = await res.json();
+  if (data && data.error) {
+    const err = new Error(`Redis error: ${data.error}`);
+    err.status = 503;
+    throw err;
+  }
+  return data ? data.result : null;
+}
+
 function getBlobStoreId() {
   const token = getToken();
   const m = /^vercel_blob_rw_([a-zA-Z0-9]+)_/i.exec(token);
@@ -111,12 +143,29 @@ function verifyPassword(password, storedHash) {
   return crypto.timingSafeEqual(derived, expected);
 }
 
-// ---------- Blob JSON Helpers ----------
+// ---------- Blob / Redis JSON Helpers ----------
 async function readJsonBlob(pathname, useCache = true) {
   if (useCache) {
     const cached = _blobCache.get(pathname);
     if (cached && cached.exp > Date.now()) {
       return cached.data ? JSON.parse(JSON.stringify(cached.data)) : null;
+    }
+  }
+
+  // Se Upstash Redis / Vercel KV estiver conectado, usa Redis (500k ops/mês grátis)
+  if (getRedisConfig()) {
+    try {
+      const raw = await redisCmd(['GET', pathname]);
+      if (raw === null || raw === undefined) {
+        _blobCache.set(pathname, { data: null, exp: Date.now() + 15000 });
+        return null;
+      }
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      _blobCache.set(pathname, { data: parsed, exp: Date.now() + BLOB_CACHE_TTL_MS });
+      return JSON.parse(JSON.stringify(parsed));
+    } catch (err) {
+      logStorageError(`redis:readJson:${pathname}`, err);
+      throw new StorageUnavailableError(`redis:readJson:${pathname}`, err);
     }
   }
 
@@ -175,8 +224,20 @@ async function readJsonBlob(pathname, useCache = true) {
 }
 
 async function writeJsonBlob(pathname, obj) {
-  const token = getToken();
   const payload = JSON.stringify(obj);
+
+  if (getRedisConfig()) {
+    try {
+      await redisCmd(['SET', pathname, payload]);
+      _blobCache.set(pathname, { data: obj, exp: Date.now() + BLOB_CACHE_TTL_MS });
+      return { pathname, url: `redis://${pathname}` };
+    } catch (err) {
+      logStorageError(`redis:writeJson:${pathname}`, err);
+      throw new StorageUnavailableError(`redis:writeJson:${pathname}`, err);
+    }
+  }
+
+  const token = getToken();
   const opts = {
     access: _blobAccessMode,
     contentType: 'application/json; charset=utf-8',
@@ -210,6 +271,15 @@ async function writeJsonBlob(pathname, obj) {
 
 async function deleteBlobByPathname(pathname) {
   invalidateBlobCache(pathname);
+  if (getRedisConfig()) {
+    try {
+      const n = await redisCmd(['DEL', pathname]);
+      return Number(n) > 0;
+    } catch (err) {
+      logStorageError(`redis:delete:${pathname}`, err);
+      throw new StorageUnavailableError(`redis:delete:${pathname}`, err);
+    }
+  }
   try {
     const { blobs } = await list({ prefix: pathname, limit: 10, token: getToken() });
     const exact = blobs.find((b) => b.pathname === pathname);
@@ -225,6 +295,18 @@ async function deleteBlobByPathname(pathname) {
 }
 
 async function listJsonBlobs(prefix) {
+  if (getRedisConfig()) {
+    try {
+      const keys = await redisCmd(['KEYS', `${prefix}*`]);
+      return (Array.isArray(keys) ? keys : []).map((k) => ({
+        pathname: String(k),
+        url: `redis://${String(k)}`
+      }));
+    } catch (err) {
+      logStorageError(`redis:list:${prefix}`, err);
+      throw new StorageUnavailableError(`redis:list:${prefix}`, err);
+    }
+  }
   const results = [];
   let cursor = undefined;
   do {
@@ -238,6 +320,9 @@ async function listJsonBlobs(prefix) {
 }
 
 async function fetchJsonFromBlobUrl(url) {
+  if (String(url || '').startsWith('redis://')) {
+    return await readJsonBlob(String(url).slice('redis://'.length), true);
+  }
   const res = await fetchBlobUrl(url);
   if (!res.ok) return null;
   return await res.json();
