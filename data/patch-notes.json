@@ -1,5 +1,17 @@
 [
   {
+    "id": "2026-11-21-seletores-ampliados-agrupamento-tutorial-completo",
+    "date": "21/11/2026",
+    "title": "Seletores ampliados padronizados, barra lateral compacta, correção de máquina/receita e Tutorial completo",
+    "items": [
+      { "tag": "Correção", "text": "Corrigido o bug na Oficina onde escolher uma receita podia exibir o card como Construtor com entradas/saídas de outra máquina (ex.: Refinaria); agora a máquina correta é sempre aplicada automaticamente." },
+      { "tag": "Melhoria", "text": "Todos os seletores sobrepostos (Produção, Oficina, Máquinas, Receitas e Calculadora) foram ampliados e padronizados com cards horizontais (ícone à esquerda e nome à direita) divididos por categorias." },
+      { "tag": "Melhoria", "text": "Botões Montar/Adicionar, Salvar e Limpar compactados na mesma linha; blocos da Oficina com ícone à esquerda e texto à direita; Nº de Máquinas e seletor de Andar (3D) com setas ‹ › dividindo a mesma linha." },
+      { "tag": "Melhoria", "text": "Etapas em Produção e Oficina agora ficam agrupadas e classificadas por tipo de máquina na barra lateral." },
+      { "tag": "Novo", "text": "Tutorial atualizado com cards de tópicos para cada aba, explicações didáticas passo a passo e 20 prints reais dedicados (incluindo Energia, Mapa, Receitas, Biblioteca, Calculadora e aba Projetos)." }
+    ]
+  },
+  {
     "id": "2026-11-21-oficina-portas-calculadora-tutorial",
     "date": "21/11/2026",
     "title": "Aba Oficina, Portas nas bordas, Calculadora reformulada e Tutorial por tópicos",

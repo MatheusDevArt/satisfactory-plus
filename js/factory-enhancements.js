@@ -749,13 +749,13 @@ function renderAddMachineModalResultsOnly() {
   let cursor = 0;
   const machinesHtml = machines.length > 0 ? `
     <div class="am-section-title">Máquinas de Produção (${machines.length})</div>
-    <div class="am-logistics-grid">
+    <div class="am-std-grid">
       ${machines.map((m) => {
         const idx = cursor++;
         return `
           <button
             type="button"
-            class="am-log-btn ${idx === st.activeIndex ? 'is-active' : ''}"
+            class="am-std-card ${idx === st.activeIndex ? 'is-selected' : ''}"
             onclick="pickMachineFromModal('${m.id}')"
           >
             ${m.wikiImage ? `<img src="${m.wikiImage}" alt="${escSummary(m.name)}" loading="lazy" />` : '<span>🏭</span>'}
@@ -768,13 +768,13 @@ function renderAddMachineModalResultsOnly() {
 
   const extractorsHtml = extractors.length > 0 ? `
     <div class="am-section-title">Extratores e Mineradoras (${extractors.length})</div>
-    <div class="am-logistics-grid">
+    <div class="am-std-grid">
       ${extractors.map((ex) => {
         const idx = cursor++;
         return `
           <button
             type="button"
-            class="am-log-btn ${idx === st.activeIndex ? 'is-active' : ''}"
+            class="am-std-card ${idx === st.activeIndex ? 'is-selected' : ''}"
             onclick="pickExtractorFromModal('${ex.id}')"
           >
             ${ex.wikiImage ? `<img src="${ex.wikiImage}" alt="${escSummary(ex.name)}" loading="lazy" />` : '<span>⛏️</span>'}
@@ -787,13 +787,13 @@ function renderAddMachineModalResultsOnly() {
 
   const logisticsHtml = logistics.length > 0 ? `
     <div class="am-section-title">Logística e Armazenamento (${logistics.length})</div>
-    <div class="am-logistics-grid">
+    <div class="am-std-grid">
       ${logistics.map((l) => {
         const idx = cursor++;
         return `
           <button
             type="button"
-            class="am-log-btn ${idx === st.activeIndex ? 'is-active' : ''}"
+            class="am-std-card ${idx === st.activeIndex ? 'is-selected' : ''}"
             onclick="pickLogisticsFromModal('${l.id}')"
           >
             ${l.wikiImage ? `<img src="${l.wikiImage}" alt="${escSummary(l.name)}" loading="lazy" />` : '<span>📦</span>'}
@@ -806,13 +806,13 @@ function renderAddMachineModalResultsOnly() {
 
   const generatorsHtml = generators.length > 0 ? `
     <div class="am-section-title">Geradores de Energia (${generators.length})</div>
-    <div class="am-logistics-grid">
+    <div class="am-std-grid">
       ${generators.map((g) => {
         const idx = cursor++;
         return `
           <button
             type="button"
-            class="am-log-btn ${idx === st.activeIndex ? 'is-active' : ''}"
+            class="am-std-card ${idx === st.activeIndex ? 'is-selected' : ''}"
             onclick="pickGeneratorFromModal('${g.id}')"
           >
             ${g.wikiImage ? `<img src="${g.wikiImage}" alt="${escSummary(g.name)}" loading="lazy" />` : '<span>⚡</span>'}

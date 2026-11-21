@@ -8854,3 +8854,182 @@ body.theme-dark #spaces-hud-controls.hud-vertical-icons .zoom-readout {
   flex: 1;
   min-width: 0;
 }
+
+
+/* ============================================================================
+ * PADRONIZAÇÃO GLOBAL DE MODAIS SOBREPOSTOS, BOTÕES COMPACTOS, ANDAR STEPPER
+ * E GRADE DE CARDS DO TUTORIAL
+ * ========================================================================== */
+
+/* Card sobreposto padrão grande e legível (ícone à esquerda, nome à direita) */
+#picker-modal .modal-dialog,
+#add-machine-modal .modal-dialog,
+.rp-modal-card,
+.calc-picker-card {
+  width: min(980px, 94vw) !important;
+  max-width: 980px !important;
+  max-height: 88vh !important;
+  border-radius: 18px !important;
+}
+.am-std-grid,
+.calc-picker-grid,
+#picker-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)) !important;
+  gap: 10px !important;
+}
+.am-std-card,
+.calc-picker-item {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 12px !important;
+  padding: 10px 14px !important;
+  min-height: 54px !important;
+  border-radius: 12px !important;
+  border: 1.5px solid var(--border-main) !important;
+  background: var(--bg-card) !important;
+  color: var(--text-main) !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  text-align: left !important;
+  cursor: pointer;
+  transition: border-color 0.14s ease, background-color 0.14s ease, transform 0.12s ease;
+}
+.am-std-card img,
+.calc-picker-item img {
+  width: 34px !important;
+  height: 34px !important;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.am-std-card:hover,
+.calc-picker-item:hover {
+  border-color: #EA580C !important;
+  background: var(--bg-subtle) !important;
+  transform: translateY(-1px);
+}
+
+/* Botões de ação compactos em 1 única linha (Montar/Adicionar + Salvar + Limpar) */
+.sidebar-action-row.compact-3 {
+  display: grid;
+  grid-template-columns: 1.35fr 0.85fr 0.75fr;
+  gap: 6px;
+  align-items: stretch;
+}
+.sidebar-action-row.compact-3 .sidebar-action-btn,
+.sidebar-action-row.compact-3 .btn-clear-inline {
+  padding: 8px 8px !important;
+  font-size: 12px !important;
+  height: 36px;
+  white-space: nowrap;
+}
+.btn-save-compact {
+  font-weight: 700;
+}
+
+/* Oficina: tiles 2x2 com ícone à esquerda e texto à direita */
+.oficina-cat-tile {
+  flex-direction: row !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+  gap: 8px !important;
+  padding: 9px 10px !important;
+}
+
+/* Andar (3D) com setas ‹ / › */
+.floor-stepper-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  height: 36px;
+  padding: 0 4px;
+  border: 1px solid var(--border-main);
+  border-radius: 9px;
+  background: var(--bg-card);
+}
+.floor-stepper-val {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cabeçalho de grupo por máquina em Produção e Oficina */
+.sb-group-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+}
+.sb-group-summary .prod-cat-cnt {
+  margin-left: auto;
+}
+
+/* Grade inicial do Tutorial em Cards definidos e elegantes */
+.tut-topics-grid {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important;
+  gap: 12px !important;
+}
+.tut-topic-card {
+  position: relative;
+  min-height: 112px;
+  justify-content: space-between;
+  padding: 15px 16px !important;
+  border-radius: 14px !important;
+  background: var(--bg-panel) !important;
+  border: 1.5px solid var(--border-main) !important;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08) !important;
+}
+.tut-topic-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tut-topic-icon-box {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-main);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+.tut-topic-pages {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.tut-topic-card:hover .tut-topic-pages {
+  background: #EA580C;
+  color: #ffffff;
+}
+
+/* Picker Modal agrupado por categorias com cards horizontais padrão */
+#picker-grid {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+}
+.picker-cat-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.am-std-fallback {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}

@@ -2622,9 +2622,12 @@
       }
 
       if (block.blockType === 'machine') {
-        const machine = DATA.machines[block.machineId] || Object.values(DATA.machines)[0];
+        const explicitRec = block.recipeId ? DATA.recipes[block.recipeId] : null;
+        const machine = (explicitRec && explicitRec.machine && DATA.machines[explicitRec.machine])
+          || DATA.machines[block.machineId]
+          || Object.values(DATA.machines)[0];
         const machineRecipes = Object.values(DATA.recipes).filter((r) => r.machine === machine.id && !r.isFicsmas);
-        const recipe = DATA.recipes[block.recipeId] || machineRecipes[0];
+        const recipe = (explicitRec && explicitRec.machine === machine.id) ? explicitRec : machineRecipes[0];
         if (!recipe) return null;
 
         const mStats = computeMachineStats(recipe, clock, block.sloops || 0);

@@ -387,9 +387,49 @@ async function run() {
     await sleep(800);
     await cdp.eval(`(() => { fitCanvasToScreen(); })()`);
     await sleep(450);
-    await cdp.captureWebp('tutorial-10-modo-livre.webp', { x: 420, y: 0, width: 1020, height: 900 }, 80);
+    await cdp.captureWebp('tutorial-10-modo-livre.webp', { x: 0, y: 0, width: 1440, height: 900 }, 80);
 
-    // 12. Conta, Projetos e Reportar (volta para produção montada mostrando topo direito + Salvar)
+    // 13. Aba Energia (Usina a Carvão montada + painel de status na base)
+    await cdp.eval(`(() => {
+      switchMode('power');
+      AppState.power.calcMode = 'by_generators';
+      AppState.power.generatorId = 'Build_GeneratorCoal_C';
+      AppState.power.fuelItemId = 'Desc_Coal_C';
+      AppState.power.generatorCount = 8;
+      AppState.power.manualGenerators = 8;
+      AppState.power.mounted = true;
+      renderAll(true);
+    })()`);
+    await sleep(900);
+    await cdp.eval(`(() => { fitCanvasToScreen(); })()`);
+    await sleep(450);
+    await cdp.captureWebp('tutorial-13-energia.webp', { x: 0, y: 0, width: 1440, height: 900 }, 80);
+
+    // 14. Aba Mapa
+    await cdp.eval(`(() => { switchMode('map'); })()`);
+    await sleep(1000);
+    await cdp.captureWebp('tutorial-14-mapa.webp', { x: 0, y: 0, width: 1440, height: 900 }, 80);
+
+    // 15. Aba Receitas
+    await cdp.eval(`(() => { switchMode('recipes'); })()`);
+    await sleep(800);
+    await cdp.captureWebp('tutorial-15-receitas.webp', { x: 0, y: 0, width: 1440, height: 900 }, 80);
+
+    // 16. Aba Biblioteca
+    await cdp.eval(`(() => { switchMode('library'); })()`);
+    await sleep(800);
+    await cdp.captureWebp('tutorial-16-biblioteca.webp', { x: 0, y: 0, width: 1440, height: 900 }, 80);
+
+    // 17. Aba Calculadora (Recursos com exemplo real preenchido)
+    await cdp.eval(`(() => {
+      switchMode('calculator');
+      setCalcTool('resources');
+      setCalcField('resItemId', 'Desc_IronPlateReinforced_C', true);
+    })()`);
+    await sleep(700);
+    await cdp.captureWebp('tutorial-17-calculadora.webp', { x: 0, y: 0, width: 1440, height: 900 }, 80);
+
+    // 12. Conta, Projetos e Reportar (volta para produção montada mostrando barra lateral + Salvar + topo direito)
     await cdp.eval(`(() => {
       switchMode('production');
       AppState.pull.targets = [{ id: uid(), itemId: 'Desc_IronPlate_C', rate: 30 }];
@@ -397,7 +437,24 @@ async function run() {
       renderAll(true);
     })()`);
     await sleep(800);
-    await cdp.captureWebp('tutorial-12-conta-projetos.webp', { x: 0, y: 0, width: 1440, height: 340 }, 84);
+    await cdp.captureWebp('tutorial-12-conta-projetos.webp', { x: 0, y: 0, width: 1440, height: 420 }, 84);
+
+    // 18. Aba Projetos (visão da tela de projetos salvos)
+    await cdp.eval(`(() => {
+      if (typeof AccountState !== 'undefined') {
+        AccountState.user = { id: 'demo', username: 'Engenheiro', role: 'user' };
+        AccountState.projects.list = [
+          { id: 'prj_1', name: 'Fábrica de Chapas 120/min', sourceMode: 'production', summary: 'Chapa de Ferro · 120/min', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+          { id: 'prj_2', name: 'Usina Carvão 600 MW', sourceMode: 'free', summary: '8x Gerador a Carvão', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+        ];
+        AccountState.projects.loading = false;
+        AccountState.projects.error = '';
+      }
+      switchMode('projects');
+      if (typeof renderProjectsWorkspace === 'function') renderProjectsWorkspace();
+    })()`);
+    await sleep(600);
+    await cdp.captureWebp('tutorial-18-projetos-salvos.webp', { x: 0, y: 0, width: 1440, height: 900 }, 80);
 
     console.log('ALL_PRINTS_DONE');
   } finally {

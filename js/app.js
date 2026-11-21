@@ -1309,16 +1309,20 @@ function updateTopRightFloatingActions() {
       : '';
 
     const hasAnyProd = AppState.push.inputs.length > 0 || AppState.pull.targets.length > 0 || isMounted;
+    const compactSaveProd = isReady
+      ? `<button type="button" class="btn-clear-inline btn-save-compact" onmousedown="event.preventDefault()" onclick="openSaveProjectModal('production')" title="Salvar projeto">💾 Salvar</button>`
+      : '';
     container.innerHTML = `
-      <div class="sidebar-action-row">
+      <div class="sidebar-action-row compact-3">
         <button
           class="btn-floating-primary sidebar-action-btn ${isReady ? 'ready' : 'disabled'}"
-          ${!isReady ? 'disabled title="Configure a entrada e o produto abaixo primeiro"' : ''}
+          ${!isReady ? 'disabled title="Configure o produto abaixo primeiro"' : ''}
           onmousedown="event.preventDefault()"
           onclick="mountProductionFlow()"
         >
-          ${isMounted ? '🔄 Atualizar' : '⚡ Montar Linha'}
+          ${isMounted ? '🔄 Atualizar' : '⚡ Montar'}
         </button>
+        ${compactSaveProd}
         <button
           type="button"
           class="btn-clear-inline"
@@ -1329,11 +1333,10 @@ function updateTopRightFloatingActions() {
         >Limpar</button>
       </div>
       ${isReady && isMounted ? `
-        <button type="button" class="btn-edit-in-free" onmousedown="event.preventDefault()" onclick="convertProductionToFreeMode()" title="Levar esta linha para o Modo Livre para adicionar divisores e armazenamento">
-          🛠️ Editar no Livre
+        <button type="button" class="btn-edit-in-free" onmousedown="event.preventDefault()" onclick="convertProductionToFreeMode()" title="Levar esta linha para a Oficina">
+          🛠️ Editar na Oficina
         </button>
       ` : ''}
-      ${saveActionsHtml}
     `;
   } else if (AppState.mode === 'power') {
     const isReady = Boolean(AppState.power.generatorId && AppState.power.fuelItemId);
@@ -1390,14 +1393,18 @@ function updateTopRightFloatingActions() {
       ? renderSaveProjectButtonsHtml('free')
       : '';
 
+    const compactSaveFree = hasBlocks
+      ? `<button type="button" class="btn-clear-inline btn-save-compact" onclick="openSaveProjectModal('free')" title="Salvar projeto">💾 Salvar</button>`
+      : '';
     container.innerHTML = `
-      <div class="sidebar-action-row">
+      <div class="sidebar-action-row compact-3">
         <button
           class="btn-floating-primary sidebar-action-btn ready"
           onclick="openAddMachineModal()"
         >
           ➕ Adicionar
         </button>
+        ${compactSaveFree}
         <button
           type="button"
           class="btn-clear-inline"
@@ -1406,7 +1413,6 @@ function updateTopRightFloatingActions() {
           title="Limpar área de trabalho"
         >Limpar</button>
       </div>
-      ${freeSaveHtml}
     `;
   }
 }
@@ -1918,34 +1924,56 @@ function renderPullFlowInsideProduction(sidebarEl, emptyOverlay, autoFit) {
       <div class="sidebar-step-block">
         <div class="step-header-row">
           <span class="step-badge">ETAPAS</span>
-          <h4>Produção (na ordem do fluxo)</h4>
+          <h4>Máquinas por Tipo (${orderedSteps.length})</h4>
         </div>
         <div class="stage-config-list">
-          ${orderedSteps.map((step, sIdx) => `
-            <div class="stage-config-card" data-sb-item-id="${step.itemId}">
-              <div class="stage-config-header">
-                <div class="stage-config-title">
-                  ${renderEntityIcon(step.machine || step.item, 36)}
-                  <div>
-                    <strong>#${sIdx + 1} · ${step.machineCount}× ${step.machine?.name || 'Máquina'}</strong>
-                    <span class="sb-prod-sub">${renderEntityIcon(step.item, 14)} ${step.item.name} (${fmt(step.actualProducedRate, 1)} ${step.item.unit || 'un'}/min)</span>
+          ${(() => {
+            const byMach = new Map();
+            orderedSteps.forEach((st, idx) => {
+              const mName = st.machine?.name || 'Outras';
+              if (!byMach.has(mName)) byMach.set(mName, { machine: st.machine, items: [] });
+              byMach.get(mName).items.push({ step: st, sIdx: idx });
+            });
+            return Array.from(byMach.entries()).map(([mName, grp]) => {
+              const totalCnt = grp.items.reduce((acc, x) => acc + (x.step.machineCount || 1), 0);
+              return `
+                <details class="sb-group-details" open>
+                  <summary class="sb-group-summary">
+                    ${grp.machine ? renderEntityIcon(grp.machine, 20) : ''}
+                    <span>${libEsc(mName)}</span>
+                    <span class="prod-cat-cnt">${totalCnt}×</span>
+                  </summary>
+                  <div class="stage-config-list" style="margin-top:8px;">
+                    ${grp.items.map(({ step, sIdx }) => `
+                      <div class="stage-config-card" data-sb-item-id="${step.itemId}">
+                        <div class="stage-config-header">
+                          <div class="stage-config-title">
+                            ${renderEntityIcon(step.machine || step.item, 32)}
+                            <div>
+                              <strong>#${sIdx + 1} · ${step.machineCount}× ${step.machine?.name || 'Máquina'}</strong>
+                              <span class="sb-prod-sub">${renderEntityIcon(step.item, 14)} ${step.item.name} (${fmt(step.actualProducedRate, 1)} ${step.item.unit || 'un'}/min)</span>
+                            </div>
+                          </div>
+                          ${AppState.pull.stepSettings[step.itemId]?.customMachineCount ? `<button class="btn-small-accent" onclick="setPullStepCustomCount('${step.itemId}', null)">Auto</button>` : ''}
+                        </div>
+                        <div class="field-group">
+                          <label>Receita (${step.availableRecipes.length})</label>
+                          ${renderRecipePickerTriggerHtml(step.recipe, step.availableRecipes, `setPullRecipe('${step.itemId}', __RID__)`)}
+                        </div>
+                        <div class="field-group">
+                          ${renderOverclockSliderHtml({ value: step.clockPercent, onChangeExpr: `setPullStepClock('${step.itemId}', __VAL__)`, label: 'Overclock' })}
+                        </div>
+                        <div class="field-group">
+                          <label>Nº Inteiro</label>
+                          <input type="number" class="sidebar-input" min="1" step="1" value="${step.machineCount}" onchange="setPullStepCustomCount('${step.itemId}', this.value)" />
+                        </div>
+                      </div>
+                    `).join('')}
                   </div>
-                </div>
-                ${AppState.pull.stepSettings[step.itemId]?.customMachineCount ? `<button class="btn-small-accent" onclick="setPullStepCustomCount('${step.itemId}', null)">Auto</button>` : ''}
-              </div>
-              <div class="field-group">
-                <label>Receita (${step.availableRecipes.length})</label>
-                ${renderRecipePickerTriggerHtml(step.recipe, step.availableRecipes, `setPullRecipe('${step.itemId}', __RID__)`)}
-              </div>
-              <div class="field-group">
-                ${renderOverclockSliderHtml({ value: step.clockPercent, onChangeExpr: `setPullStepClock('${step.itemId}', __VAL__)`, label: 'Overclock' })}
-              </div>
-              <div class="field-group">
-                <label>Nº Inteiro</label>
-                <input type="number" class="sidebar-input" min="1" step="1" value="${step.machineCount}" onchange="setPullStepCustomCount('${step.itemId}', this.value)" />
-              </div>
-            </div>
-          `).join('')}
+                </details>
+              `;
+            }).join('');
+          })()}
         </div>
       </div>
     `;
@@ -2465,9 +2493,19 @@ function renderOficinaBlocksListHtml() {
       expandedHtml = `
         <div class="sb-acc-body">
           ${specificControls}
-          <div class="field-group">
-            <label>Nº de Máquinas</label>
-            <input type="number" class="sidebar-input" min="1" step="1" value="${b.count}" onchange="updateFreeBlock('${b.id}', 'count', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
+          <div class="field-row-2">
+            <div class="field-group">
+              <label>Nº Máquinas</label>
+              <input type="number" class="sidebar-input" min="1" step="1" value="${b.count}" onchange="updateFreeBlock('${b.id}', 'count', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
+            </div>
+            <div class="field-group">
+              <label>Andar (3D)</label>
+              <div class="floor-stepper-row">
+                <button type="button" class="oc-step-btn" onclick="updateFreeBlock('${b.id}', 'floor', Math.max(1, (${b.floor || 1}) - 1))" title="Andar anterior">‹</button>
+                <span class="floor-stepper-val">${b.floor || 1}º</span>
+                <button type="button" class="oc-step-btn" onclick="updateFreeBlock('${b.id}', 'floor', Math.min(20, (${b.floor || 1}) + 1))" title="Próximo andar">›</button>
+              </div>
+            </div>
           </div>
           ${b.blockType === 'machine' || b.blockType === 'extractor' || b.blockType === 'generator' ? `
             <div class="field-group">
@@ -2488,19 +2526,6 @@ function renderOficinaBlocksListHtml() {
               </select>
             </div>
           </div>
-          <details class="sb-3d-details">
-            <summary>Visão 3D</summary>
-            <div class="field-row-2" style="margin-top:8px;">
-              <div class="field-group">
-                <label>Andar Inicial</label>
-                <input type="number" class="sidebar-input" min="1" max="20" step="1" value="${b.floor || 1}" onchange="updateFreeBlock('${b.id}', 'floor', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
-              </div>
-              <div class="field-group">
-                <label>Máqs/Andar</label>
-                <input type="number" class="sidebar-input" min="0" max="100" step="1" value="${b.machinesPerFloor || 0}" onchange="updateFreeBlock('${b.id}', 'machinesPerFloor', Math.max(0, Math.round(parseFloat(this.value)||0)))" />
-              </div>
-            </div>
-          </details>
         </div>
       `;
     }
@@ -5198,13 +5223,16 @@ function addFreeBlock(blockType, options = {}) {
     });
   } else if (blockType === 'machine') {
     const machines = Solver.getProductionMachines();
-    const defMachine = (options.machineId && machines.find(m => m.id === options.machineId)) || machines[0];
+    const optRec = options.recipeId ? Solver.getRecipe(options.recipeId) : null;
+    const resolvedMachId = (optRec && optRec.machine) || options.machineId || null;
+    const defMachine = (resolvedMachId && machines.find(m => m.id === resolvedMachId)) || machines[0];
     const recs = Solver.getRecipesByMachine(defMachine.id);
+    const validRecId = (optRec && optRec.machine === defMachine.id) ? optRec.id : (recs[0] ? recs[0].id : null);
     AppState.free.blocks.push({
       id,
       blockType: 'machine',
       machineId: defMachine.id,
-      recipeId: options.recipeId || (recs[0] ? recs[0].id : null),
+      recipeId: validRecId,
       count: 1,
       clockPercent: 100,
       sloops: 0,
@@ -6004,15 +6032,36 @@ function renderPickerContent() {
     return;
   }
 
-  grid.innerHTML = items.map(item => `
-    <button type="button" class="picker-item-card" onclick="choosePickerItem('${item.id}')">
-      <div class="picker-item-img-wrap">
-        ${renderShowcaseImage(item, 72)}
+  // Agrupa por categoria como na Biblioteca, com cards horizontais padrão (ícone à esquerda + nome à direita)
+  const grouped = new Map();
+  items.forEach((item) => {
+    const cat = item.category || 'Outros';
+    if (!grouped.has(cat)) grouped.set(cat, []);
+    grouped.get(cat).push(item);
+  });
+
+  const sortedCats = Array.from(grouped.keys()).sort((a, b) => {
+    if (a === 'Recursos Primários (Mapa)' || a === 'Recursos Brutos') return -1;
+    if (b === 'Recursos Primários (Mapa)' || b === 'Recursos Brutos') return 1;
+    return a.localeCompare(b, 'pt-BR');
+  });
+
+  grid.innerHTML = sortedCats.map((cat) => {
+    const catItems = grouped.get(cat) || [];
+    return `
+      <div class="picker-cat-group">
+        <div class="am-section-title">${cat} (${catItems.length})</div>
+        <div class="am-std-grid">
+          ${catItems.map((item) => `
+            <button type="button" class="am-std-card" onclick="choosePickerItem('${item.id}')">
+              ${item.wikiImage ? `<img src="${item.wikiImage}" alt="${item.name}" loading="lazy" />` : `<span class="am-std-fallback">${renderEntityIcon(item, 36)}</span>`}
+              <span>${item.name}</span>
+            </button>
+          `).join('')}
+        </div>
       </div>
-      <div class="picker-item-name">${item.name}</div>
-      <div class="picker-item-cat">${item.category}</div>
-    </button>
-  `).join('');
+    `;
+  }).join('');
 }
 
 function choosePickerItem(itemId) {

@@ -1,42 +1,45 @@
 /* ============================================================================
  * TUTORIAL INTERATIVO DIDÁTICO — SATISFACTORY+ 1.0+
- * 13 passos visuais com prints reais, marcadores numerados em %, índice,
- * navegação por teclado/toque, lightbox e glossário.
+ * Tópicos por aba em cards com prints reais dedicados, passo a passo didático,
+ * navegação por teclado/toque, lightbox e glossário oficial em PT-BR.
  * ========================================================================== */
 
+const TUTORIAL_IMG_VERSION = '33';
+
 const TUTORIAL_SLIDES = [
+  /* ===================== 1. INTERFACE ===================== */
   {
     id: 'como-usar',
-    title: 'O que tem na tela principal?',
-    oneLiner: 'A tela se divide em quatro áreas simples: painel à esquerda, área de trabalho, topo e barra inferior.',
+    title: 'Visão geral da interface',
+    oneLiner: 'A tela se divide em quatro áreas simples: painel lateral esquerdo, área de trabalho central, topo e controles laterais/inferiores.',
     scenes: [
       {
         src: './assets/tutorial/tutorial-01-inicio.webp',
-        alt: 'Visão geral da interface do Satisfactory+ mostrando painel esquerdo, área de trabalho central, botões no topo direito e controles inferiores.',
+        alt: 'Visão geral da interface do Satisfactory+ mostrando painel esquerdo, área de trabalho central, topo direito e barra vertical de ações.',
         markers: [
-          { n: 1, x: 16, y: 24 },
-          { n: 2, x: 64, y: 50 },
-          { n: 3, x: 83, y: 6 },
-          { n: 4, x: 64, y: 95 }
+          { n: 1, x: 14, y: 30 },
+          { n: 2, x: 58, y: 50 },
+          { n: 3, x: 84, y: 5 },
+          { n: 4, x: 97, y: 50 }
         ]
       }
     ],
     legend: [
-      '<strong>Painel esquerdo</strong>: abas da ferramenta (em Produção: <strong>Recursos</strong>, <strong>Máquinas</strong> e <strong>Produtos</strong>), botão de montar e <strong>Limpar</strong> com <strong>Desfazer</strong>.',
-      '<strong>Área de trabalho</strong>: espaço central onde as máquinas e esteiras são desenhadas.',
-      '<strong>Topo direito</strong>: direção do fluxo em 4 sentidos (<strong>→ ← ↓ ↑</strong>), <strong>Tutorial</strong>, <strong>Patch notes</strong>, <strong>Reportar</strong> e <strong>Entrar</strong>.',
-      '<strong>Meio direito e base</strong>: barra vertical compacta de ícones à direita (zoom, 3D, agrupamento, compacto e centralizar) e barra de resumo na parte inferior.'
+      '<strong>Painel esquerdo</strong>: abas da ferramenta, configuração de itens/máquinas e botões compactos de <strong>Montar</strong>, <strong>Salvar</strong> e <strong>Limpar</strong>.',
+      '<strong>Área de trabalho</strong>: espaço interativo onde as máquinas, esteiras e tubulações são montadas.',
+      '<strong>Topo direito</strong>: direção do fluxo (<strong>→ ← ↓ ↑</strong>), <strong>Tutorial</strong>, <strong>Patch notes</strong>, <strong>Reportar</strong> e <strong>Entrar</strong>.',
+      '<strong>Barra vertical direita</strong>: controles rápidos de zoom, <strong>Visão 3D</strong>, agrupar máquinas, modo compacto e centralizar.'
     ],
-    tip: 'Use as setas do teclado (← →) para trocar de passo e clique em qualquer imagem para ampliar.'
+    tip: 'Use as setas do teclado (← →) para trocar de página e clique em qualquer print para ampliar em tela cheia.'
   },
   {
     id: 'abas',
-    title: 'Qual aba usar para cada tarefa?',
-    oneLiner: 'Cada aba no painel esquerdo resolve uma parte diferente do planejamento da fábrica.',
+    title: 'Para que serve cada aba?',
+    oneLiner: 'Cada aba no topo do painel esquerdo resolve uma parte diferente do planejamento da sua fábrica.',
     scenes: [
       {
         src: './assets/tutorial/tutorial-02-abas.webp',
-        alt: 'Barra de abas no topo do painel esquerdo com Produção, Energia, Livre, Mapa, Receitas, Biblioteca e Calculadora.',
+        alt: 'Barra de abas no topo do painel esquerdo com Produção, Energia, Oficina, Mapa, Receitas, Biblioteca e Calculadora.',
         markers: [
           { n: 1, x: 15, y: 38 },
           { n: 2, x: 37, y: 38 },
@@ -47,45 +50,42 @@ const TUTORIAL_SLIDES = [
       }
     ],
     legend: [
-      '<strong>🏭 Produção</strong>: calcula automaticamente toda a fábrica a partir de um item ou recurso.',
-      '<strong>⚡ Energia</strong>: planeja geradores, combustível e consumo de água.',
-      '<strong>🛠️ Oficina</strong>: monte máquinas, logística e esteiras manualmente do seu jeito.',
-      '<strong>🗺️ Mapa</strong>: encontre nós de recurso no mapa do jogo e envie para a produção.',
-      '<strong>📜 Receitas</strong>, <strong>📚 Biblioteca</strong> e <strong>🧮 Calculadora</strong>: consulte receitas, itens e use a nova suíte de calculadoras (máquinas, overclock com slider, energia, esteiras, armazenamento, materiais, SUPIMPA e numérica com teclado físico).'
+      '<strong>🏭 Produção</strong>: calcula automaticamente toda a cadeia produtiva a partir de um produto final ou recurso.',
+      '<strong>⚡ Energia</strong>: dimensiona usinas por meta de MW ou número de geradores, com combustível e água.',
+      '<strong>🛠️ Oficina</strong>: espaço livre para posicionar máquinas, logística e conexões manualmente.',
+      '<strong>🗺️ Mapa</strong>: mapa oficial de MASSAGE-2(A-B)b com jazigos, pureza e discos rígidos.',
+      '<strong>📜 Receitas</strong>, <strong>📚 Biblioteca</strong> e <strong>🧮 Calculadora</strong>: consultas oficiais do jogo e suíte completa de cálculos.'
     ],
-    tip: 'Ao entrar na sua conta, aparece também a aba <strong>📁 Projetos</strong> para abrir fábricas salvas.'
+    tip: 'Ao entrar na sua conta, a aba <strong>📁 Projetos</strong> aparece automaticamente para abrir suas fábricas salvas na nuvem.'
   },
+
+  /* ===================== 2. PRODUÇÃO ===================== */
   {
     id: 'primeira-linha',
-    title: 'Como gerar sua primeira linha de produção?',
-    oneLiner: 'Escolha o item que quer fabricar, digite quantos por minuto e clique para montar.',
+    title: 'O que é a aba Produção e como montar sua linha',
+    oneLiner: 'Escolha o item que deseja fabricar (ou o recurso de entrada), defina a taxa/min e clique em Montar.',
     scenes: [
       {
         src: './assets/tutorial/tutorial-03-primeira-linha.webp',
-        alt: 'Painel lateral da aba Produção com Chapa de Ferro configurada para 30 por minuto e o botão Montar Linha de Produção.',
-        markers: [
-          { n: 1, x: 48, y: 36 },
-          { n: 2, x: 48, y: 74 },
-          { n: 3, x: 48, y: 89 }
-        ]
+        alt: 'Painel lateral da aba Produção com Chapa de Ferro configurada e botões Montar, Salvar e Limpar.'
       }
     ],
     legend: [
-      'Clique em <strong>🎯 Começar com Produto Final</strong> e escolha o item (no exemplo, <strong>Chapa de Ferro</strong>).',
-      'A <strong>Quantidade Desejada</strong> já vem preenchida com a produção base de 1 máquina a 100% (ex.: <strong>20/min</strong> em <strong>Chapa de Ferro</strong>).',
-      'Clique no botão laranja <strong>⚡ Montar Linha de Produção</strong> para desenhar toda a fábrica.'
+      '<strong>O que faz</strong>: resolve toda a árvore de receitas, calcula quantas máquinas de cada tipo você precisa e sugere a esteira/tubo ideal.',
+      '<strong>Como escolher</strong>: clique em <strong>Produtos</strong>, <strong>Recursos</strong> ou <strong>Máquinas</strong> para abrir o seletor ampliado dividido por categorias.',
+      '<strong>Ações rápidas</strong>: use <strong>Montar</strong> para desenhar a fábrica, <strong>Salvar</strong> para guardar na conta e <strong>Limpar</strong> para recomeçar.'
     ],
-    tip: 'Você também pode começar pela mineradora usando <strong>⛏️ Começar com Recurso / Mineradora</strong>.',
-    tryAction: { label: 'Experimentar em Produção', mode: 'production' }
+    tip: 'A taxa inicial já vem preenchida com a produção base de 1 máquina a 100% (ex.: 20/min em Chapa de Ferro).',
+    tryAction: { label: 'Abrir aba Produção', mode: 'production' }
   },
   {
     id: 'como-ler-fluxo',
-    title: 'Como ler o fluxo da produção?',
-    oneLiner: 'O material sempre anda da esquerda para a direita: quem produz fica antes de quem usa.',
+    title: 'Como ler o fluxo da linha montada?',
+    oneLiner: 'O material percorre a linha na direção escolhida: quem produz fica antes de quem consome.',
     scenes: [
       {
         src: './assets/tutorial/tutorial-04-fluxo.webp',
-        alt: 'Fluxo de produção de Chapa de Ferro da esquerda para a direita mostrando Nó de Minério de Ferro, Fornalha, Construtor e Produto Final.',
+        alt: 'Fluxo de produção de Chapa de Ferro mostrando Nó de Minério de Ferro, Fornalha, Construtor e Produto Final.',
         markers: [
           { n: 1, x: 34, y: 26 },
           { n: 2, x: 50, y: 28 },
@@ -96,22 +96,22 @@ const TUTORIAL_SLIDES = [
       }
     ],
     legend: [
-      '<strong>Origem</strong>: o recurso sai do solo aqui e começa o caminho.',
-      '<strong>Esteira</strong>: linha laranja que sai da direita e entra na esquerda da próxima máquina.',
+      '<strong>Origem</strong>: nó de recurso onde o minério, petróleo ou água entra na linha.',
+      '<strong>Esteira / Tubo</strong>: conecta a saída (laranja para sólidos, azul para fluidos) à entrada seguinte.',
       '<strong>Máquina produtora</strong>: transforma o material (ex.: <strong>FORNALHA #1</strong>).',
-      '<strong>Etiqueta no meio</strong>: mostra a versão da esteira e a vazão (itens por minuto).',
-      '<strong>Máquina seguinte</strong>: recebe o item e continua a produção.'
+      '<strong>Etiqueta central</strong>: mostra a versão da esteira/tubo e a vazão exata em <strong>/min</strong>.',
+      '<strong>Etapa seguinte</strong>: recebe o item pronto e continua até o produto final.'
     ],
-    tip: 'Você pode alterar a direção da linha a qualquer momento nos 4 botões de seta (<strong>→ ← ↓ ↑</strong>) no topo da tela, ou clicar em <strong>🛠️ Editar no Livre</strong> para inserir divisores e armazenamento.'
+    tip: 'Altere a direção da fábrica nos 4 botões de seta (<strong>→ ← ↓ ↑</strong>) no topo ou envie a linha para a <strong>Oficina</strong> para editar livremente.'
   },
   {
     id: 'etiquetas-esteiras',
-    title: 'Como ler as etiquetas das esteiras e tubos?',
-    oneLiner: 'Cada etiqueta mostra qual esteira usar e quantos itens passam por minuto (vazão).',
+    title: 'Como ler as etiquetas das esteiras e tubulações?',
+    oneLiner: 'Cada etiqueta informa a versão mínima recomendada e a vazão real por minuto.',
     scenes: [
       {
         src: './assets/tutorial/tutorial-05-etiquetas.webp',
-        alt: 'Detalhe das etiquetas no meio das esteiras mostrando v.2 120/m, v.1 30/m e conector curto para a próxima coluna.',
+        alt: 'Detalhe das etiquetas no meio das esteiras mostrando v.2 120/m, v.1 30/m e conector curto.',
         markers: [
           { n: 1, x: 31, y: 47 },
           { n: 2, x: 72, y: 37 },
@@ -120,21 +120,21 @@ const TUTORIAL_SLIDES = [
       }
     ],
     legend: [
-      '<strong>v.2 · 120/m</strong>: use esteira versão 2; a <strong>vazão</strong> (quantos itens passam por minuto) é 120.',
-      '<strong>v.1 · 30/m</strong>: esteira versão 1 já basta para 30 itens por minuto. Líquidos usam tubulação azul.',
-      '<strong>→ FORNALHA #2</strong>: em linhas longas, a esteira é dividida; clique na etiqueta para pular até o destino.'
+      '<strong>v.2 · 120/m</strong>: indica Esteira v.2 (capacidade 120/min) transportando 120 itens/min.',
+      '<strong>v.1 · 30/m</strong>: Esteira v.1 já suporta 30/min. Líquidos e gases usam Tubulação azul (v.1 ou v.2).',
+      '<strong>Etiqueta curta (→)</strong>: em fábricas grandes, clique na etiqueta para saltar direto ao destino.'
     ],
-    tip: 'Passe o mouse em uma etiqueta curta (<strong>→</strong> ou <strong>←</strong>) para ver o caminho completo ligado a ela.'
+    tip: 'Passe o mouse sobre uma etiqueta ou máquina para destacar todo o caminho ligado a ela.'
   },
   {
     id: 'cards-maquina',
-    title: 'Como entender cada card de máquina?',
-    oneLiner: 'Cada card mostra o que entra, o que sai, a energia gasta e permite agrupar máquinas iguais.',
+    title: 'Cards de máquina e agrupamento por tipo',
+    oneLiner: 'Veja entradas, saídas, clock e energia no card, e agrupe máquinas iguais em fábricas grandes.',
     scenes: [
       {
         label: 'Individual',
         src: './assets/tutorial/tutorial-06a-card-maquina.webp',
-        alt: 'Card da Fornalha #1 mostrando clock e energia, seção Entrada com Minério de Ferro e seção Saída com Lingote de Ferro.',
+        alt: 'Card da Fornalha #1 mostrando clock, energia, Entrada e Saída.',
         markers: [
           { n: 1, x: 32, y: 16 },
           { n: 2, x: 65, y: 49 },
@@ -145,30 +145,25 @@ const TUTORIAL_SLIDES = [
       {
         label: 'Agrupado',
         src: './assets/tutorial/tutorial-06b-agrupado.webp',
-        alt: 'Fluxo de produção com máquinas iguais agrupadas em um único card usando o botão Todas Máquinas: NÃO.',
-        markers: [
-          { n: 1, x: 45, y: 24 },
-          { n: 2, x: 52, y: 50 },
-          { n: 3, x: 78, y: 95 }
-        ]
+        alt: 'Fluxo de produção com máquinas iguais agrupadas em um único card.'
       }
     ],
     legend: [
-      '<strong>Nome e número</strong>: identifica qual máquina construir (ex.: <strong>FORNALHA #1</strong>).',
-      '<strong>Clock e energia</strong>: velocidade de trabalho (<strong>100%</strong>) e consumo em megawatts (<strong>MW</strong>).',
-      '<strong>ENTRADA</strong>: o que a máquina precisa receber por minuto para funcionar.',
-      '<strong>SAÍDA</strong>: o que ela fabrica por minuto. Clique no card para trocar receita ou clock.'
+      '<strong>Nome e índice</strong>: identifica qual máquina construir (ex.: <strong>FORNALHA #1</strong>).',
+      '<strong>Clock e energia</strong>: velocidade (<strong>100%</strong> a <strong>250%</strong>) e consumo real em <strong>MW</strong>.',
+      '<strong>ENTRADA e SAÍDA</strong>: mostra exatamente o que entra e o que sai por minuto.',
+      '<strong>Painel agrupado</strong>: na barra lateral, as etapas ficam classificadas por tipo de máquina para facilitar a leitura.'
     ],
-    tip: 'Fábrica muito grande? Clique em <strong>🏭 Todas Máquinas: SIM</strong> embaixo para agrupar máquinas iguais em um card.'
+    tip: 'Use o ícone de agrupamento na barra lateral direita para alternar entre todas as máquinas individuais ou um único card resumido.'
   },
   {
     id: 'nos-recurso',
-    title: 'O que são os Nós de recurso?',
-    oneLiner: 'São os pontos no mapa de onde você extrai minérios, petróleo ou água.',
+    title: 'Nós de recurso e pureza',
+    oneLiner: 'Configure o nível da mineradora, a pureza do nó e o overclock de extração.',
     scenes: [
       {
         src: './assets/tutorial/tutorial-07-no-recurso.webp',
-        alt: 'Card Nó de Minério de Ferro mostrando pureza Nó Normal, mineradora e taxa de extração de 120 un/min.',
+        alt: 'Card Nó de Minério de Ferro mostrando pureza Normal, mineradora e taxa de extração.',
         markers: [
           { n: 1, x: 35, y: 19 },
           { n: 2, x: 25, y: 27 },
@@ -177,20 +172,20 @@ const TUTORIAL_SLIDES = [
       }
     ],
     legend: [
-      '<strong>Nó de [recurso]</strong>: indica o minério extraído do chão (para água, aparece apenas <strong>Água</strong>).',
-      '<strong>Pureza do nó</strong>: Impuro, Normal ou Puro — define quanto a mineradora extrai por minuto.',
-      '<strong>Taxa extraída</strong>: mostra apenas o recurso e quanto sai por minuto; nunca conta como excesso.'
+      '<strong>Nó de recurso</strong>: representa a extração de minérios, petróleo bruto ou água.',
+      '<strong>Pureza (Impuro / Normal / Puro)</strong>: define a taxa base da mineradora v.1, v.2 ou v.3.',
+      '<strong>Taxa extraída</strong>: mostra exatamente quanto sai por minuto do nó.'
     ],
-    tip: 'Clique no card do nó para trocar o nível da mineradora, a pureza ou o clock.'
+    tip: 'Clique no card do nó ou ajuste no painel esquerdo para trocar mineradora, pureza ou clock.'
   },
   {
     id: 'produto-final',
-    title: 'Como achar o Produto Final da linha?',
-    oneLiner: 'O objetivo da sua fábrica sempre aparece destacado em um card laranja.',
+    title: 'Identificando o Produto Final',
+    oneLiner: 'Os itens finais da sua fábrica sempre aparecem destacados com borda laranja.',
     scenes: [
       {
         src: './assets/tutorial/tutorial-08-produto-final.webp',
-        alt: 'Card laranja destacado com cabeçalho Chapa de Ferro, etiqueta PRODUTO FINAL e quantidade entregue por minuto.',
+        alt: 'Card destacado de Produto Final mostrando Chapa de Ferro e produção entregue por minuto.',
         markers: [
           { n: 1, x: 64, y: 20 },
           { n: 2, x: 65, y: 58 },
@@ -199,224 +194,360 @@ const TUTORIAL_SLIDES = [
       }
     ],
     legend: [
-      '<strong>Etiqueta PRODUTO FINAL</strong>: identifica de longe onde termina a linha de produção.',
-      '<strong>Resumo de máquinas</strong>: mostra quantas máquinas fabricam esse item final.',
-      '<strong>PRODUÇÃO FINAL</strong>: quantidade real entregue por minuto pela fábrica.'
+      '<strong>Etiqueta PRODUTO FINAL</strong>: marca o destino final da linha de produção.',
+      '<strong>Contagem de máquinas</strong>: resume quantas máquinas entregam esse produto.',
+      '<strong>PRODUÇÃO FINAL</strong>: exibe a taxa real entregue em <strong>/min</strong>.'
     ],
-    tip: 'Se você escolher mais de um produto na mesma fábrica, todos recebem o destaque laranja.'
+    tip: 'Você pode adicionar mais de um produto final na mesma linha — todos ficam destacados.'
   },
   {
     id: 'status-excesso',
-    title: 'Como usar o Resumo da Fábrica e o Excesso?',
-    oneLiner: 'Veja energia recomendada, materiais, entradas, saídas e aproveite itens em excesso.',
+    title: 'Resumo da Fábrica e aproveitamento de Excesso',
+    oneLiner: 'Confira energia total, construções necessárias e reaproveite subprodutos em excesso.',
     scenes: [
       {
         src: './assets/tutorial/tutorial-09-excesso.webp',
-        alt: 'Painel esquerdo mostrando o Resumo da Fábrica com Energia, Excesso e botão Gerar nova linha de produção.',
-        markers: [
-          { n: 1, x: 50, y: 26 },
-          { n: 2, x: 42, y: 46 },
-          { n: 3, x: 50, y: 54 }
-        ]
+        alt: 'Painel esquerdo mostrando Resumo da Fábrica com Energia, Excesso e botão Gerar nova linha de produção.'
       }
     ],
     legend: [
-      '<strong>Resumo da Fábrica</strong>: mostra energia (com gerador recomendado e folga %), construções e materiais usados.',
-      '<strong>Excesso</strong>: mostra itens extras gerados que nenhuma máquina da linha usa (ex.: <strong>Resina de polímero</strong>).',
-      '<strong>⚡ Gerar nova linha de produção</strong>: abre receitas que usam esse excesso já preenchido.'
+      '<strong>Resumo da Fábrica</strong>: exibe consumo total em MW, construções necessárias e lista de materiais.',
+      '<strong>Excesso (Subprodutos)</strong>: lista apenas itens extras gerados que nenhuma máquina da linha consome (ex.: Resina de polímero).',
+      '<strong>Gerar nova linha</strong>: inicia uma nova linha já usando o excesso disponível.'
     ],
-    commonMistake: 'Erro comum: confundir excesso com recurso extraído — minérios e itens consumidos nunca são excesso.'
+    commonMistake: 'Recursos extraídos do solo e itens totalmente consumidos na própria linha não aparecem como excesso.'
+  },
+
+  /* ===================== 3. ENERGIA ===================== */
+  {
+    id: 'energia-o-que-e',
+    title: 'O que é a aba Energia?',
+    oneLiner: 'Planeje usinas completas calculando geradores, combustível, água e energia líquida automaticamente.',
+    scenes: [
+      {
+        src: './assets/tutorial/tutorial-13-energia.webp',
+        alt: 'Aba Energia com 8 Geradores a Carvão montados no canvas, painel lateral e barra de status na base.'
+      }
+    ],
+    legend: [
+      '<strong>Dois modos de cálculo</strong>: escolha <strong>Por Energia (MW)</strong> para atingir uma meta ou <strong>Por Geradores</strong> para definir quantas usinas vai construir.',
+      '<strong>Combustível e Água</strong>: calcula automaticamente o consumo de combustível (/min) e quantas <strong>Bombas d\'água</strong> são necessárias.',
+      '<strong>Fluxo visual completo</strong>: desenha a extração de combustível, água, tubulações e geradores no canvas, com resumo neutro na base.'
+    ],
+    tip: 'Ideal para montar usinas de Carvão, Combustível, Turbo Combustível, Combustível de Foguete ou Nuclear.',
+    tryAction: { label: 'Abrir aba Energia', mode: 'power' }
   },
   {
-    id: 'modo-livre',
-    title: 'Como montar tudo do zero no modo Livre?',
-    oneLiner: 'Posicione máquinas, contêineres e logística e puxe as esteiras manualmente.',
+    id: 'energia-como-usar',
+    title: 'Como configurar sua usina passo a passo',
+    oneLiner: 'Escolha o tipo de gerador, selecione o combustível, ajuste o clock e clique em Montar.',
+    scenes: [
+      {
+        src: './assets/tutorial/tutorial-13-energia.webp',
+        alt: 'Configuração de Gerador a Carvão com Carvão e 8 geradores na aba Energia.'
+      }
+    ],
+    legend: [
+      '<strong>1. Escolha o Gerador</strong>: Carvão, Combustível, Nuclear, Queimador de Biomassa ou Aumentador de Energia Alienígena.',
+      '<strong>2. Combustível e Quantidade/MW</strong>: informe a meta (ex.: 600 MW ou 8 Geradores a Carvão) e o combustível usado.',
+      '<strong>3. Overclock e Montar</strong>: ajuste o clock (%) se quiser menos máquinas e clique em <strong>Montar</strong> (ou <strong>Salvar</strong> para guardar na sua conta).'
+    ],
+    tip: 'Ao aumentar o clock de geradores, a geração de energia e o consumo de combustível/água escalam proporcionalmente no Satisfactory 1.0+.'
+  },
+
+  /* ===================== 4. OFICINA ===================== */
+  {
+    id: 'oficina-o-que-e',
+    title: 'O que é a aba Oficina?',
+    oneLiner: 'Monte fábricas do zero posicionando máquinas, extratores, logística, armazenamento e energia do seu jeito.',
     scenes: [
       {
         src: './assets/tutorial/tutorial-10-modo-livre.webp',
-        alt: 'Aba Livre com máquinas conectadas e barra inferior com Adicionar Máquina, Divisor, Unificador e Junção de Tubo.',
-        markers: [
-          { n: 1, x: 50, y: 45 },
-          { n: 2, x: 50, y: 51 },
-          { n: 3, x: 16, y: 95 }
-        ]
+        alt: 'Aba Oficina em tela cheia mostrando os 4 blocos de categoria no painel esquerdo, busca por nome e máquinas conectadas no canvas.'
       }
     ],
     legend: [
-      '<strong>Porta de saída</strong>: arraste até outra máquina — a borda do card sob o cursor fica verde (compatível) ou vermelha (incompatível), e ligações inválidas exibem o aviso <strong>Conexão incompatível</strong> no centro da tela.',
-      '<strong>Etiqueta clicável</strong>: clique na etiqueta da esteira para trocar a versão, <strong>Inserir Divisor no meio</strong> ou remover a ligação.',
-      '<strong>Categorias na barra lateral</strong>: lista vertical com <strong>Todos</strong>, <strong>Máquinas</strong>, <strong>Receitas</strong> (incluindo ALT), <strong>Logística</strong>, <strong>Armazenamento</strong> e <strong>Energia</strong>.'
+      '<strong>4 categorias rápidas</strong>: no painel esquerdo, clique em <strong>Máquinas</strong>, <strong>Receitas</strong>, <strong>Logística & Armazenamento</strong> ou <strong>Energia</strong> para abrir o catálogo ampliado.',
+      '<strong>Busca direta</strong>: digite o nome de qualquer máquina, receita ou construção no campo de busca do painel.',
+      '<strong>Lista agrupada</strong>: todas as construções adicionadas aparecem classificadas por tipo de máquina, com ajuste compacto de <strong>Nº Máquinas</strong> e <strong>Andar (3D)</strong>.'
     ],
-    tip: 'Segure <strong>Alt</strong> enquanto arrasta um card para duplicar a máquina rapidamente.',
-    tryAction: { label: 'Experimentar no modo Livre', mode: 'free' }
+    tip: 'Você pode abrir qualquer linha da aba <strong>Produção</strong> direto na <strong>Oficina</strong> para adicionar divisores, contêineres e ajustes manuais.',
+    tryAction: { label: 'Abrir aba Oficina', mode: 'free' }
+  },
+  {
+    id: 'oficina-conexoes-atalhos',
+    title: 'Conexões, edição de esteiras e atalhos na Oficina',
+    oneLiner: 'Puxe das portas para conectar, clique nas esteiras para editar e use Shift/Espaço para controlar seleção e câmera.',
+    scenes: [
+      {
+        src: './assets/tutorial/tutorial-10-modo-livre.webp',
+        alt: 'Máquinas e conexões na aba Oficina com portas laranja de sólidos e barra lateral de ações.'
+      }
+    ],
+    legend: [
+      '<strong>Portas laranja e azul</strong>: arraste de uma saída até uma entrada compatível. Sólidos usam portas <strong>laranja</strong>; líquidos/gases usam <strong>azul</strong>. Ligações incompatíveis são bloqueadas com aviso.',
+      '<strong>Editar esteiras e tubos</strong>: clique diretamente sobre qualquer esteira/tubo ou sua etiqueta para trocar a versão (v.1–v.6), inserir divisor no meio ou remover.',
+      '<strong>Duplicar e Overclock global</strong>: use o botão duplicar no card (ou botão direito), <strong>Ctrl+C / Ctrl+V</strong>, e o raio <strong>⚡</strong> na barra direita para alterar o overclock de tudo.',
+      '<strong>Mouse preciso</strong>: segure <strong>Espaço + arrastar</strong> para mover a câmera e <strong>Shift + arrastar</strong> no fundo para selecionar vários cards de uma vez.'
+    ],
+    tip: 'Segurar <strong>Alt</strong> ao arrastar um card também cria uma cópia instantânea na posição solta.'
   },
   {
     id: 'navegacao-foco',
-    title: 'Como navegar e organizar a tela?',
-    oneLiner: 'Dê zoom, centralize a fábrica, reorganize os cards e destaque o caminho de uma máquina.',
+    title: 'Navegação, Visão 3D e Modo Foco',
+    oneLiner: 'Aproxime, centralize, organize andares em 3D e destaque apenas o caminho de uma máquina.',
     scenes: [
       {
         label: 'Controles',
         src: './assets/tutorial/tutorial-11a-navegacao.webp',
-        alt: 'Área de trabalho com controles de orientação no topo e barra inferior de zoom, Visão 3D, Todas Máquinas e Centralizar.',
-        markers: [
-          { n: 1, x: 50, y: 5 },
-          { n: 2, x: 50, y: 95 },
-          { n: 3, x: 63, y: 95 },
-          { n: 4, x: 92, y: 95 }
-        ]
+        alt: 'Área de trabalho com controles de direção no topo e barra vertical direita de zoom, Visão 3D, agrupamento e centralizar.'
       },
       {
         label: 'Modo Foco',
         src: './assets/tutorial/tutorial-11b-foco.webp',
-        alt: 'Modo foco destacando apenas a Fornalha #1 e as máquinas diretamente ligadas a ela, suavizando o restante.',
-        markers: [
-          { n: 1, x: 35, y: 71 },
-          { n: 2, x: 65, y: 29 }
-        ]
+        alt: 'Modo foco destacando a máquina sob o cursor e suavizando o restante da linha.'
       }
     ],
     legend: [
-      '<strong>Direção</strong>: alterne entre <strong>⬇️ Cima ➔ Baixo</strong> e <strong>➡️ Esquerda ➔ Direita</strong>.',
-      '<strong>Zoom</strong>: use <strong>➖</strong>, <strong>➕</strong> ou a rodinha do mouse; clique na porcentagem para voltar a <strong>100%</strong>.',
-      '<strong>🏢 Visão 3D</strong>: organiza sua fábrica por andares verticais.',
-      '<strong>🎯 Centralizar</strong>: enquadra toda a linha na tela. Arraste qualquer card para reposicionar.'
+      '<strong>Direção do fluxo</strong>: alterne no topo entre <strong>→</strong>, <strong>←</strong>, <strong>↓</strong> e <strong>↑</strong>.',
+      '<strong>Barra vertical direita</strong>: controle zoom (ou use a rodinha do mouse), ative <strong>Visão 3D</strong> por andares, modo compacto e <strong>Centralizar</strong>.',
+      '<strong>Modo Foco</strong>: passe o mouse sobre qualquer máquina para iluminar apenas o que entra e sai dela.'
     ],
-    tip: 'Passe o mouse sobre qualquer máquina para ativar o <strong>modo foco</strong> e ver só o caminho dela.'
+    tip: 'No modo <strong>Visão 3D</strong>, use as setas <strong>‹ ›</strong> de Andar no painel esquerdo da Oficina para empilhar fábricas em vários pavimentos.'
+  },
+
+  /* ===================== 5. MAPA ===================== */
+  {
+    id: 'mapa-o-que-e',
+    title: 'O que é a aba Mapa?',
+    oneLiner: 'Explore o mapa interativo oficial de MASSAGE-2(A-B)b com todos os jazigos, purezas e discos rígidos.',
+    scenes: [
+      {
+        src: './assets/tutorial/tutorial-14-mapa.webp',
+        alt: 'Aba Mapa mostrando o mapa interativo de Satisfactory e os filtros de jazigos na barra lateral.'
+      }
+    ],
+    legend: [
+      '<strong>Dados oficiais</strong>: reúne mais de 2.500 pontos reais do jogo, incluindo minérios, petróleo, água, gêiseres, poços de recurso e destroços.',
+      '<strong>Pureza visível</strong>: cada jazigo indica se é <strong>Impuro</strong>, <strong>Normal</strong> ou <strong>Puro</strong>.',
+      '<strong>Navegação fluida</strong>: arraste para explorar o mapa e use a rodinha do mouse para aproximar regiões específicas.'
+    ],
+    tryAction: { label: 'Abrir aba Mapa', mode: 'map' }
   },
   {
-    id: 'conta-projetos-reportar',
-    title: 'Como salvar projetos, criar conta e reportar?',
-    oneLiner: 'Use tudo sem cadastro; entre na conta para salvar fábricas na nuvem e enviar feedback.',
+    id: 'mapa-como-usar',
+    title: 'Como filtrar recursos e planejar extrações no Mapa',
+    oneLiner: 'Ative apenas os recursos que procura e clique nos marcadores para ver detalhes do ponto.',
+    scenes: [
+      {
+        src: './assets/tutorial/tutorial-14-mapa.webp',
+        alt: 'Filtros laterais do Mapa por categoria de recurso, pureza e pontos de interesse.'
+      }
+    ],
+    legend: [
+      '<strong>1. Filtre na barra lateral</strong>: marque apenas os recursos desejados (ex.: Ferro, Carvão, Petróleo bruto, Urânio ou Discos Rígidos).',
+      '<strong>2. Busque por nome</strong>: use a busca no topo do painel para localizar rapidamente qualquer camada.',
+      '<strong>3. Leve para sua fábrica</strong>: verifique a pureza dos nós próximos e configure exatamente a mesma extração em <strong>Produção</strong> ou <strong>Energia</strong>.'
+    ],
+    tip: 'Combine a consulta de nós puros no Mapa com a calculadora de Recursos para saber exatamente quantas máquinas aquele local suporta.'
+  },
+
+  /* ===================== 6. RECEITAS ===================== */
+  {
+    id: 'receitas-o-que-e',
+    title: 'O que é a aba Receitas?',
+    oneLiner: 'Consulte todas as receitas padrão e alternativas (ALT) do Satisfactory 1.0+ em um só lugar.',
+    scenes: [
+      {
+        src: './assets/tutorial/tutorial-15-receitas.webp',
+        alt: 'Aba Receitas listando receitas padrão e alternativas com filtros por máquina e ingredientes.'
+      }
+    ],
+    legend: [
+      '<strong>Catálogo completo</strong>: todas as receitas oficiais com taxas reais por minuto, máquina necessária e selo <strong>ALT</strong> para receitas de Disco Rígido.',
+      '<strong>Filtros rápidos</strong>: filtre por máquina (Construtor, Montadora, Refinaria, Misturador etc.), tipo (Padrão/ALT) ou busque pelo nome do item.',
+      '<strong>Favoritos</strong>: marque suas receitas preferidas para encontrá-las instantaneamente.'
+    ],
+    tryAction: { label: 'Abrir aba Receitas', mode: 'recipes' }
+  },
+  {
+    id: 'receitas-como-usar',
+    title: 'Como comparar receitas e enviar para Produção',
+    oneLiner: 'Compare custos lado a lado para escolher a receita mais eficiente antes de construir.',
+    scenes: [
+      {
+        src: './assets/tutorial/tutorial-15-receitas.webp',
+        alt: 'Lista e filtros da aba Receitas com detalhes de entrada e saída por minuto.'
+      }
+    ],
+    legend: [
+      '<strong>1. Busque o item</strong>: digite o nome do produto (em português ou inglês) para listar todas as formas de fabricá-lo.',
+      '<strong>2. Compare entradas e saídas</strong>: veja a diferença de recursos brutos, subprodutos e máquina entre a receita padrão e as <strong>ALT</strong>.',
+      '<strong>3. Monte direto</strong>: clique no botão de abrir em <strong>Produção</strong> para já gerar a linha usando a receita escolhida.'
+    ],
+    tip: 'Receitas alternativas como <em>Parafuso Fundido</em> ou <em>Combustível Diluído</em> economizam dezenas de máquinas e recursos.'
+  },
+
+  /* ===================== 7. BIBLIOTECA ===================== */
+  {
+    id: 'biblioteca-o-que-e',
+    title: 'O que é a aba Biblioteca?',
+    oneLiner: 'Enciclopédia visual do jogo dividida por categorias coloridas com todos os itens, máquinas e construções.',
+    scenes: [
+      {
+        src: './assets/tutorial/tutorial-16-biblioteca.webp',
+        alt: 'Aba Biblioteca com categorias coloridas à esquerda e grade visual de itens e máquinas.'
+      }
+    ],
+    legend: [
+      '<strong>Organização por categorias</strong>: navegue por Recursos, Lingotes, Peças, Fluídos, Máquinas, Logística, Energia, Equipamentos e mais.',
+      '<strong>Busca bilíngue</strong>: pesquise pelo nome oficial em português ou inglês.',
+      '<strong>Favoritos e Recentes</strong>: mantenha seus itens mais consultados sempre no topo.'
+    ],
+    tryAction: { label: 'Abrir aba Biblioteca', mode: 'library' }
+  },
+  {
+    id: 'biblioteca-como-usar',
+    title: 'Como consultar detalhes de qualquer item',
+    oneLiner: 'Clique em qualquer card da Biblioteca para ver todas as receitas que produzem ou consomem o item.',
+    scenes: [
+      {
+        src: './assets/tutorial/tutorial-16-biblioteca.webp',
+        alt: 'Grade de itens na aba Biblioteca pronta para consulta detalhada.'
+      }
+    ],
+    legend: [
+      '<strong>1. Escolha a categoria</strong>: clique em uma categoria no painel esquerdo ou use a busca.',
+      '<strong>2. Abra o card de detalhes</strong>: veja pilha máxima, pontos no Triturador SUPIMPA, receitas que fabricam e receitas que usam o item.',
+      '<strong>3. Planeje em 1 clique</strong>: a partir do detalhe do item, salte direto para montar a produção dele.'
+    ],
+    tip: 'Ótima para descobrir rapidamente para que serve um item novo ou onde usar um subproduto.'
+  },
+
+  /* ===================== 8. CALCULADORA ===================== */
+  {
+    id: 'calculadora-geral-recursos',
+    title: 'Aba Calculadora — Numérica, Recursos, Produção e Energia',
+    oneLiner: 'Faça contas rápidas com o teclado físico e calcule fábricas inteiras com overclock individual por máquina.',
+    scenes: [
+      {
+        src: './assets/tutorial/tutorial-17-calculadora.webp',
+        alt: 'Aba Calculadora mostrando o menu lateral de ferramentas e a calculadora interativa.'
+      }
+    ],
+    legend: [
+      '<strong>Calculadora</strong>: funciona como calculadora normal com suporte total ao teclado físico (<code>0–9</code>, <code>+ - * / %</code>, <code>Enter</code>, <code>Backspace</code>, <code>Esc</code>) e histórico.',
+      '<strong>Recursos</strong>: escolha produto, receita e quantidade desejada (/min) para ver máquinas por tipo, recursos brutos, energia, excesso e ajustar <strong>overclock por tipo de máquina</strong>.',
+      '<strong>Produção</strong>: informe quantidade de máquinas, receita e clock para descobrir a saída exata/min.',
+      '<strong>Energia</strong>: calcule rapidamente MW gerados, combustível e água sem precisar abrir o canvas.'
+    ],
+    tryAction: { label: 'Abrir aba Calculadora', mode: 'calculator' }
+  },
+  {
+    id: 'calculadora-logistica-supimpa',
+    title: 'Aba Calculadora — Logística, SUPIMPA e Elevador Espacial',
+    oneLiner: 'Dimensione esteiras da linha atual, calcule pontos do Triturador SUPIMPA e acompanhe as 5 fases do jogo.',
+    scenes: [
+      {
+        src: './assets/tutorial/tutorial-17-calculadora.webp',
+        alt: 'Menu lateral da aba Calculadora com Logística, Triturador SUPIMPA e Elevador Espacial.'
+      }
+    ],
+    legend: [
+      '<strong>Logística</strong>: lê automaticamente a linha montada em <strong>Produção</strong> ou <strong>Oficina</strong> (ou permite cálculo avulso) para informar esteiras, divisores e unificadores necessários.',
+      '<strong>Triturador SUPIMPA</strong>: selecione qualquer item do jogo e a vazão/min para ver os pontos/min oficiais e o tempo para gerar cupons.',
+      '<strong>Elevador Espacial</strong>: acompanhe o progresso completo das 5 fases oficiais do Satisfactory 1.0 e o tempo restante na sua taxa atual.'
+    ],
+    tip: 'Use a opção <strong>Recursos</strong> com overclock por tipo de máquina quando quiser acelerar só as Mineradoras ou só os Construtores.'
+  },
+
+  /* ===================== 9. PROJETOS E CONTA ===================== */
+  {
+    id: 'projetos-passo-1-salvar',
+    title: 'Passo 1 — Como entrar na conta e salvar um projeto',
+    oneLiner: 'Crie sua conta grátis (só usuário e senha) e clique em Salvar na barra lateral para guardar sua fábrica.',
     scenes: [
       {
         src: './assets/tutorial/tutorial-12-conta-projetos.webp',
-        alt: 'Topo da ferramenta mostrando o botão Salvar no painel esquerdo e os botões Reportar e Entrar no canto superior direito.',
-        markers: [
-          { n: 1, x: 14, y: 69 },
-          { n: 2, x: 88, y: 12 },
-          { n: 3, x: 96, y: 12 }
-        ]
+        alt: 'Interface mostrando o botão Salvar na barra lateral esquerda e Entrar no topo direito.'
       }
     ],
     legend: [
-      '<strong>💾 Salvar</strong>: guarda a linha atual (receitas, posições e opções) na aba <strong>📁 Projetos</strong>.',
-      '<strong>📣 Reportar</strong>: envie bugs, sugestões ou avaliações com até 7 imagens.',
-      '<strong>👤 Entrar</strong>: crie sua conta só com usuário e senha para acessar seus projetos em qualquer lugar.'
+      '<strong>1. Clique em 👤 Entrar</strong> no topo direito para fazer login ou criar uma conta apenas com usuário e senha.',
+      '<strong>2. Monte sua fábrica</strong> em <strong>Produção</strong>, <strong>Energia</strong> ou <strong>Oficina</strong>.',
+      '<strong>3. Clique em 💾 Salvar</strong> na barra lateral esquerda e dê um nome ao projeto — tudo fica salvo na nuvem (máquinas, receitas, posições e clock).'
     ],
-    tip: 'Depois de abrir um projeto salvo, você pode escolher entre <strong>Atualizar projeto</strong> ou <strong>Salvar como novo</strong>.'
+    tip: 'Você pode usar toda a ferramenta sem conta; a conta serve para guardar projetos na nuvem e enviar reports.'
+  },
+  {
+    id: 'projetos-passo-2-gerenciar',
+    title: 'Passo 2 — Onde ficam seus Projetos Salvos e o que fazer',
+    oneLiner: 'Acesse a aba Projetos no painel esquerdo para abrir, renomear, atualizar ou excluir qualquer fábrica salva.',
+    scenes: [
+      {
+        src: './assets/tutorial/tutorial-18-projetos-salvos.webp',
+        alt: 'Aba Projetos listando projetos salvos de Produção, Energia e Oficina com botões de abrir, renomear e excluir.'
+      }
+    ],
+    legend: [
+      '<strong>Onde encontrar</strong>: após entrar na conta, clique na aba <strong>📁 Projetos</strong> no painel lateral esquerdo.',
+      '<strong>Abrir no espaço</strong>: clique em <strong>Abrir</strong> para carregar a fábrica exatamente na aba onde ela foi salva (Produção, Energia ou Oficina).',
+      '<strong>Atualizar ou Salvar como novo</strong>: ao editar um projeto aberto e clicar em <strong>Salvar</strong>, escolha entre atualizar o existente ou criar uma nova cópia.',
+      '<strong>Organizar</strong>: use os botões do card para <strong>Renomear</strong> ou <strong>Excluir</strong> projetos antigos.'
+    ],
+    tip: 'Seus projetos ficam sincronizados na sua conta e podem ser abertos em qualquer navegador.'
   },
   {
     id: 'patch-notes',
-    title: 'Onde ver as novidades da ferramenta?',
-    oneLiner: 'O botão Patch notes mostra as 7 últimas atualizações e melhorias do Satisfactory+.',
+    title: 'Passo 3 — Reportar bugs/sugestões e ver Patch Notes',
+    oneLiner: 'Envie feedback com prints pelo botão Reportar e acompanhe todas as novidades em Patch Notes.',
     scenes: [
       {
         src: './assets/tutorial/tutorial-12-conta-projetos.webp',
-        alt: 'Barra superior direita mostrando o botão Patch notes ao lado de Tutorial, Reportar e Entrar.',
-        markers: [
-          { n: 1, x: 82, y: 12 },
-          { n: 2, x: 88, y: 12 }
-        ]
+        alt: 'Barra superior direita mostrando os botões Patch notes, Reportar e Entrar.'
       }
     ],
     legend: [
-      '<strong>📋 Patch notes</strong>: abre a linha do tempo com as 7 últimas atualizações (Novo, Melhoria e Correção).',
-      '<strong>Aviso automático</strong>: quando houver uma novidade que você ainda não viu, um card curto aparece uma única vez ao abrir o site.'
+      '<strong>📣 Reportar</strong>: envie bugs, sugestões ou avaliações anexando até 7 imagens e acompanhe o status.',
+      '<strong>📋 Patch notes</strong>: abre o histórico com as atualizações mais recentes (Novo, Melhoria e Correção).',
+      '<strong>Aviso automático</strong>: sempre que houver uma novidade que você ainda não viu, um resumo aparece uma única vez ao abrir o site.'
     ],
-    tip: 'Você pode consultar o histórico completo das últimas atualizações a qualquer momento pelo botão no topo.'
+    tip: 'Consulte o histórico de atualizações a qualquer momento pelo botão <strong>Patch notes</strong> no topo direito.'
   },
+
+  /* ===================== 10. ATALHOS E GLOSSÁRIO ===================== */
   {
     id: 'glossario',
-    title: 'Glossário rápido',
-    oneLiner: 'Todos os termos da ferramenta explicados em uma linha simples.',
+    title: 'Atalhos rápidos e Glossário oficial',
+    oneLiner: 'Comandos de teclado/mouse e os termos oficiais do jogo explicados de forma direta.',
     glossary: [
-      { term: 'Vazão', desc: 'Quantos itens (un/min) ou líquidos (m³/min) passam por minuto.' },
-      { term: 'Esteira e versão (v.1 a v.6)', desc: 'Transporta itens sólidos; versões maiores levam mais itens por minuto.' },
-      { term: 'Tubulação (v.1 / v.2)', desc: 'Transporta líquidos e gases entre máquinas e bombas.' },
-      { term: 'Nó de recurso', desc: 'Ponto no mapa de onde saem minérios, petróleo ou água.' },
-      { term: 'Produto final', desc: 'Item principal que você escolheu fabricar, destacado em laranja.' },
-      { term: 'Excesso', desc: 'Item extra gerado por uma receita que nenhuma outra máquina da linha usa.' },
-      { term: 'Overclock', desc: 'Velocidade da máquina (100% a 250%); usa Fragmentos de Energia e altera produção e consumo.' },
-      { term: 'Agrupar máquinas', desc: 'Junta máquinas e logística iguais em um único card usando Todas as Máquinas: NÃO.' },
-      { term: 'Modo foco', desc: 'Destaca só a máquina sob o mouse e as conexões ligadas a ela.' },
-      { term: 'Divisor / Unificador', desc: 'Divide uma esteira em várias saídas ou junta várias entradas em uma só.' },
-      { term: 'Atalhos na Oficina', desc: 'Ctrl+C/V copiar e colar, Shift+clique selecionar vários, Backspace apagar, Espaço+arrastar mover câmera, arrastar fundo seleciona área.' }
+      { term: 'Espaço + arrastar', desc: 'Move a câmera (pan) no canvas em Produção, Energia e Oficina.' },
+      { term: 'Shift + arrastar (Oficina)', desc: 'Abre a caixa de seleção múltipla para selecionar vários cards de uma vez.' },
+      { term: 'Ctrl+C / Ctrl+V', desc: 'Copia e cola as máquinas selecionadas na Oficina.' },
+      { term: 'Alt + arrastar card', desc: 'Duplica rapidamente uma máquina na posição onde você soltar.' },
+      { term: 'Backspace / Delete', desc: 'Remove os cards ou conexões selecionados na Oficina.' },
+      { term: 'Rodinha do mouse', desc: 'Aproxima ou afasta o zoom no canvas e no Mapa.' },
+      { term: 'Vazão (/min)', desc: 'Quantidade de itens sólidos (un/min) ou fluidos (m³/min) por minuto.' },
+      { term: 'Esteira (v.1 a v.6)', desc: 'Transporta sólidos (60, 120, 270, 480, 780 e 1200 itens/min).' },
+      { term: 'Tubulação (v.1 / v.2)', desc: 'Transporta líquidos e gases (300 m³/min na v.1 e 600 m³/min na v.2).' },
+      { term: 'Overclock (1% a 250%)', desc: 'Ajusta a velocidade da máquina usando Fragmentos de Energia.' },
+      { term: 'Excesso', desc: 'Subproduto gerado pela linha que nenhuma outra máquina consome.' },
+      { term: 'Modo Foco', desc: 'Passar o mouse sobre um card destaca apenas as conexões ligadas a ele.' }
     ]
-  },
-  {
-    id: 'aba-energia',
-    title: 'Aba Energia — O que é e como usar',
-    oneLiner: 'Planeje usinas por meta de MW ou por quantidade de geradores, com combustível e água.',
-    scenes: [{ src: './assets/tutorial/tutorial-09-excesso.webp', alt: 'Painel de energia e status na base.' }],
-    legend: [
-      '<strong>O que faz:</strong> calcula geradores, consumo de combustível (/min), bombas d\'água e geração líquida.',
-      '<strong>Por energia (MW) ou Por geradores:</strong> escolha o modo no topo, informe a meta ou quantidade e selecione gerador e combustível.',
-      '<strong>Status neutro na base:</strong> mostra a energia gerada e consumida sem poluição visual.'
-    ],
-    tryAction: { label: 'Abrir Energia', mode: 'power' }
-  },
-  {
-    id: 'aba-mapa',
-    title: 'Aba Mapa — O que é e como usar',
-    oneLiner: 'Localize jazigos de recursos, discos rígidos e pontos de interesse em MASSAGE-2(A-B)b.',
-    scenes: [{ src: './assets/tutorial/tutorial-02-abas.webp', alt: 'Acesso à aba Mapa na barra lateral.' }],
-    legend: [
-      '<strong>O que faz:</strong> exibe o mapa interativo com mais de 2.500 pontos oficiais do jogo.',
-      '<strong>Filtros e busca:</strong> filtre por minério, pureza, cavernas ou discos rígidos na barra lateral.',
-      '<strong>Integração:</strong> use os jazigos encontrados para planejar sua extração na Produção ou Oficina.'
-    ],
-    tryAction: { label: 'Abrir Mapa', mode: 'map' }
-  },
-  {
-    id: 'aba-receitas',
-    title: 'Aba Receitas — O que é e como usar',
-    oneLiner: 'Compare receitas padrão e alternativas (ALT) com custo real em recursos brutos.',
-    scenes: [{ src: './assets/tutorial/tutorial-02-abas.webp', alt: 'Acesso à aba Receitas.' }],
-    legend: [
-      '<strong>O que faz:</strong> cataloga todas as receitas do Satisfactory 1.0+ com busca, filtros por máquina e favoritos.',
-      '<strong>Comparador:</strong> selecione receitas do mesmo produto para comparar máquinas, energia e subprodutos.',
-      '<strong>Atalho direto:</strong> clique em qualquer produto para abrir o planejamento em Produção.'
-    ],
-    tryAction: { label: 'Abrir Receitas', mode: 'recipes' }
-  },
-  {
-    id: 'aba-biblioteca',
-    title: 'Aba Biblioteca — O que é e como usar',
-    oneLiner: 'Enciclopédia completa de itens, máquinas, logística, ferramentas e fauna do jogo.',
-    scenes: [{ src: './assets/tutorial/tutorial-02-abas.webp', alt: 'Acesso à aba Biblioteca.' }],
-    legend: [
-      '<strong>O que faz:</strong> reúne dados oficiais de todos os itens e construções em português e inglês.',
-      '<strong>Categorias e favoritos:</strong> navegue por subcategorias coloridas, marque favoritos e acesse recentes.',
-      '<strong>Painel de detalhes:</strong> clique em qualquer card para ver receitas que produzem ou consomem o item.'
-    ],
-    tryAction: { label: 'Abrir Biblioteca', mode: 'library' }
-  },
-  {
-    id: 'aba-calculadora',
-    title: 'Aba Calculadora — O que é e como usar',
-    oneLiner: 'Calculadora comum com teclado físico + 6 ferramentas oficiais do jogo.',
-    scenes: [{ src: './assets/tutorial/tutorial-02-abas.webp', alt: 'Acesso à aba Calculadora.' }],
-    legend: [
-      '<strong>Calculadora:</strong> contas rápidas com teclado físico (+, -, *, /, %, Enter, Backspace, Esc).',
-      '<strong>Recursos, Produção e Energia:</strong> calcule máquinas (com overclock por tipo), saída/min, excesso e usinas.',
-      '<strong>Logística, SUPIMPA e Elevador Espacial:</strong> conte esteiras/divisores da linha atual, pontos do Triturador e progresso das 5 fases 1.0.'
-    ],
-    tryAction: { label: 'Abrir Calculadora', mode: 'calculator' }
   }
 ];
 
 const TUTORIAL_TOPICS = [
-  { id: 'interface', icon: '🧭', title: 'Interface', sub: 'Elementos gerais, barras e controles', slideIds: ['como-usar', 'abas'] },
-  { id: 'producao', icon: '🏭', title: 'Produção', sub: 'Montar linha, fluxo, esteiras e cards', slideIds: ['primeira-linha', 'como-ler-fluxo', 'etiquetas-esteiras', 'cards-maquina', 'nos-recurso', 'produto-final', 'status-excesso'] },
-  { id: 'energia', icon: '⚡', title: 'Energia', sub: 'Usinas por MW ou geradores e água', slideIds: ['aba-energia'] },
-  { id: 'oficina', icon: '🛠️', title: 'Oficina', sub: 'Portas, duplicar, atalhos e overclock', slideIds: ['modo-livre', 'navegacao-foco'] },
-  { id: 'mapa', icon: '🗺️', title: 'Mapa', sub: 'Jazigos, filtros e pontos do mapa', slideIds: ['aba-mapa'] },
-  { id: 'receitas', icon: '📜', title: 'Receitas', sub: 'Padrão, ALT, comparador e favoritos', slideIds: ['aba-receitas'] },
-  { id: 'biblioteca', icon: '📚', title: 'Biblioteca', sub: 'Itens, máquinas e detalhes oficiais', slideIds: ['aba-biblioteca'] },
-  { id: 'calculadora', icon: '🧮', title: 'Calculadora', sub: 'Numérica, Recursos, Logística e SUPIMPA', slideIds: ['aba-calculadora'] },
-  { id: 'projetos-conta', icon: '📁', title: 'Projetos e Conta', sub: 'Salvar na nuvem, reports e novidades', slideIds: ['conta-projetos-reportar', 'patch-notes'] },
-  { id: 'atalhos-glossario', icon: '⌨️', title: 'Atalhos e Glossário', sub: 'Atalhos rápidos e termos do jogo', slideIds: ['glossario'] }
+  { id: 'interface', icon: '🧭', title: 'Interface', sub: 'Áreas da tela, abas e barras de controle', slideIds: ['como-usar', 'abas'] },
+  { id: 'producao', icon: '🏭', title: 'Produção', sub: 'Montar linha, fluxo, esteiras, cards e excesso', slideIds: ['primeira-linha', 'como-ler-fluxo', 'etiquetas-esteiras', 'cards-maquina', 'nos-recurso', 'produto-final', 'status-excesso'] },
+  { id: 'energia', icon: '⚡', title: 'Energia', sub: 'Usinas por MW ou geradores, combustível e água', slideIds: ['energia-o-que-e', 'energia-como-usar'] },
+  { id: 'oficina', icon: '🛠️', title: 'Oficina', sub: 'Montagem livre, portas, atalhos e Visão 3D', slideIds: ['oficina-o-que-e', 'oficina-conexoes-atalhos', 'navegacao-foco'] },
+  { id: 'mapa', icon: '🗺️', title: 'Mapa', sub: 'Jazigos oficiais, pureza, filtros e discos rígidos', slideIds: ['mapa-o-que-e', 'mapa-como-usar'] },
+  { id: 'receitas', icon: '📜', title: 'Receitas', sub: 'Padrão, ALT, comparação e favoritos', slideIds: ['receitas-o-que-e', 'receitas-como-usar'] },
+  { id: 'biblioteca', icon: '📚', title: 'Biblioteca', sub: 'Enciclopédia por categorias e detalhes oficiais', slideIds: ['biblioteca-o-que-e', 'biblioteca-como-usar'] },
+  { id: 'calculadora', icon: '🧮', title: 'Calculadora', sub: 'Numérica, Recursos, Logística, SUPIMPA e Elevador', slideIds: ['calculadora-geral-recursos', 'calculadora-logistica-supimpa'] },
+  { id: 'projetos-conta', icon: '📁', title: 'Projetos e Conta', sub: 'Salvar, abrir na aba Projetos, reports e novidades', slideIds: ['projetos-passo-1-salvar', 'projetos-passo-2-gerenciar', 'patch-notes'] },
+  { id: 'atalhos-glossario', icon: '⌨️', title: 'Atalhos e Glossário', sub: 'Comandos rápidos e termos oficiais do jogo', slideIds: ['glossario'] }
 ];
 
 const TutorialState = {
@@ -537,21 +668,28 @@ function renderTutorialSlide() {
   const footer = document.getElementById('tutorial-footer');
   if (!body || !footer) return;
 
-  // Tela inicial: grade de tópicos de interesse
+  // Tela inicial: grade de tópicos em cards definidos
   if (!TutorialState.activeTopicId) {
     body.innerHTML = `
       <div class="tut-card-header">
         <h4 class="tut-slide-title">Escolha um tópico</h4>
-        <p class="tut-one-liner">Veja apenas o passo a passo do que você precisa agora.</p>
+        <p class="tut-one-liner">Cada aba possui seu guia passo a passo com prints reais da ferramenta.</p>
       </div>
       <div class="tut-topics-grid">
-        ${TUTORIAL_TOPICS.map(t => `
-          <button type="button" class="tut-topic-card" onclick="openTutorialTopic('${t.id}')">
-            <span class="tut-topic-icon">${t.icon}</span>
-            <strong class="tut-topic-title">${t.title}</strong>
-            <span class="tut-topic-sub">${t.sub} (${t.slideIds.length})</span>
-          </button>
-        `).join('')}
+        ${TUTORIAL_TOPICS.map((t) => {
+          const count = t.slideIds.length;
+          const label = count === 1 ? '1 página' : `${count} páginas`;
+          return `
+            <button type="button" class="tut-topic-card" onclick="openTutorialTopic('${t.id}')">
+              <div class="tut-topic-head">
+                <span class="tut-topic-icon-box" aria-hidden="true">${t.icon}</span>
+                <span class="tut-topic-pages">${label}</span>
+              </div>
+              <strong class="tut-topic-title">${t.title}</strong>
+              <span class="tut-topic-sub">${t.sub}</span>
+            </button>
+          `;
+        }).join('')}
       </div>
     `;
     footer.innerHTML = `
@@ -572,11 +710,11 @@ function renderTutorialSlide() {
   const indexDrawerHtml = TutorialState.indexOpen ? `
     <div class="tut-index-drawer" role="navigation" aria-label="Índice do tutorial">
       <div class="tut-index-head">
-        <strong>Ir direto para um tópico</strong>
+        <strong>Ir direto para uma página</strong>
         <button type="button" class="tut-index-close" onclick="toggleTutorialIndex()" aria-label="Fechar índice">✕</button>
       </div>
       <div class="tut-index-list">
-        ${TUTORIAL_SLIDES.map((s, i) => `
+        ${activeSlides.map((s, i) => `
           <button type="button" class="tut-index-btn ${i === idx ? 'active' : ''}" onclick="goToTutorialStep(${i})">
             <span class="tut-index-num">${i + 1}</span>
             <span>${s.title}</span>
@@ -613,9 +751,9 @@ function renderTutorialSlide() {
     const mediaHtml = activeScene ? `
       <div class="tut-media-col">
         ${sceneTabsHtml}
-        <div class="tut-figure-box" onclick="openImageLightbox('${activeScene.src}?v=32')" title="Clique para ampliar a imagem">
+        <div class="tut-figure-box" onclick="openImageLightbox('${activeScene.src}?v=${TUTORIAL_IMG_VERSION}')" title="Clique para ampliar a imagem">
           <img
-            src="${activeScene.src}?v=32"
+            src="${activeScene.src}?v=${TUTORIAL_IMG_VERSION}"
             alt="${activeScene.alt}"
             loading="lazy"
             decoding="async"
@@ -703,7 +841,7 @@ function renderTutorialSlide() {
     <button type="button" class="btn-tutorial-nav" onclick="prevTutorialStep()" ${isFirst ? 'disabled' : ''}>
       ⬅ Anterior
     </button>
-    <div class="tutorial-dots" role="tablist" aria-label="Passos do tópico">
+    <div class="tutorial-dots" role="tablist" aria-label="Páginas do tópico">
       ${activeSlides.map((s, i) => `
         <button
           type="button"
