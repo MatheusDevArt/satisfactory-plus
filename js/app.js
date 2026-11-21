@@ -51,7 +51,7 @@ const AppState = {
   // Aba 2: Geração de Energia (MW)
   power: {
     mounted: false,
-    calcMode: 'by_fuel', // 'by_fuel' | 'by_mw' | 'by_generators'
+    calcMode: 'by_mw', // 'by_mw' | 'by_generators'
     generatorId: null,
     fuelItemId: null,
     fuelInputMode: 'miner',
@@ -60,18 +60,27 @@ const AppState = {
     purity: 'normal',
     minerCount: 1,
     minerClock: 100,
-    targetMW: null,
-    generatorCount: 1,
+    targetMW: '',
+    generatorCount: '',
     manualGenerators: null,
     clockPercent: 100,
     waterExtractorClock: 100,
     manualWaterPumps: null
   },
 
-  // Aba 3: Construção Livre (Sandbox + Check)
+  // Aba 3: Oficina (Construção manual + Validação)
   free: {
     blocks: [],
     customEdges: [],
+    selectedIds: [],
+    clipboard: null,
+    undoStack: [],
+    redoStack: [],
+    searchQuery: '',
+    filterMachineType: 'all',
+    filterAlertOnly: false,
+    groupBy: 'none', // 'none' | 'machine' | 'stage'
+    expandedBlockId: null,
     checkPerformed: false,
     lastCheckReport: null
   },
@@ -134,57 +143,45 @@ const AppState = {
 
   // Aba 7: Calculadora (Suite completa de cálculos do jogo + Numérica)
   calculator: {
-    tool: 'machines', // 'machines' | 'clock' | 'energy' | 'transport' | 'storage' | 'build' | 'sink' | 'numeric'
-    // Máquinas para X/min
-    prodItemId: 'Desc_IronPlateReinforced_C',
-    prodRecipeId: '',
-    prodTargetRate: 10,
-    prodClock: 100,
-    prodSloops: 0,
-    // Clock & Overclock
-    clockMachineId: 'Build_AssemblerMk1_C',
-    clockRecipeId: '',
-    clockCount: 1,
-    clockPercent: 100,
-    clockSloops: 0,
-    // Energia
-    energySource: 'generator', // 'generator' | 'extractor'
-    energyResourceId: 'Desc_Coal_C',
-    minerCount: 1,
-    minerMark: 'mk2',
-    minerPurity: 'normal',
-    minerClock: 100,
-    genId: 'Build_GeneratorCoal_C',
-    genCount: 8,
-    genFuelId: 'Desc_Coal_C',
-    genClock: 100,
-    genMarginPct: 0,
-    // Esteiras & Tubos
-    transportKind: 'belt', // 'belt' | 'pipe'
-    transportRate: 480,
-    transportTierId: '',
-    // Armazenamento
-    storageId: 'Build_StorageContainerMk1_C',
-    storageItemId: 'Desc_IronPlate_C',
-    storageRate: 60,
-    storageCount: 1,
-    // Materiais de construção
-    buildList: [{ id: 'Build_ConstructorMk1_C', count: 10 }],
-    buildSelectedId: 'Build_ConstructorMk1_C',
-    buildAddCount: 10,
-    // Triturador SUPIMPA & Fases do Elevador Espacial
-    sinkItemId: 'Desc_ModularFrameHeavy_C',
-    sinkRate: 10,
-    elevatorPhase: 1,
-    elevatorTargetHours: 2,
-    // Numérica
+    tool: 'numeric', // 'numeric' | 'resources' | 'production' | 'energy' | 'logistics' | 'sink' | 'elevator'
+    // 6.1 Calculadora (Numérica pura)
     expr: '',
     exprResult: '0',
     numHistory: [],
-    convValue: 60,
-    convFrom: 'min', // 'min' | 'sec' | 'hour'
-    convStackSize: 100,
-    // Histórico / Fixados
+    // 6.2 Recursos (nada pré-definido)
+    resItemId: '',
+    resRecipeId: '',
+    resTargetRate: '',
+    resMachineClocks: {}, // machineId -> 100..250
+    // 6.3 Produção (nada pré-definido, sem geradores)
+    prodMachineId: '',
+    prodRecipeId: '',
+    prodMachineCount: '',
+    prodClock: 100,
+    // 6.4 Energia (nada pré-definido)
+    energyMode: 'by_mw', // 'by_mw' | 'by_generators'
+    energyTargetMw: '',
+    genId: '',
+    genFuelId: '',
+    genCount: '',
+    genClock: 100,
+    genMarginPct: 0,
+    // 6.7 Logística (Modo A linha existente | Modo B avulso)
+    logMode: 'graph', // 'graph' | 'standalone'
+    logKind: 'solid', // 'solid' | 'fluid'
+    logItemId: '',
+    logAction: 'split', // 'split' | 'merge'
+    logTotalRate: '',
+    logBranches: '',
+    logLengthMeters: '',
+    // 6.5 Triturador SUPIMPA (nada pré-definido)
+    sinkItemId: '',
+    sinkQty: '',
+    sinkRate: '',
+    // 6.6 Elevador Espacial (fases 1-5 + progresso entregue por item)
+    elevatorPhase: 1,
+    elevatorDelivered: {}, // `${phase}_${itemId}` -> number
+    // Recentes & Fixados
     recents: []
   },
 
@@ -734,7 +731,20 @@ function initInfiniteCanvasEvents() {
       return;
     }
 
-    // 3. Clique no fundo vazio para mover a câmera (Pan)
+    // 3. Clique no fundo vazio: Espaço+arrastar = Pan; sem Espaço na Oficina = seleção por retângulo
+    if (AppState.mode === 'free' && !AppState.canvas.spacePressed) {
+      const rect = viewport.getBoundingClientRect();
+      AppState.canvas.marquee = {
+        startX: e.clientX - rect.left,
+        startY: e.clientY - rect.top,
+        currX: e.clientX - rect.left,
+        currY: e.clientY - rect.top,
+        moved: false
+      };
+      AppState.canvas.movedDuringDrag = false;
+      return;
+    }
+
     AppState.canvas.isPanning = true;
     AppState.canvas.movedDuringDrag = false;
     AppState.canvas.startX = e.clientX - AppState.canvas.x;
@@ -744,7 +754,13 @@ function initInfiniteCanvasEvents() {
 
   viewport.addEventListener('contextmenu', (e) => {
     if (AppState.mode !== 'free') return;
-    if (e.target.closest('.magnific-card, button, input, select, .hud-btn')) return;
+    if (e.target.closest('button, input, select, .hud-btn')) return;
+    const cardEl = e.target.closest('.magnific-card');
+    if (cardEl && cardEl.id) {
+      e.preventDefault();
+      openCardContextMenu(e.clientX, e.clientY, cardEl.id);
+      return;
+    }
     e.preventDefault();
     const worldPos = clientToWorld(e.clientX, e.clientY);
     openCanvasContextMenu(e.clientX, e.clientY, worldPos);
@@ -808,6 +824,34 @@ function initInfiniteCanvasEvents() {
       return;
     }
 
+    // Seleção por retângulo (marquee) na Oficina
+    if (AppState.canvas.marquee) {
+      const m = AppState.canvas.marquee;
+      const rect = viewport.getBoundingClientRect();
+      m.currX = e.clientX - rect.left;
+      m.currY = e.clientY - rect.top;
+      if (Math.abs(m.currX - m.startX) > 6 || Math.abs(m.currY - m.startY) > 6) {
+        m.moved = true;
+        AppState.canvas.movedDuringDrag = true;
+        let boxEl = document.getElementById('canvas-marquee-box');
+        if (!boxEl) {
+          boxEl = document.createElement('div');
+          boxEl.id = 'canvas-marquee-box';
+          boxEl.className = 'canvas-marquee-box';
+          viewport.appendChild(boxEl);
+        }
+        const left = Math.min(m.startX, m.currX);
+        const top = Math.min(m.startY, m.currY);
+        const width = Math.abs(m.currX - m.startX);
+        const height = Math.abs(m.currY - m.startY);
+        boxEl.style.left = `${left}px`;
+        boxEl.style.top = `${top}px`;
+        boxEl.style.width = `${width}px`;
+        boxEl.style.height = `${height}px`;
+      }
+      return;
+    }
+
     // Pan da câmera (com requestAnimationFrame)
     if (!AppState.canvas.isPanning) return;
     const nx = e.clientX - AppState.canvas.startX;
@@ -826,6 +870,36 @@ function initInfiniteCanvasEvents() {
   });
 
   window.addEventListener('mouseup', (e) => {
+    if (AppState.canvas.marquee) {
+      const m = AppState.canvas.marquee;
+      AppState.canvas.marquee = null;
+      document.getElementById('canvas-marquee-box')?.remove();
+      if (m.moved) {
+        const rect = viewport.getBoundingClientRect();
+        const xMin = Math.min(m.startX, m.currX) + rect.left;
+        const xMax = Math.max(m.startX, m.currX) + rect.left;
+        const yMin = Math.min(m.startY, m.currY) + rect.top;
+        const yMax = Math.max(m.startY, m.currY) + rect.top;
+        const picked = [];
+        document.querySelectorAll('#spaces-nodes .magnific-card[data-block-id]').forEach(el => {
+          const bid = el.getAttribute('data-block-id');
+          if (!bid) return;
+          const r = el.getBoundingClientRect();
+          const intersects = !(r.right < xMin || r.left > xMax || r.bottom < yMin || r.top > yMax);
+          if (intersects) picked.push(bid);
+        });
+        AppState.free.selectedIds = picked;
+        AppState.canvas.suppressClickUntil = Date.now() + 140;
+        renderAll(false);
+      } else {
+        if (AppState.free.selectedIds && AppState.free.selectedIds.length > 0) {
+          AppState.free.selectedIds = [];
+          renderAll(false);
+        }
+      }
+      return;
+    }
+
     if (AppState.canvas.wiring) {
       const w = AppState.canvas.wiring;
       const targetCard = e.target && e.target.closest ? e.target.closest('.magnific-card') : null;
@@ -1026,7 +1100,7 @@ function mountPowerFlow() {
 }
 
 function getShardsForClock(clockPct) {
-  const c = Math.max(1, Math.min(250, Number(clockPct) || 100));
+  const c = Math.max(100, Math.min(250, Number(clockPct) || 100));
   if (c <= 100) return 0;
   if (c <= 150) return 1;
   if (c <= 200) return 2;
@@ -1034,14 +1108,14 @@ function getShardsForClock(clockPct) {
 }
 
 /**
- * Componente único reutilizável de Overclock em slide (1% a 250%)
- * com botões -/+, atalhos 100/150/200/250% e contador de Power Shards.
+ * Componente único reutilizável de Overclock em slide (100% a 250%)
+ * com botões -/+, atalhos 100/150/200/250% e contador de Fragmentos de Energia.
  */
-function renderOverclockSliderHtml({ value = 100, onChangeExpr, label = 'Overclock (%)' }) {
-  const c = Math.max(1, Math.min(250, Math.round(Number(value) || 100)));
+function renderOverclockSliderHtml({ value = 100, onChangeExpr, label = 'Overclock' }) {
+  const c = Math.max(100, Math.min(250, Math.round(Number(value) || 100)));
   const shards = getShardsForClock(c);
-  const shardLabel = shards === 0 ? '0 shards' : `${shards} shard${shards > 1 ? 's' : ''}`;
-  const setVal = (v) => onChangeExpr.replace(/__VAL__/g, String(v));
+  const shardLabel = shards === 0 ? '0 fragmentos' : `${shards} fragmento${shards > 1 ? 's' : ''}`;
+  const setVal = (v) => onChangeExpr.replace(/__VAL__/g, String(Math.max(100, Math.min(250, v))));
 
   return `
     <div class="oc-slider-wrap">
@@ -1049,20 +1123,20 @@ function renderOverclockSliderHtml({ value = 100, onChangeExpr, label = 'Overclo
         <span class="oc-slider-lbl">${label}</span>
         <span class="oc-slider-meta">
           <strong class="oc-slider-val">${c}%</strong>
-          <span class="oc-shard-pill ${shards > 0 ? 'has-shards' : ''}" title="Power Shards necessários">💎 ${shardLabel}</span>
+          <span class="oc-shard-pill ${shards > 0 ? 'has-shards' : ''}" title="Fragmentos de Energia necessários">💎 ${shardLabel}</span>
         </span>
       </div>
       <div class="oc-slider-row">
-        <button type="button" class="oc-step-btn" onclick="${setVal(Math.max(1, c - 5))}" title="-5%">−</button>
+        <button type="button" class="oc-step-btn" onclick="${setVal(Math.max(100, c - 5))}" title="-5%">−</button>
         <input
           type="range"
           class="oc-range-input"
-          min="1"
+          min="100"
           max="250"
           step="1"
           value="${c}"
-          oninput="const p=this.closest('.oc-slider-wrap'); if(p){ const v=Number(this.value); const ve=p.querySelector('.oc-slider-val'); if(ve) ve.textContent=v+'%'; const sp=p.querySelector('.oc-shard-pill'); if(sp){ const s=getShardsForClock(v); sp.textContent='💎 '+s+' shard'+(s===1?'':'s'); sp.classList.toggle('has-shards', s>0); } }"
-          onchange="${onChangeExpr.replace(/__VAL__/g, 'Number(this.value)')}"
+          oninput="const p=this.closest('.oc-slider-wrap'); if(p){ const v=Math.max(100,Number(this.value)||100); const ve=p.querySelector('.oc-slider-val'); if(ve) ve.textContent=v+'%'; const sp=p.querySelector('.oc-shard-pill'); if(sp){ const s=getShardsForClock(v); sp.textContent='💎 '+s+' fragmento'+(s===1?'':'s'); sp.classList.toggle('has-shards', s>0); } }"
+          onchange="${onChangeExpr.replace(/__VAL__/g, 'Math.max(100, Math.min(250, Number(this.value)||100))')}"
         />
         <button type="button" class="oc-step-btn" onclick="${setVal(Math.min(250, c + 5))}" title="+5%">+</button>
       </div>
@@ -1073,6 +1147,118 @@ function renderOverclockSliderHtml({ value = 100, onChangeExpr, label = 'Overclo
       </div>
     </div>
   `;
+}
+
+// 3.4 Raio de Overclock Global (desligado -> 150% -> 200% -> 250% -> desligado)
+const _globalOverclockState = {
+  level: 0, // 0 = desligado | 150 | 200 | 250
+  saved: null // snapshot dos clocks individuais anteriores
+};
+
+function syncGlobalOverclockBtnUI() {
+  const btn = document.getElementById('btn-global-overclock');
+  const badge = document.getElementById('global-oc-badge');
+  if (!btn || !badge) return;
+  const lvl = _globalOverclockState.level;
+  btn.classList.toggle('active', lvl > 0);
+  if (lvl > 0) {
+    const labelMap = { 150: '1,5x', 200: '2x', 250: '2,5x' };
+    badge.textContent = labelMap[lvl] || `${lvl}%`;
+    badge.classList.remove('hidden');
+    btn.title = `Overclock global: ${lvl}% (clique para alternar)`;
+  } else {
+    badge.textContent = '';
+    badge.classList.add('hidden');
+    btn.title = 'Overclock global: Desligado (clique para 150% / 200% / 250%)';
+  }
+}
+
+function cycleGlobalOverclock() {
+  const order = [0, 150, 200, 250];
+  const nextIdx = (order.indexOf(_globalOverclockState.level) + 1) % order.length;
+  const nextLevel = order[nextIdx];
+
+  if (_globalOverclockState.level === 0 && nextLevel > 0) {
+    // Salva snapshot dos clocks individuais atuais antes de aplicar o global
+    _globalOverclockState.saved = {
+      pullSteps: JSON.parse(JSON.stringify(AppState.pull.stepSettings || {})),
+      pullMiners: JSON.parse(JSON.stringify(AppState.pull.minerSettings || {})),
+      pushSteps: JSON.parse(JSON.stringify(AppState.push.stepSettings || {})),
+      pushInputs: (AppState.push.inputs || []).map(i => ({ id: i.id, clockPercent: i.clockPercent || 100 })),
+      power: {
+        clockPercent: AppState.power.clockPercent || 100,
+        minerClock: AppState.power.minerClock || 100,
+        waterExtractorClock: AppState.power.waterExtractorClock || 100
+      },
+      freeBlocks: (AppState.free.blocks || []).map(b => ({ id: b.id, clockPercent: b.clockPercent || 100 }))
+    };
+  }
+
+  _globalOverclockState.level = nextLevel;
+
+  if (nextLevel === 0 && _globalOverclockState.saved) {
+    // Restaura os valores individuais anteriores
+    const sv = _globalOverclockState.saved;
+    AppState.pull.stepSettings = sv.pullSteps || {};
+    AppState.pull.minerSettings = sv.pullMiners || {};
+    AppState.push.stepSettings = sv.pushSteps || {};
+    (AppState.push.inputs || []).forEach(inp => {
+      const found = (sv.pushInputs || []).find(x => x.id === inp.id);
+      if (found) inp.clockPercent = found.clockPercent;
+    });
+    if (sv.power) {
+      AppState.power.clockPercent = sv.power.clockPercent;
+      AppState.power.minerClock = sv.power.minerClock;
+      AppState.power.waterExtractorClock = sv.power.waterExtractorClock;
+    }
+    (AppState.free.blocks || []).forEach(b => {
+      const found = (sv.freeBlocks || []).find(x => x.id === b.id);
+      if (found) b.clockPercent = found.clockPercent;
+    });
+    _globalOverclockState.saved = null;
+  } else if (nextLevel > 0) {
+    // Aplica o overclock global a todas as máquinas que suportam overclock
+    if (AppState.mode === 'production') {
+      if (AppState.production.driver === 'product' && AppState.pull.targets.length > 0) {
+        const plan = Solver.solveProductionChain({
+          targets: AppState.pull.targets,
+          recipeOverrides: AppState.pull.recipeOverrides,
+          stepSettings: AppState.pull.stepSettings,
+          minerSettings: AppState.pull.minerSettings
+        });
+        (plan?.stages || []).forEach(st => {
+          if (!AppState.pull.stepSettings[st.itemId]) AppState.pull.stepSettings[st.itemId] = {};
+          AppState.pull.stepSettings[st.itemId].clockPercent = nextLevel;
+        });
+        (plan?.rawResources || []).forEach(r => {
+          if (!AppState.pull.minerSettings[r.itemId]) AppState.pull.minerSettings[r.itemId] = { minerMark: 'mk1', purity: 'normal' };
+          AppState.pull.minerSettings[r.itemId].clockPercent = nextLevel;
+        });
+      } else if (AppState.production.driver === 'input') {
+        (AppState.push.inputs || []).forEach(inp => { inp.clockPercent = nextLevel; });
+        const plan = Solver.calculatePushChain(AppState.push.inputs, AppState.push.targetItemId, AppState.push.recipeOverrides, AppState.push.stepSettings);
+        (plan?.stages || []).forEach(st => {
+          if (!AppState.push.stepSettings[st.itemId]) AppState.push.stepSettings[st.itemId] = {};
+          AppState.push.stepSettings[st.itemId].clockPercent = nextLevel;
+        });
+      }
+    } else if (AppState.mode === 'power') {
+      AppState.power.clockPercent = nextLevel;
+      AppState.power.minerClock = nextLevel;
+      AppState.power.waterExtractorClock = nextLevel;
+      AppState.power.manualGenerators = null;
+      AppState.power.manualWaterPumps = null;
+    } else if (AppState.mode === 'free') {
+      (AppState.free.blocks || []).forEach(b => {
+        if (b.blockType === 'machine' || b.blockType === 'extractor' || b.blockType === 'generator') {
+          b.clockPercent = nextLevel;
+        }
+      });
+    }
+  }
+
+  syncGlobalOverclockBtnUI();
+  renderAll(false);
 }
 
 function updateTopRightFloatingActions() {
@@ -1233,10 +1419,122 @@ function updateTopRightFloatingActions() {
 }
 
 /* ============================================================================
+ * 4.6 SELETOR DE RECEITAS COM ÍCONES REAIS E BUSCA (PRODUÇÃO, OFICINA, CALCULADORA)
+ * ========================================================================== */
+
+function renderRecipePickerTriggerHtml(recipe, availableRecipes, onSelectCallbackExpr) {
+  const count = Array.isArray(availableRecipes) ? availableRecipes.length : 0;
+  const key = `rp_${uid()}`;
+  window._recipePickerRegistry = window._recipePickerRegistry || {};
+  window._recipePickerRegistry[key] = {
+    recipes: availableRecipes || [],
+    selectedId: recipe?.id || '',
+    onSelectExpr: onSelectCallbackExpr
+  };
+  if (!recipe) {
+    return `
+      <button type="button" class="rp-trigger-btn" onclick="openRecipePickerModal('${key}')">
+        <span class="rp-trigger-placeholder">Escolher receita (${count})</span>
+        <span class="calc-pick-caret">▾</span>
+      </button>
+    `;
+  }
+  const m = Solver.getMachine(recipe.machine || recipe.producedIn);
+  const inIcons = (recipe.ingredients || []).map(i => renderEntityIcon(Solver.getItem(i.item), 18)).join('');
+  const outIcons = (recipe.products || []).map(p => renderEntityIcon(Solver.getItem(p.item), 18)).join('');
+  return `
+    <button type="button" class="rp-trigger-btn" onclick="openRecipePickerModal('${key}')" title="Clique para trocar a receita">
+      <div class="rp-trigger-main">
+        ${m ? renderEntityIcon(m, 22) : ''}
+        <div class="rp-trigger-text">
+          <strong class="rp-trigger-name">${recipe.isAlternate ? '<span class="rp-alt-tag">ALT</span> ' : ''}${libEsc(recipe.cleanName || recipe.name)}</strong>
+          <span class="rp-trigger-io">${inIcons} <span class="rp-arrow">→</span> ${outIcons}</span>
+        </div>
+      </div>
+      <span class="calc-pick-caret">▾</span>
+    </button>
+  `;
+}
+
+function openRecipePickerModal(registryKey) {
+  const entry = window._recipePickerRegistry?.[registryKey];
+  if (!entry) return;
+  let modal = document.getElementById('recipe-picker-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'recipe-picker-modal';
+    modal.className = 'modal-backdrop hidden';
+    modal.onclick = (e) => { if (e.target === modal) modal.classList.add('hidden'); };
+    document.body.appendChild(modal);
+  }
+  window._activeRecipePickerKey = registryKey;
+  modal.innerHTML = `
+    <div class="modal-card rp-modal-card">
+      <div class="modal-header">
+        <h3>Escolher Receita (${entry.recipes.length})</h3>
+        <button type="button" class="btn-icon-close" onclick="document.getElementById('recipe-picker-modal').classList.add('hidden')">✕</button>
+      </div>
+      <div class="calc-picker-search-wrap">
+        <input type="text" id="rp-search-input" class="sidebar-input" placeholder="Buscar receita, ingrediente ou máquina..." oninput="renderRecipePickerList(this.value)" />
+      </div>
+      <div id="rp-modal-list" class="rp-modal-list"></div>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+  renderRecipePickerList('');
+  setTimeout(() => document.getElementById('rp-search-input')?.focus(), 30);
+}
+
+function renderRecipePickerList(query) {
+  const listEl = document.getElementById('rp-modal-list');
+  const entry = window._recipePickerRegistry?.[window._activeRecipePickerKey];
+  if (!listEl || !entry) return;
+  const q = Solver.normalizeText(query || '');
+  const filtered = (entry.recipes || []).filter(r => {
+    if (!q) return true;
+    const m = Solver.getMachine(r.machine || r.producedIn);
+    const io = [...(r.ingredients || []), ...(r.products || [])].map(x => Solver.getItem(x.item)?.name || '').join(' ');
+    return Solver.normalizeText(`${r.cleanName || r.name} ${r.nameEn || ''} ${m?.name || ''} ${io}`).includes(q);
+  });
+
+  listEl.innerHTML = filtered.map(r => {
+    const m = Solver.getMachine(r.machine || r.producedIn);
+    const mw = r.avgPowerMw ?? m?.powerConsumption ?? 0;
+    const isSel = r.id === entry.selectedId;
+    const ingsHtml = (r.ingredients || []).map(i => {
+      const it = Solver.getItem(i.item);
+      return `<span class="rp-io-pill">${renderEntityIcon(it, 18)} ${fmt(i.ratePerMin, 1)}/min</span>`;
+    }).join('');
+    const prodsHtml = (r.products || []).map(p => {
+      const it = Solver.getItem(p.item);
+      return `<span class="rp-io-pill out">${renderEntityIcon(it, 18)} ${fmt(p.ratePerMin, 1)}/min</span>`;
+    }).join('');
+    return `
+      <button type="button" class="rp-option-card ${isSel ? 'is-selected' : ''}" onclick="selectRecipeFromPicker('${r.id}')">
+        <div class="rp-opt-top">
+          <span class="rp-opt-title">${r.isAlternate ? '<span class="rp-alt-tag">ALT</span> ' : ''}${libEsc(r.cleanName || r.name)}</span>
+          <span class="rp-opt-meta">${m ? renderEntityIcon(m, 18) : ''} ${libEsc(m?.name || '')} · ⚡ ${fmt(mw, 0)} MW</span>
+        </div>
+        <div class="rp-opt-flow">
+          <div class="rp-opt-side">${ingsHtml}</div>
+          <span class="rp-arrow">→</span>
+          <div class="rp-opt-side">${prodsHtml}</div>
+        </div>
+      </button>
+    `;
+  }).join('') || '<div class="calc-empty-note">Nenhuma receita encontrada.</div>';
+}
+
+function selectRecipeFromPicker(recipeId) {
+  const entry = window._recipePickerRegistry?.[window._activeRecipePickerKey];
+  document.getElementById('recipe-picker-modal')?.classList.add('hidden');
+  if (!entry || !entry.onSelectExpr) return;
+  const fn = new Function('__RID__', entry.onSelectExpr.replace(/__RID__/g, '__RID__'));
+  fn(recipeId);
+}
+
+/* ============================================================================
  * ABA 1 UNIFICADA: 🏭 PRODUÇÃO
- * O sentido do cálculo é definido automaticamente pelo que o usuário coloca primeiro:
- * - Se adicionar uma Entrada/Mineradora primeiro -> Calcula da Entrada para o Produto
- * - Se adicionar um Produto Final primeiro -> Calcula do Produto para as Máquinas e Mineradoras
  * ========================================================================== */
 
 function renderProductionMode(sidebarEl, emptyOverlay, autoFit) {
@@ -1251,38 +1549,45 @@ function renderProductionMode(sidebarEl, emptyOverlay, autoFit) {
 
   const driver = AppState.production.driver;
 
-  // ESTADO INICIAL: 3 opções (Recursos, Máquinas, Produtos)
+  // 4.5 ESTADO INICIAL: "Escolha um produto" separado em cards por categoria da Biblioteca
   if (!driver) {
+    const allProds = Solver.getAllItems().filter(it => (Solver.indexes.recipesByProduct.get(it.id) || []).length > 0);
+    const catMap = new Map();
+    allProds.forEach(it => {
+      const cat = it.category || 'Outros';
+      if (!catMap.has(cat)) catMap.set(cat, []);
+      catMap.get(cat).push(it);
+    });
+    const catEntries = Array.from(catMap.entries()).sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'));
+    const colors = (typeof LIB_CATEGORY_COLORS !== 'undefined') ? LIB_CATEGORY_COLORS : {};
+
     sidebarEl.innerHTML = `
       <div class="sidebar-step-block">
         <div class="step-header-row">
           <span class="step-badge">PRODUÇÃO</span>
-          <h4>Como começar?</h4>
+          <h4>Escolha um produto</h4>
         </div>
-
-        <button class="empty-step-cta" onclick="openPushAddInputModal()">
-          <span class="cta-plus">⛏️</span>
+        <button type="button" class="empty-step-cta" style="margin-bottom:10px;" onclick="openPullAddTargetModal()">
+          <span class="cta-plus">🔍</span>
           <div>
-            <strong>Recursos</strong>
-            <span>Comece pelo recurso ou mineradora</span>
+            <strong>Buscar qualquer produto</strong>
+            <span>${allProds.length} itens fabricáveis</span>
           </div>
         </button>
-
-        <button class="empty-step-cta" style="margin-top:6px;" onclick="openProductionMachinePicker()">
-          <span class="cta-plus">🏭</span>
-          <div>
-            <strong>Máquinas</strong>
-            <span>Escolha a máquina e a receita</span>
-          </div>
-        </button>
-
-        <button class="empty-step-cta" style="margin-top:6px;" onclick="openPullAddTargetModal()">
-          <span class="cta-plus">🎯</span>
-          <div>
-            <strong>Produtos</strong>
-            <span>Escolha o produto final e a meta/min</span>
-          </div>
-        </button>
+        <div class="prod-cat-cards-list">
+          ${catEntries.map(([cat, list]) => {
+            const color = colors[cat] || '#2563EB';
+            const sample = list[0];
+            return `
+              <button type="button" class="prod-cat-card" style="--cat-color:${color};" onclick="openPullAddTargetModal('${cat.replace(/'/g, "\\'")}')">
+                <span class="prod-cat-dot" style="background:${color};"></span>
+                ${sample ? renderEntityIcon(sample, 24) : ''}
+                <span class="prod-cat-name">${libEsc(cat)}</span>
+                <span class="prod-cat-cnt">${list.length}</span>
+              </button>
+            `;
+          }).join('')}
+        </div>
       </div>
     `;
 
@@ -1442,29 +1747,6 @@ function renderPushFlowInsideProduction(sidebarEl, emptyOverlay, autoFit) {
 }
 
 function renderPullFlowInsideProduction(sidebarEl, emptyOverlay, autoFit) {
-  const targetsHtml = AppState.pull.targets.map(t => {
-    const item = Solver.getItem(t.itemId);
-    if (!item) return '';
-    return `
-      <div class="sidebar-config-card">
-        <div class="config-card-top">
-          <div class="config-item-title" onclick="openChangePullTargetModal('${t.id}')" title="Clique para trocar o produto">
-            ${renderEntityIcon(item, 40)}
-            <div>
-              <strong>${item.name}</strong>
-              <span class="config-rate-badge">Meta: ${fmt(t.rate, 1)} un/min</span>
-            </div>
-          </div>
-          <button class="btn-icon-danger" onclick="removePullTarget('${t.id}')" title="Remover produto">✕</button>
-        </div>
-        <div class="field-group">
-          <label>Quantidade Desejada (un/min)</label>
-          <input type="number" class="sidebar-input" min="0.5" step="1" value="${t.rate}" onchange="updatePullTargetRate('${t.id}', this.value)" />
-        </div>
-      </div>
-    `;
-  }).join('');
-
   let pullResult = null;
   if (AppState.pull.targets.length > 0) {
     pullResult = Solver.solveProductionChain({
@@ -1476,62 +1758,58 @@ function renderPullFlowInsideProduction(sidebarEl, emptyOverlay, autoFit) {
     });
   }
 
+  // 4.4 Primeiro card: Produto Final com quantidade E seletor de receita com ícones
+  const targetsHtml = AppState.pull.targets.map(t => {
+    const item = Solver.getItem(t.itemId);
+    if (!item) return '';
+    const availRecs = Solver.indexes.recipesByProduct.get(t.itemId) || [];
+    const chosenId = AppState.pull.recipeOverrides[t.itemId] || availRecs.find(r => !r.isAlternate)?.id || availRecs[0]?.id;
+    const chosenRec = availRecs.find(r => r.id === chosenId) || availRecs[0] || null;
+    return `
+      <div class="sidebar-config-card" data-sb-item-id="${t.itemId}">
+        <div class="config-card-top">
+          <div class="config-item-title" onclick="openChangePullTargetModal('${t.id}')" title="Clique para trocar o produto">
+            ${renderEntityIcon(item, 40)}
+            <div>
+              <strong>${item.name}</strong>
+              <span class="config-rate-badge">Meta: ${fmt(t.rate, 1)} ${item.unit || 'un'}/min</span>
+            </div>
+          </div>
+          <button class="btn-icon-danger" onclick="removePullTarget('${t.id}')" title="Remover produto">✕</button>
+        </div>
+        <div class="field-group">
+          <label>Quantidade Desejada (${item.unit || 'un'}/min)</label>
+          <input type="number" class="sidebar-input" min="0.5" step="1" value="${t.rate}" onchange="updatePullTargetRate('${t.id}', this.value)" />
+        </div>
+        ${availRecs.length > 0 ? `
+          <div class="field-group">
+            <label>Receita (${availRecs.length})</label>
+            ${renderRecipePickerTriggerHtml(chosenRec, availRecs, `setPullRecipe('${t.itemId}', __RID__)`)}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+
   let stagesConfigHtml = '';
   if (pullResult && pullResult.steps.length > 0) {
+    // 4.4 Ordem: Etapa 1 (Extratores) -> Demais etapas na ordem do fluxo -> Etapa final
+    const orderedSteps = [...pullResult.steps];
     stagesConfigHtml = `
       <div class="sidebar-step-block">
         <div class="step-header-row">
-          <span class="step-badge">2º ETAPAS</span>
-          <h4>Receitas, Máquinas &amp; Overclock</h4>
-        </div>
-        <div class="stage-config-list">
-          ${pullResult.steps.map(step => `
-            <div class="stage-config-card">
-              <div class="stage-config-header">
-                <div class="stage-config-title">
-                  ${renderEntityIcon(step.item, 36)}
-                  <div>
-                    <strong>${step.item.name}</strong>
-                    <span>${step.machineCount}x ${step.machine?.name || 'Máquina'} (${fmt(step.actualProducedRate, 1)}/m)</span>
-                  </div>
-                </div>
-                ${AppState.pull.stepSettings[step.itemId]?.customMachineCount ? `<button class="btn-small-accent" onclick="setPullStepCustomCount('${step.itemId}', null)">Auto</button>` : ''}
-              </div>
-              <div class="field-group">
-                <label>Receita &amp; Máquina / Refinaria</label>
-                <select class="sidebar-select" onchange="setPullRecipe('${step.itemId}', this.value)">
-                  ${step.availableRecipes.map(r => {
-                    const m = Solver.getMachine(r.producedIn);
-                    return `<option value="${r.id}" ${r.id === step.recipe.id ? 'selected' : ''}>${r.isAlternate ? '★ [Alt] ' : ''}${r.cleanName || r.name} — (${m ? m.name : 'Máquina'})</option>`;
-                  }).join('')}
-                </select>
-              </div>
-              <div class="field-group">
-                ${renderOverclockSliderHtml({ value: step.clockPercent, onChangeExpr: `setPullStepClock('${step.itemId}', __VAL__)`, label: 'Overclock' })}
-              </div>
-              <div class="field-group">
-                <label>Nº Inteiro</label>
-                <input type="number" class="sidebar-input" min="1" step="1" value="${step.machineCount}" onchange="setPullStepCustomCount('${step.itemId}', this.value)" />
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-
-      <div class="sidebar-step-block">
-        <div class="step-header-row">
-          <span class="step-badge">3º EXTRAÇÃO</span>
-          <h4>Mineradoras, Bombas d'Água &amp; Extratores</h4>
+          <span class="step-badge">ETAPA 1</span>
+          <h4>Extração (Mineradoras e Bombas)</h4>
         </div>
         <div class="stage-config-list">
           ${pullResult.rawResources.map(raw => `
-            <div class="stage-config-card">
+            <div class="stage-config-card" data-sb-item-id="${raw.itemId}">
               <div class="stage-config-header">
                 <div class="stage-config-title">
-                  ${renderEntityIcon(raw.item, 34)}
+                  ${renderEntityIcon(raw.extractorPlan.extractor, 34)}
                   <div>
-                    <strong>${raw.item.name}</strong>
-                    <span>${raw.extractorPlan.machineCount}x ${raw.extractorPlan.extractor.name} (${fmt(raw.requiredRate, 1)}/m necessários)</span>
+                    <strong>${raw.extractorPlan.machineCount}× ${raw.extractorPlan.extractor.name}</strong>
+                    <span class="sb-prod-sub">${renderEntityIcon(raw.item, 14)} ${raw.item.name} (${fmt(raw.requiredRate, 1)} ${raw.item.unit || 'un'}/min)</span>
                   </div>
                 </div>
                 ${raw.minerCfg?.customCount ? `<button class="btn-small-accent" onclick="setPullMinerCustomCount('${raw.itemId}', null)">Auto</button>` : ''}
@@ -1549,7 +1827,7 @@ function renderPullFlowInsideProduction(sidebarEl, emptyOverlay, autoFit) {
                 ` : ''}
                 ${raw.itemId !== 'Desc_Water_C' ? `
                   <div class="field-group">
-                    <label>Pureza do Nodo</label>
+                    <label>Pureza do Jazigo</label>
                     <div class="btn-group-row">
                       <button class="seg-btn ${raw.minerCfg.purity === 'impure' ? 'active' : ''}" onclick="setPullMinerPurity('${raw.itemId}', 'impure')">Impuro</button>
                       <button class="seg-btn ${raw.minerCfg.purity === 'normal' ? 'active' : ''}" onclick="setPullMinerPurity('${raw.itemId}', 'normal')">Normal</button>
@@ -1564,6 +1842,40 @@ function renderPullFlowInsideProduction(sidebarEl, emptyOverlay, autoFit) {
                   <label>Nº Inteiro (${raw.extractorPlan.extractor.name})</label>
                   <input type="number" class="sidebar-input" min="1" step="1" value="${raw.extractorPlan.machineCount}" onchange="setPullMinerCustomCount('${raw.itemId}', this.value)" />
                 </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="sidebar-step-block">
+        <div class="step-header-row">
+          <span class="step-badge">ETAPAS</span>
+          <h4>Produção (na ordem do fluxo)</h4>
+        </div>
+        <div class="stage-config-list">
+          ${orderedSteps.map((step, sIdx) => `
+            <div class="stage-config-card" data-sb-item-id="${step.itemId}">
+              <div class="stage-config-header">
+                <div class="stage-config-title">
+                  ${renderEntityIcon(step.machine || step.item, 36)}
+                  <div>
+                    <strong>#${sIdx + 1} · ${step.machineCount}× ${step.machine?.name || 'Máquina'}</strong>
+                    <span class="sb-prod-sub">${renderEntityIcon(step.item, 14)} ${step.item.name} (${fmt(step.actualProducedRate, 1)} ${step.item.unit || 'un'}/min)</span>
+                  </div>
+                </div>
+                ${AppState.pull.stepSettings[step.itemId]?.customMachineCount ? `<button class="btn-small-accent" onclick="setPullStepCustomCount('${step.itemId}', null)">Auto</button>` : ''}
+              </div>
+              <div class="field-group">
+                <label>Receita (${step.availableRecipes.length})</label>
+                ${renderRecipePickerTriggerHtml(step.recipe, step.availableRecipes, `setPullRecipe('${step.itemId}', __RID__)`)}
+              </div>
+              <div class="field-group">
+                ${renderOverclockSliderHtml({ value: step.clockPercent, onChangeExpr: `setPullStepClock('${step.itemId}', __VAL__)`, label: 'Overclock' })}
+              </div>
+              <div class="field-group">
+                <label>Nº Inteiro</label>
+                <input type="number" class="sidebar-input" min="1" step="1" value="${step.machineCount}" onchange="setPullStepCustomCount('${step.itemId}', this.value)" />
               </div>
             </div>
           `).join('')}
@@ -1755,8 +2067,25 @@ function renderPowerMode(sidebarEl, emptyOverlay, autoFit) {
   sidebarEl.innerHTML = `
     <div class="sidebar-step-block">
       <div class="step-header-row">
-        <span class="step-badge">PASSO 1</span>
-        <h4>Tipo de Usina / Gerador</h4>
+        <span class="step-badge">MODO</span>
+        <h4>Como calcular</h4>
+      </div>
+      <div class="btn-group-row">
+        <button type="button" class="seg-btn ${p.calcMode === 'by_mw' ? 'active' : ''}" onclick="setPowerCalcMode('by_mw')">Por energia (MW)</button>
+        <button type="button" class="seg-btn ${p.calcMode === 'by_generators' ? 'active' : ''}" onclick="setPowerCalcMode('by_generators')">Por geradores</button>
+      </div>
+      ${p.calcMode === 'by_mw' ? `
+        <div class="field-group" style="margin-top:10px;">
+          <label>Energia desejada (MW)</label>
+          <input type="number" class="sidebar-input" min="1" step="any" value="${p.targetMW === '' || p.targetMW === null ? '' : p.targetMW}" placeholder="Ex.: 600" onchange="setPowerParam('targetMW', this.value ? Math.max(1, parseFloat(this.value)) : '')" />
+        </div>
+      ` : ''}
+    </div>
+
+    <div class="sidebar-step-block">
+      <div class="step-header-row">
+        <span class="step-badge">PASSO ${p.calcMode === 'by_mw' ? '2' : '1'}</span>
+        <h4>Gerador de Energia</h4>
       </div>
       <div class="generator-select-grid">
         ${generators.map(g => `
@@ -1773,11 +2102,11 @@ function renderPowerMode(sidebarEl, emptyOverlay, autoFit) {
 
     <div class="sidebar-step-block ${!selectedGen ? 'step-disabled' : ''}">
       <div class="step-header-row">
-        <span class="step-badge">PASSO 2</span>
-        <h4>Combustível da Usina</h4>
+        <span class="step-badge">PASSO ${p.calcMode === 'by_mw' ? '3' : '2'}</span>
+        <h4>Combustível</h4>
       </div>
       ${!selectedGen ? `
-        <p class="step-help-text">Selecione uma usina acima para montar o fluxo de energia.</p>
+        <p class="step-help-text">Escolha um gerador acima.</p>
       ` : `
         <div class="generator-select-grid">
           ${selectedGen.fuels.map(f => {
@@ -1787,7 +2116,7 @@ function renderPowerMode(sidebarEl, emptyOverlay, autoFit) {
                 ${renderEntityIcon(fItem, 38)}
                 <div class="gen-option-info">
                   <strong>${fItem ? fItem.name : f.itemId}</strong>
-                  <span>100%: ${fmt(f.ratePerMin, 2)}/min${f.waterPerMin ? ` • 💧 ${f.waterPerMin} m³/m` : ''}</span>
+                  <span>100%: ${fmt(f.ratePerMin, 2)}/min${f.waterPerMin ? ` • 💧 ${f.waterPerMin} m³/min` : ''}</span>
                 </div>
               </button>
             `;
@@ -1930,236 +2259,298 @@ function renderPowerMode(sidebarEl, emptyOverlay, autoFit) {
  * ABA 3: 🛠️ LIVRE (CONSTRUÇÃO MANUAL + CHECK DE DIAGNÓSTICO)
  * ========================================================================== */
 
-function renderFreeMode(sidebarEl, emptyOverlay, autoFit) {
+function toggleFreeBlockExpand(blockId) {
+  AppState.free.expandedBlockId = (AppState.free.expandedBlockId === blockId) ? null : blockId;
+  AppState.free.selectedIds = blockId ? [blockId] : [];
+  renderAll(false);
+  if (AppState.free.expandedBlockId) focusCanvasCardByBlockId(blockId);
+}
+
+function setFreeSidebarSearch(q) {
+  AppState.free.searchQuery = q;
+  const listEl = document.getElementById('oficina-blocks-list');
+  if (listEl) listEl.innerHTML = renderOficinaBlocksListHtml();
+}
+
+function applyBatchOverclockFree(val) {
+  const pct = Math.max(100, Math.min(250, Math.round(Number(val) || 100)));
+  const ids = new Set(AppState.free.selectedIds || []);
+  if (ids.size === 0) return;
+  pushFreeUndoSnapshot();
+  (AppState.free.blocks || []).forEach(b => {
+    if (ids.has(b.id)) b.clockPercent = pct;
+  });
+  renderAll(false);
+}
+
+function duplicateSelectedFreeBlocks() {
+  copySelectedFreeBlocks();
+  pasteSelectedFreeBlocks();
+}
+
+function renderOficinaBlocksListHtml() {
   const free = AppState.free;
   const blocks = free.blocks || [];
   const { belts, pipes } = Solver.getBeltsAndPipes();
   const machines = Solver.getProductionMachines();
   const generators = Solver.getPowerGenerators();
+  const q = Solver.normalizeText(free.searchQuery || '');
 
-  const blocksHtml = blocks.map((b, idx) => {
+  const enriched = blocks.map((b, idx) => {
     const st = Solver.computeFreeBlockStats(b);
-    if (!st) return '';
+    if (!st) return null;
+    const rec = b.blockType === 'machine' ? Solver.getRecipe(b.recipeId) : null;
+    const outItem = b.blockType === 'extractor'
+      ? Solver.getItem(b.itemId)
+      : (rec?.products?.[0] ? Solver.getItem(rec.products[0].item) : null);
+    const outRate = st.outputs?.[0]?.rate || 0;
+    const hasAlert = b.blockType === 'machine' && (!b.machineId || !b.recipeId);
+    return { b, idx, st, rec, outItem, outRate, hasAlert };
+  }).filter(Boolean);
 
-    let specificControls = '';
-    if (b.blockType === 'extractor') {
-      const rawItems = Solver.getAllItems().filter(i => i.isRawResource);
-      specificControls = `
-        <div class="field-group">
-          <label>Recurso Extraído</label>
-          <select class="sidebar-select" onchange="updateFreeBlock('${b.id}', 'itemId', this.value)">
-            ${rawItems.map(it => `<option value="${it.id}" ${it.id === b.itemId ? 'selected' : ''}>${it.name}</option>`).join('')}
-          </select>
-        </div>
-        ${b.itemId !== 'Desc_Water_C' && b.itemId !== 'Desc_LiquidOil_C' && b.itemId !== 'Desc_NitrogenGas_C' ? `
+  const filtered = enriched.filter(e => {
+    if (free.filterMachineType && free.filterMachineType !== 'all') {
+      if ((e.st.entity?.id || e.b.blockType) !== free.filterMachineType) return false;
+    }
+    if (free.filterAlertOnly && !e.hasAlert) return false;
+    if (q) {
+      const hay = Solver.normalizeText(`${e.st.title} ${e.st.subtitle} ${e.outItem?.name || ''}`);
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    return '<div class="calc-empty-note" style="padding:10px 4px;">Nenhum bloco corresponde ao filtro.</div>';
+  }
+
+  const renderItem = ({ b, idx, st, rec, outItem, outRate, hasAlert }) => {
+    const isExpanded = free.expandedBlockId === b.id;
+    const isSel = Array.isArray(free.selectedIds) && free.selectedIds.includes(b.id);
+    let expandedHtml = '';
+    if (isExpanded) {
+      let specificControls = '';
+      if (b.blockType === 'extractor') {
+        const rawItems = Solver.getAllItems().filter(i => i.isRawResource);
+        specificControls = `
+          <div class="field-group">
+            <label>Recurso Extraído</label>
+            <select class="sidebar-select" onchange="updateFreeBlock('${b.id}', 'itemId', this.value)">
+              ${rawItems.map(it => `<option value="${it.id}" ${it.id === b.itemId ? 'selected' : ''}>${it.name}</option>`).join('')}
+            </select>
+          </div>
+          ${b.itemId !== 'Desc_Water_C' && b.itemId !== 'Desc_LiquidOil_C' && b.itemId !== 'Desc_NitrogenGas_C' ? `
+            <div class="field-row-2">
+              <div class="field-group">
+                <label>Mineradora</label>
+                <select class="sidebar-select" onchange="updateFreeBlock('${b.id}', 'minerMark', this.value)">
+                  <option value="mk1" ${b.minerMark === 'mk1' ? 'selected' : ''}>Mineradora v.1</option>
+                  <option value="mk2" ${b.minerMark === 'mk2' ? 'selected' : ''}>Mineradora v.2</option>
+                  <option value="mk3" ${b.minerMark === 'mk3' ? 'selected' : ''}>Mineradora v.3</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <label>Pureza</label>
+                <select class="sidebar-select" onchange="updateFreeBlock('${b.id}', 'purity', this.value)">
+                  <option value="impure" ${b.purity === 'impure' ? 'selected' : ''}>Impuro</option>
+                  <option value="normal" ${b.purity === 'normal' ? 'selected' : ''}>Normal</option>
+                  <option value="pure" ${b.purity === 'pure' ? 'selected' : ''}>Puro</option>
+                </select>
+              </div>
+            </div>
+          ` : ''}
+        `;
+      } else if (b.blockType === 'machine') {
+        const machineRecipes = b.machineId ? Solver.getRecipesByMachine(b.machineId) : [];
+        specificControls = `
+          <div class="field-group">
+            <label>Máquina</label>
+            <select class="sidebar-select" onchange="changeFreeBlockMachine('${b.id}', this.value)">
+              <option value="" ${!b.machineId ? 'selected' : ''}>Escolher máquina...</option>
+              ${machines.map(m => `<option value="${m.id}" ${m.id === b.machineId ? 'selected' : ''}>${m.name}</option>`).join('')}
+            </select>
+          </div>
+          ${b.machineId ? `
+            <div class="field-group">
+              <label>Receita (${machineRecipes.length})</label>
+              ${renderRecipePickerTriggerHtml(rec, machineRecipes, `updateFreeBlock('${b.id}', 'recipeId', __RID__)`)}
+            </div>
+          ` : ''}
+        `;
+      } else if (b.blockType === 'generator') {
+        const genObj = generators.find(g => g.id === b.generatorId) || generators[0];
+        specificControls = `
+          <div class="field-group">
+            <label>Gerador</label>
+            <select class="sidebar-select" onchange="changeFreeBlockGenerator('${b.id}', this.value)">
+              ${generators.map(g => `<option value="${g.id}" ${g.id === b.generatorId ? 'selected' : ''}>${g.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field-group">
+            <label>Combustível</label>
+            <select class="sidebar-select" onchange="updateFreeBlock('${b.id}', 'fuelItemId', this.value)">
+              ${(genObj?.fuels || []).map(f => {
+                const fIt = Solver.getItem(f.itemId);
+                return `<option value="${f.itemId}" ${f.itemId === b.fuelItemId ? 'selected' : ''}>${fIt ? fIt.name : f.itemId}</option>`;
+              }).join('')}
+            </select>
+          </div>
+        `;
+      }
+
+      expandedHtml = `
+        <div class="sb-acc-body">
+          ${specificControls}
+          <div class="field-group">
+            <label>Nº de Máquinas</label>
+            <input type="number" class="sidebar-input" min="1" step="1" value="${b.count}" onchange="updateFreeBlock('${b.id}', 'count', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
+          </div>
+          ${b.blockType === 'machine' || b.blockType === 'extractor' || b.blockType === 'generator' ? `
+            <div class="field-group">
+              ${renderOverclockSliderHtml({ value: b.clockPercent, onChangeExpr: `updateFreeBlock('${b.id}', 'clockPercent', __VAL__)`, label: 'Overclock' })}
+            </div>
+          ` : ''}
           <div class="field-row-2">
             <div class="field-group">
-              <label>Mineradora</label>
-              <select class="sidebar-select" onchange="updateFreeBlock('${b.id}', 'minerMark', this.value)">
-                <option value="mk1" ${b.minerMark === 'mk1' ? 'selected' : ''}>Mineradora v.1</option>
-                <option value="mk2" ${b.minerMark === 'mk2' ? 'selected' : ''}>Mineradora v.2</option>
-                <option value="mk3" ${b.minerMark === 'mk3' ? 'selected' : ''}>Mineradora v.3</option>
+              <label>Esteira</label>
+              <select class="sidebar-select" onchange="updateFreeBlock('${b.id}', 'beltTierId', this.value)">
+                ${belts.map(bl => `<option value="${bl.id}" ${bl.id === b.beltTierId ? 'selected' : ''}>${bl.name.replace('Esteira de transporte ', 'Esteira ')} (${bl.ratePerMin}/min)</option>`).join('')}
               </select>
             </div>
             <div class="field-group">
-              <label>Pureza</label>
-              <select class="sidebar-select" onchange="updateFreeBlock('${b.id}', 'purity', this.value)">
-                <option value="impure" ${b.purity === 'impure' ? 'selected' : ''}>Impuro (0.5x)</option>
-                <option value="normal" ${b.purity === 'normal' ? 'selected' : ''}>Normal (1.0x)</option>
-                <option value="pure" ${b.purity === 'pure' ? 'selected' : ''}>Puro (2.0x)</option>
+              <label>Tubulação</label>
+              <select class="sidebar-select" onchange="updateFreeBlock('${b.id}', 'pipeTierId', this.value)">
+                ${pipes.map(pp => `<option value="${pp.id}" ${pp.id === b.pipeTierId ? 'selected' : ''}>${pp.name} (${pp.ratePerMin}/min)</option>`).join('')}
               </select>
             </div>
           </div>
-        ` : ''}
-      `;
-    } else if (b.blockType === 'machine') {
-      const machineRecipes = Solver.getRecipesByMachine(b.machineId);
-      specificControls = `
-        <div class="field-group">
-          <label>Máquina / Refinaria</label>
-          <select class="sidebar-select" onchange="changeFreeBlockMachine('${b.id}', this.value)">
-            ${machines.map(m => `<option value="${m.id}" ${m.id === b.machineId ? 'selected' : ''}>${m.name}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field-group">
-          <label>Receita (${machineRecipes.length} opções)</label>
-          <select class="sidebar-select" onchange="updateFreeBlock('${b.id}', 'recipeId', this.value)">
-            ${machineRecipes.map(r => `<option value="${r.id}" ${r.id === b.recipeId ? 'selected' : ''}>${r.isAlternate ? '★ [Alt] ' : ''}${r.cleanName}</option>`).join('')}
-          </select>
-        </div>
-      `;
-    } else if (b.blockType === 'generator') {
-      const genObj = generators.find(g => g.id === b.generatorId) || generators[0];
-      specificControls = `
-        <div class="field-group">
-          <label>Usina / Gerador</label>
-          <select class="sidebar-select" onchange="changeFreeBlockGenerator('${b.id}', this.value)">
-            ${generators.map(g => `<option value="${g.id}" ${g.id === b.generatorId ? 'selected' : ''}>${g.name}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field-group">
-          <label>Combustível</label>
-          <select class="sidebar-select" onchange="updateFreeBlock('${b.id}', 'fuelItemId', this.value)">
-            ${(genObj?.fuels || []).map(f => {
-              const fIt = Solver.getItem(f.itemId);
-              return `<option value="${f.itemId}" ${f.itemId === b.fuelItemId ? 'selected' : ''}>${fIt ? fIt.name : f.itemId}</option>`;
-            }).join('')}
-          </select>
+          <details class="sb-3d-details">
+            <summary>Visão 3D</summary>
+            <div class="field-row-2" style="margin-top:8px;">
+              <div class="field-group">
+                <label>Andar Inicial</label>
+                <input type="number" class="sidebar-input" min="1" max="20" step="1" value="${b.floor || 1}" onchange="updateFreeBlock('${b.id}', 'floor', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
+              </div>
+              <div class="field-group">
+                <label>Máqs/Andar</label>
+                <input type="number" class="sidebar-input" min="0" max="100" step="1" value="${b.machinesPerFloor || 0}" onchange="updateFreeBlock('${b.id}', 'machinesPerFloor', Math.max(0, Math.round(parseFloat(this.value)||0)))" />
+              </div>
+            </div>
+          </details>
         </div>
       `;
     }
 
     return `
-      <div class="stage-config-card">
-        <div class="stage-config-header">
-          <div class="stage-config-title">
-            ${renderEntityIcon(st.entity, 36)}
-            <div>
-              <strong>#${idx + 1} • ${st.count}x ${st.title}</strong>
-              <span>${st.subtitle} • Clock ${st.clockPercent}%</span>
-            </div>
+      <div class="sb-acc-card ${isExpanded ? 'is-expanded' : ''} ${isSel ? 'sb-card-selected' : ''}" data-sb-block-id="${b.id}">
+        <div class="sb-acc-row" onclick="toggleFreeBlockExpand('${b.id}')">
+          ${renderEntityIcon(st.entity, 28)}
+          <div class="sb-acc-info">
+            <strong>#${idx + 1} ${libEsc(st.title)} ×${st.count}</strong>
+            <span class="sb-acc-sub">
+              ${outItem ? renderEntityIcon(outItem, 14) : ''}
+              ${outItem ? `${libEsc(outItem.name)} · ${fmt(outRate, 1)}/min` : libEsc(st.subtitle)}
+            </span>
           </div>
-          <div class="stage-config-actions">
-            <button class="btn-icon-dup" onclick="duplicateFreeBlock('${b.id}')" title="Duplicar">📋</button>
-            <button class="btn-icon-danger" onclick="removeFreeBlock('${b.id}')" title="Remover bloco">✕</button>
-          </div>
-        </div>
-
-        ${specificControls}
-
-        <div class="field-group">
-          <label>Nº de Máquinas</label>
-          <input type="number" class="sidebar-input" min="1" step="1" value="${b.count}" onchange="updateFreeBlock('${b.id}', 'count', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
-        </div>
-        <div class="field-group">
-          ${renderOverclockSliderHtml({ value: b.clockPercent, onChangeExpr: `updateFreeBlock('${b.id}', 'clockPercent', __VAL__)`, label: 'Overclock' })}
-        </div>
-
-        <div class="field-row-2">
-          <div class="field-group">
-            <label>Andar Inicial (3D)</label>
-            <input type="number" class="sidebar-input" min="1" max="20" step="1" value="${b.floor || 1}" onchange="updateFreeBlock('${b.id}', 'floor', Math.max(1, Math.round(parseFloat(this.value)||1)))" />
-          </div>
-          <div class="field-group">
-            <label>Máqs p/ Andar (0 = todas)</label>
-            <input type="number" class="sidebar-input" min="0" max="100" step="1" value="${b.machinesPerFloor || 0}" onchange="updateFreeBlock('${b.id}', 'machinesPerFloor', Math.max(0, Math.round(parseFloat(this.value)||0)))" />
+          ${hasAlert ? '<span class="sb-alert-dot" title="Configuração incompleta"></span>' : ''}
+          <div class="sb-acc-actions" onclick="event.stopPropagation()">
+            <button type="button" class="btn-icon-dup" onclick="duplicateFreeBlock('${b.id}')" title="Duplicar">⧉</button>
+            <button type="button" class="btn-icon-danger" onclick="removeFreeBlock('${b.id}')" title="Remover">✕</button>
           </div>
         </div>
-
-        <div class="field-row-2">
-          <div class="field-group">
-            <label>Esteira Conectada</label>
-            <select class="sidebar-select" onchange="updateFreeBlock('${b.id}', 'beltTierId', this.value)">
-              ${belts.map(bl => `<option value="${bl.id}" ${bl.id === b.beltTierId ? 'selected' : ''}>${bl.name.replace('Esteira de transporte ', 'Esteira ')} (${bl.ratePerMin}/m)</option>`).join('')}
-            </select>
-          </div>
-          <div class="field-group">
-            <label>Tubulação (se fluido)</label>
-            <select class="sidebar-select" onchange="updateFreeBlock('${b.id}', 'pipeTierId', this.value)">
-              ${pipes.map(pp => `<option value="${pp.id}" ${pp.id === b.pipeTierId ? 'selected' : ''}>${pp.name} (${pp.ratePerMin}/m)</option>`).join('')}
-            </select>
-          </div>
-        </div>
+        ${expandedHtml}
       </div>
     `;
-  }).join('');
+  };
 
-  let checkReportHtml = '';
-  if (free.checkPerformed && free.lastCheckReport) {
-    const rep = free.lastCheckReport;
-    checkReportHtml = `
-      <div class="sidebar-step-block check-report-box ${rep.isHealthy ? 'report-ok' : 'report-warn'}">
-        <div class="step-header-row">
-          <span class="step-badge">${rep.isHealthy ? '✅ TUDO CERTO' : '⚠️ DIAGNÓSTICO'}</span>
-          <h4>Resultado do Check do Projeto</h4>
-        </div>
-
-        <div class="check-power-bar">
-          <span>⚡ Consumo: <strong>${fmt(rep.totalPowerConsumedMw, 1)} MW</strong></span>
-          <span>🔋 Gerado: <strong>${fmt(rep.totalPowerProducedMw, 1)} MW</strong></span>
-        </div>
-
-        ${rep.deficits.length === 0 && rep.beltIssues.length === 0 ? `
-          <div class="check-item-card ok">
-            <strong>✅ Sem falta de recursos ou gargalos de esteira!</strong>
-            <p>Todas as entradas consumidas pelas suas máquinas estão supridas e as esteiras suportam a vazão configurada.</p>
-          </div>
-        ` : ''}
-
-        ${rep.deficits.length > 0 ? `
-          <div class="check-section-title">🔴 Falta de Recursos / Conflitos (${rep.deficits.length})</div>
-          ${rep.deficits.map(d => `
-            <div class="check-item-card error">
-              <div class="check-item-head">
-                ${renderEntityIcon(d.item, 26)}
-                <strong>Falta ${fmt(d.deficitRate, 1)} ${d.item.unit}/min de ${d.item.name}</strong>
-              </div>
-              <p>Produzido: ${fmt(d.produced, 1)}/m • Consumido: ${fmt(d.consumed, 1)}/m</p>
-              <div class="check-tip">🔧 <strong>Como resolver:</strong> ${d.suggestion}</div>
-            </div>
-          `).join('')}
-        ` : ''}
-
-        ${rep.beltIssues.length > 0 ? `
-          <div class="check-section-title">🟣 Esteiras &amp; Tubulações (${rep.beltIssues.length})</div>
-          ${rep.beltIssues.map(bi => `
-            <div class="check-item-card ${bi.severity === 'error' ? 'error' : 'warn'}">
-              <strong>${bi.blockTitle}</strong>
-              <p>${bi.message}</p>
-            </div>
-          `).join('')}
-        ` : ''}
-
-        ${rep.surpluses.length > 0 ? `
-          <div class="check-section-title">🟡 Excesso / Produção Disponível (${rep.surpluses.length})</div>
-          ${rep.surpluses.map(s => `
-            <div class="check-item-card surplus">
-              <div class="check-item-head">
-                ${renderEntityIcon(s.item, 24)}
-                <strong>+${fmt(s.surplusRate, 1)} ${s.item.unit}/min de ${s.item.name} (${s.isFinalOutput ? 'Produto Final' : 'Excesso'})</strong>
-              </div>
-              ${s.extraConsumerNote ? `<div class="check-tip">💡 ${s.extraConsumerNote}</div>` : ''}
-            </div>
-          `).join('')}
-        ` : ''}
-
-        ${rep.recipeTips.length > 0 ? `
-          <div class="check-section-title">💡 Sugestões de Receitas Mais Eficientes (${rep.recipeTips.length})</div>
-          ${rep.recipeTips.map(rt => `
-            <div class="check-item-card tip">
-              <p>${rt.message}</p>
-            </div>
-          `).join('')}
-        ` : ''}
-      </div>
-    `;
+  if (free.groupBy === 'machine') {
+    const groups = new Map();
+    filtered.forEach(item => {
+      const k = item.st.title || 'Outros';
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(item);
+    });
+    return Array.from(groups.entries()).map(([gName, items]) => `
+      <details class="sb-group-details" open>
+        <summary>${libEsc(gName)} <span>(${items.length})</span></summary>
+        <div class="sb-acc-list">${items.map(renderItem).join('')}</div>
+      </details>
+    `).join('');
   }
+
+  return `<div class="sb-acc-list">${filtered.map(renderItem).join('')}</div>`;
+}
+
+function renderFreeMode(sidebarEl, emptyOverlay, autoFit) {
+  const free = AppState.free;
+  const blocks = free.blocks || [];
+
+  const catCards = [
+    { key: 'all', label: 'Todos', sub: 'Todas as construções e receitas', icon: '📦' },
+    { key: 'maquinas', label: 'Máquinas', sub: 'Produção, mineradoras e extratores', icon: '🏭' },
+    { key: 'receitas', label: 'Receitas', sub: 'Padrão e alternativas (ALT)', icon: '📜' },
+    { key: 'logistica', label: 'Logística', sub: 'Divisores, unificadores e tubulações', icon: '🔀' },
+    { key: 'armazenamento', label: 'Armazenamento', sub: 'Contêineres, tanques e destinos', icon: '🗄️' },
+    { key: 'energia', label: 'Energia', sub: 'Geradores e usinas', icon: '⚡' }
+  ];
+
+  const multiSelCount = Array.isArray(free.selectedIds) ? free.selectedIds.length : 0;
+  const batchBarHtml = multiSelCount > 1 ? `
+    <div class="sb-batch-bar">
+      <strong>${multiSelCount} itens selecionados</strong>
+      <div class="sb-batch-actions">
+        <button type="button" class="btn-small-accent" onclick="applyBatchOverclockFree(150)">150%</button>
+        <button type="button" class="btn-small-accent" onclick="applyBatchOverclockFree(250)">250%</button>
+        <button type="button" class="btn-small-accent" onclick="duplicateSelectedFreeBlocks()">⧉ Duplicar</button>
+        <button type="button" class="btn-icon-danger" onclick="deleteSelectedFreeBlocks()" title="Remover selecionados">✕</button>
+      </div>
+    </div>
+  ` : '';
+
+  const blocksSectionHtml = blocks.length > 0 ? `
+    <div class="sidebar-step-block">
+      <div class="step-header-row">
+        <span class="step-badge">${blocks.length}</span>
+        <h4>Blocos na Oficina</h4>
+      </div>
+      ${batchBarHtml}
+      <div class="sb-sticky-filters">
+        <input
+          type="text"
+          class="sidebar-input"
+          placeholder="Buscar máquina ou item..."
+          value="${libEsc(free.searchQuery || '')}"
+          oninput="setFreeSidebarSearch(this.value)"
+        />
+        <div class="btn-group-row" style="margin-top:6px;">
+          <button type="button" class="seg-btn ${free.groupBy === 'none' ? 'active' : ''}" onclick="AppState.free.groupBy='none'; renderAll(false);">Lista</button>
+          <button type="button" class="seg-btn ${free.groupBy === 'machine' ? 'active' : ''}" onclick="AppState.free.groupBy='machine'; renderAll(false);">Por máquina</button>
+          <button type="button" class="seg-btn ${free.filterAlertOnly ? 'active' : ''}" onclick="AppState.free.filterAlertOnly=!AppState.free.filterAlertOnly; renderAll(false);">Com alerta</button>
+        </div>
+      </div>
+      <div id="oficina-blocks-list">${renderOficinaBlocksListHtml()}</div>
+    </div>
+  ` : '';
 
   sidebarEl.innerHTML = `
     <div class="sidebar-step-block">
+      <div class="step-header-row">
+        <span class="step-badge">OFICINA</span>
+        <h4>Adicionar à Oficina</h4>
+      </div>
       <div class="free-add-buttons free-cat-filter-grid">
-        <button type="button" class="btn-free-add" onclick="openAddMachineModal({ quickFilter: 'all' })">Todos</button>
-        <button type="button" class="btn-free-add" onclick="openAddMachineModal({ quickFilter: 'maquinas' })">Máquinas</button>
-        <button type="button" class="btn-free-add" onclick="openAddMachineModal({ quickFilter: 'receitas' })">Receitas</button>
-        <button type="button" class="btn-free-add" onclick="openAddMachineModal({ quickFilter: 'logistica' })">Logística</button>
-        <button type="button" class="btn-free-add" onclick="openAddMachineModal({ quickFilter: 'armazenamento' })">Armazenamento</button>
-        <button type="button" class="btn-free-add" onclick="openAddMachineModal({ quickFilter: 'energia' })">Energia</button>
+        ${catCards.map(c => `
+          <button type="button" class="empty-step-cta oficina-cat-cta" onclick="openAddMachineModal({ quickFilter: '${c.key}' })">
+            <span class="cta-plus">${c.icon}</span>
+            <div>
+              <strong>${c.label}</strong>
+              <span>${c.sub}</span>
+            </div>
+          </button>
+        `).join('')}
       </div>
     </div>
-
-    ${blocks.length > 0 ? `
-      <div class="sidebar-step-block">
-        <div class="step-header-row">
-          <span class="step-badge">${blocks.length}</span>
-          <h4>Blocos no Projeto</h4>
-        </div>
-        <div class="stage-config-list">
-          ${blocksHtml}
-        </div>
-      </div>
-    ` : ''}
-
-    ${checkReportHtml}
+    ${blocksSectionHtml}
   `;
 
   if (blocks.length === 0) {
@@ -2948,12 +3339,78 @@ function renderCanvasGraph(graph, autoFit = false) {
   });
 }
 
-function computeEdgeGeometry(fromBox, toBox, orientOrIsTB, edge) {
+// Tabela oficial de portas por máquina do Satisfactory 1.0 (sólido = esteira #EA580C, fluido = tubulação #2563EB)
+const OFFICIAL_MACHINE_PORTS = {
+  Build_SmelterMk1_C:      { inputs: ['solid'], outputs: ['solid'] },
+  Build_FoundryMk1_C:      { inputs: ['solid', 'solid'], outputs: ['solid'] },
+  Build_ConstructorMk1_C:  { inputs: ['solid'], outputs: ['solid'] },
+  Build_AssemblerMk1_C:    { inputs: ['solid', 'solid'], outputs: ['solid'] },
+  Build_ManufacturerMk1_C: { inputs: ['solid', 'solid', 'solid', 'solid'], outputs: ['solid'] },
+  Build_OilRefinery_C:     { inputs: ['solid', 'fluid'], outputs: ['solid', 'fluid'] },
+  Build_Packager_C:        { inputs: ['solid', 'fluid'], outputs: ['solid', 'fluid'] },
+  Build_Blender_C:         { inputs: ['solid', 'solid', 'fluid', 'fluid'], outputs: ['solid', 'fluid'] },
+  Build_HadronCollider_C:  { inputs: ['solid', 'solid', 'fluid'], outputs: ['solid', 'fluid'] },
+  Build_QuantumEncoder_C:  { inputs: ['solid', 'solid', 'solid', 'fluid'], outputs: ['solid', 'fluid'] },
+  Build_Converter_C:       { inputs: ['solid', 'solid'], outputs: ['solid', 'fluid'] },
+  Build_GeneratorCoal_C:   { inputs: ['solid', 'fluid'], outputs: [] },
+  Build_GeneratorFuel_C:   { inputs: ['fluid'], outputs: [] },
+  Build_GeneratorNuclear_C:{ inputs: ['solid', 'fluid'], outputs: ['solid'] },
+  Build_GeneratorBiomass_C:{ inputs: ['solid'], outputs: [] }
+};
+
+function getNodePortSpecs(node) {
+  if (!node) return { inputs: [], outputs: [] };
+  if (node.kind === 'power_emblem') return { inputs: [], outputs: [] };
+  const entId = node.entity?.id || '';
+  if (OFFICIAL_MACHINE_PORTS[entId]) {
+    return {
+      inputs: [...OFFICIAL_MACHINE_PORTS[entId].inputs],
+      outputs: [...OFFICIAL_MACHINE_PORTS[entId].outputs]
+    };
+  }
+  const logDb = window.SATISFACTORY_DATA?.logistics || {};
+  const logObj = logDb[entId] || Object.values(logDb).find(l => l.kind === node.kind);
+  if (logObj) {
+    const t = logObj.isFluid ? 'fluid' : 'solid';
+    return {
+      inputs: Array(Math.max(0, Number(logObj.inPorts) || 0)).fill(t),
+      outputs: Array(Math.max(0, Number(logObj.outPorts) || 0)).fill(t)
+    };
+  }
+  if (node.kind === 'extractor') {
+    const isFl = Boolean(node.resourceExtractInfo?.item?.isFluid || node.outputsList?.[0]?.item?.isFluid);
+    return { inputs: [], outputs: [isFl ? 'fluid' : 'solid'] };
+  }
+  if (node.kind === 'final_product' || node.isFinalProduct) {
+    const isFl = Boolean(node.outputsList?.[0]?.item?.isFluid || node.inputsList?.[0]?.item?.isFluid);
+    return { inputs: [isFl ? 'fluid' : 'solid'], outputs: [] };
+  }
+  const ins = (node.inputsList || []).map(i => (i.item?.isFluid ? 'fluid' : 'solid'));
+  const outs = (node.outputsList || []).map(o => (o.item?.isFluid ? 'fluid' : 'solid'));
+  return {
+    inputs: ins.length > 0 ? ins : ['solid'],
+    outputs: outs.length > 0 ? outs : (node.outPorts === 0 ? [] : ['solid'])
+  };
+}
+
+function getPortFraction(idx, total) {
+  if (!total || total <= 1) return 0.5;
+  return (idx + 1) / (total + 1);
+}
+
+function highlightPortPair(portKey, active) {
+  if (!portKey) return;
+  document.querySelectorAll(`.mcard-port-dot[data-pair="${portKey}"]`).forEach(el => {
+    el.classList.toggle('port-pair-hover', active);
+  });
+}
+
+function computeEdgeGeometry(fromBox, toBox, orientOrIsTB, edge, outPct = 0.5, inPct = 0.5) {
   const orient = typeof orientOrIsTB === 'string'
     ? orientOrIsTB
     : (orientOrIsTB ? 'TB' : 'LR');
   let x1, y1, x2, y2, midX, midY, d, badgeX, badgeY;
-  // Usa as dimensões reais medidas do card para que toda esteira encoste exatamente na porta
+  // Usa as dimensões reais medidas do card e a fração exata da porta na borda
   const fh = fromBox.h || 260;
   const th = toBox.h || 260;
   const fw = fromBox.w || 270;
@@ -2961,9 +3418,9 @@ function computeEdgeGeometry(fromBox, toBox, orientOrIsTB, edge) {
 
   if (orient === 'LR') {
     x1 = fromBox.x + fw;
-    y1 = fromBox.y + fh / 2;
+    y1 = fromBox.y + fh * outPct;
     x2 = toBox.x;
-    y2 = toBox.y + th / 2;
+    y2 = toBox.y + th * inPct;
     midX = (x1 + x2) / 2;
     midY = (y1 + y2) / 2;
     d = buildRoundedOrthogonalPathLR(x1, y1, x2, y2, midX);
@@ -2971,18 +3428,18 @@ function computeEdgeGeometry(fromBox, toBox, orientOrIsTB, edge) {
     badgeY = x2 >= x1 + 24 ? midY : Math.min(y1, y2) - Math.max(fh, th) / 2 - 26;
   } else if (orient === 'RL') {
     x1 = fromBox.x;
-    y1 = fromBox.y + fh / 2;
+    y1 = fromBox.y + fh * outPct;
     x2 = toBox.x + tw;
-    y2 = toBox.y + th / 2;
+    y2 = toBox.y + th * inPct;
     midX = (x1 + x2) / 2;
     midY = (y1 + y2) / 2;
     d = buildRoundedOrthogonalPathRL(x1, y1, x2, y2, midX);
     badgeX = x1 >= x2 + 24 ? midX : (x1 + x2) / 2;
     badgeY = x1 >= x2 + 24 ? midY : Math.min(y1, y2) - Math.max(fh, th) / 2 - 26;
   } else if (orient === 'BT') {
-    x1 = fromBox.x + fw / 2;
+    x1 = fromBox.x + fw * outPct;
     y1 = fromBox.y;
-    x2 = toBox.x + tw / 2;
+    x2 = toBox.x + tw * inPct;
     y2 = toBox.y + th;
     midX = (x1 + x2) / 2;
     midY = (y1 + y2) / 2;
@@ -2990,9 +3447,9 @@ function computeEdgeGeometry(fromBox, toBox, orientOrIsTB, edge) {
     badgeX = midX;
     badgeY = y1 >= y2 + 24 ? midY : (y1 + y2) / 2;
   } else {
-    x1 = fromBox.x + fw / 2;
+    x1 = fromBox.x + fw * outPct;
     y1 = fromBox.y + fh;
-    x2 = toBox.x + tw / 2;
+    x2 = toBox.x + tw * inPct;
     y2 = toBox.y;
     midX = (x1 + x2) / 2;
     midY = (y1 + y2) / 2;
@@ -3010,10 +3467,69 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, orientOrIsTB, wiresEl, no
   let pathsHtml = '';
   let badgesHtml = '';
 
+  // Limpa marcação de portas ocupadas antes de recalcular
+  if (nodesEl) {
+    nodesEl.querySelectorAll('.mcard-port-dot').forEach(dot => {
+      dot.classList.remove('is-occupied', 'port-pair-hover');
+      dot.removeAttribute('data-pair');
+    });
+  }
+
+  // Rastreia índices de portas usadas por nó e direção/tipo
+  const usedOut = new Map();
+  const usedIn = new Map();
+  const claimPort = (map, nodeId, portsArr, wantType) => {
+    const key = `${nodeId}`;
+    if (!map.has(key)) map.set(key, new Set());
+    const used = map.get(key);
+    let chosen = -1;
+    for (let i = 0; i < portsArr.length; i++) {
+      if (portsArr[i] === wantType && !used.has(i)) { chosen = i; break; }
+    }
+    if (chosen === -1) {
+      for (let i = 0; i < portsArr.length; i++) {
+        if (portsArr[i] === wantType) { chosen = i; break; }
+      }
+    }
+    if (chosen === -1) chosen = 0;
+    used.add(chosen);
+    return { idx: chosen, total: Math.max(1, portsArr.length) };
+  };
+
   graph.edges.forEach((edge, idx) => {
     const fromBox = nodeCoords.get(edge.from);
     const toBox = nodeCoords.get(edge.to);
     if (!fromBox || !toBox) return;
+
+    const wantType = edge.isPipe ? 'fluid' : 'solid';
+    const fromSpecs = getNodePortSpecs(fromBox.node);
+    const toSpecs = getNodePortSpecs(toBox.node);
+    const outSlot = claimPort(usedOut, edge.from, fromSpecs.outputs, wantType);
+    const inSlot = claimPort(usedIn, edge.to, toSpecs.inputs, wantType);
+    const outPct = getPortFraction(outSlot.idx, outSlot.total);
+    const inPct = getPortFraction(inSlot.idx, inSlot.total);
+
+    // Atualiza bolinhas de porta como ocupadas com tooltip e destaque de par
+    if (nodesEl) {
+      const pairId = `pair_${idx}`;
+      const fromCard = document.getElementById(edge.from);
+      const toCard = document.getElementById(edge.to);
+      const outDot = fromCard?.querySelector(`.mcard-port-dot[data-dir="out"][data-idx="${outSlot.idx}"]`);
+      const inDot = toCard?.querySelector(`.mcard-port-dot[data-dir="in"][data-idx="${inSlot.idx}"]`);
+      const itemLabel = edge.itemName || edge.label || (edge.isPipe ? 'Fluido' : 'Item');
+      const toTitle = toBox.node?.topLabel || toBox.node?.entity?.name || 'Destino';
+      const fromTitle = fromBox.node?.topLabel || fromBox.node?.entity?.name || 'Origem';
+      if (outDot) {
+        outDot.classList.add('is-occupied');
+        outDot.setAttribute('data-pair', pairId);
+        outDot.setAttribute('title', `Saída: ${itemLabel} → ${toTitle}`);
+      }
+      if (inDot) {
+        inDot.classList.add('is-occupied');
+        inDot.setAttribute('data-pair', pairId);
+        inDot.setAttribute('title', `Entrada: ${itemLabel} ← ${fromTitle}`);
+      }
+    }
 
     const isLift = (fromBox.floor || 1) !== (toBox.floor || 1);
     edge._isOffPage = false;
@@ -3022,7 +3538,7 @@ function renderCanvasWiresAndBadges(graph, nodeCoords, orientOrIsTB, wiresEl, no
       ? `onclick="openEdgeBeltMenu(event, '${edge.edgeId}')" oncontextmenu="openEdgeBeltMenu(event, '${edge.edgeId}')"`
       : '';
 
-    const geom = computeEdgeGeometry(fromBox, toBox, orient, edge);
+    const geom = computeEdgeGeometry(fromBox, toBox, orient, edge, outPct, inPct);
     const { d, badgeX, badgeY } = geom;
 
     if (edge.isPipe) {
@@ -3395,23 +3911,49 @@ function renderMagnificNodeCard(box, orientOrIsTB) {
   const floorBadgeHtml = (AppState.canvas.is3DView || floorNum > 1)
     ? `<span class="mcard-floor-badge" title="Andar no layout vertical 3D">🏢 ${floorNum}º Andar</span>`
     : '';
+  const duplicateBtnHtml = (AppState.mode === 'free' && node.blockId)
+    ? `<button type="button" class="mcard-dup-btn" onclick="duplicateCanvasCard(event, '${node.id}')" title="Duplicar este card">⧉</button>`
+    : '';
   const deleteBtnHtml = (AppState.mode === 'free' && node.blockId)
-    ? `<button type="button" class="mcard-delete-btn" onclick="deleteCanvasCard(event, '${node.id}')" title="Deletar este card">✕</button>`
+    ? `<button type="button" class="mcard-delete-btn" onclick="deleteCanvasCard(event, '${node.id}')" title="Remover este card">✕</button>`
     : '';
   const groupedCircleHtml = node.badgeText
-    ? `<div class="mcard-count-circle" title="Quantidade de máquinas agrupadas">${node.badgeText}</div>`
+    ? `<span class="mcard-count-badge mcard-count-top-right" title="Quantidade de máquinas agrupadas">${node.badgeText}</span>`
     : '';
+
+  const portSpecs = getNodePortSpecs(node);
+  const renderPortDots = (portsArr, dir) => {
+    const total = portsArr.length;
+    if (total === 0) return '';
+    return portsArr.map((ptype, idx) => {
+      const pct = (getPortFraction(idx, total) * 100).toFixed(2);
+      const isHoriz = orient === 'LR' || orient === 'RL';
+      const isStartEdge = (dir === 'in' && (orient === 'LR' || orient === 'TB')) || (dir === 'out' && (orient === 'RL' || orient === 'BT'));
+      const posStyle = isHoriz
+        ? `top:${pct}%; ${isStartEdge ? 'left:-7px;' : 'right:-7px;'} transform:translateY(-50%);`
+        : `left:${pct}%; ${isStartEdge ? 'top:-7px;' : 'bottom:-7px;'} transform:translateX(-50%);`;
+      const typeCls = ptype === 'fluid' ? 'port-fluid' : 'port-solid';
+      const dirCls = dir === 'out' ? 'mcard-port-out' : 'mcard-port-in';
+      const titleTxt = dir === 'out'
+        ? (ptype === 'fluid' ? 'Saída de tubulação (arraste para conectar)' : 'Saída de esteira (arraste para conectar)')
+        : (ptype === 'fluid' ? 'Entrada de tubulação' : 'Entrada de esteira');
+      return `<div class="mcard-port-dot ${typeCls} ${dirCls} ${AppState.mode === 'free' ? 'mcard-port' : ''}" data-dir="${dir}" data-type="${ptype}" data-idx="${idx}" style="${posStyle}" title="${titleTxt}" onmouseenter="highlightPortPair(this.getAttribute('data-pair'), true)" onmouseleave="highlightPortPair(this.getAttribute('data-pair'), false)"></div>`;
+    }).join('');
+  };
+  const portsHtml = `${renderPortDots(portSpecs.inputs, 'in')}${renderPortDots(portSpecs.outputs, 'out')}`;
+  const isMultiSelected = AppState.mode === 'free' && Array.isArray(AppState.free.selectedIds) && node.blockId && AppState.free.selectedIds.includes(node.blockId);
 
   return `
     <div
       id="${node.id}"
       data-floor="${floorNum}"
-      class="magnific-card kind-${node.kind} ${isCompact ? 'compact-card' : ''} ${isFinalProduct ? 'final-product-highlight' : ''} ${isConfigurable ? 'configurable-card' : ''} ${floorNum > 1 ? 'upper-floor-card' : ''} ${missingInputs.length > 0 ? 'has-missing-input' : ''}"
+      data-block-id="${node.blockId || ''}"
+      class="magnific-card kind-${node.kind} ${isCompact ? 'compact-card' : ''} ${isFinalProduct ? 'final-product-highlight' : ''} ${isConfigurable ? 'configurable-card' : ''} ${floorNum > 1 ? 'upper-floor-card' : ''} ${missingInputs.length > 0 ? 'has-missing-input' : ''} ${isMultiSelected ? 'card-multi-selected' : ''}"
       style="left:${x}px; top:${y}px; width:${w}px; --card-accent:${node.accent || '#EA580C'}; --floor-idx:${floorNum - 1};"
       onmouseenter="highlightNodeWires('${node.id}', true)"
       onmouseleave="highlightNodeWires('${node.id}', false)"
-      ${isConfigurable ? `onclick="handleCanvasCardClick(event, '${node.id}')"` : ''}
-      title="${isConfigurable ? 'Arraste para mover (Alt+Arrastar para duplicar) ou clique para configurar' : 'Arraste para mover livremente'}"
+      ${isConfigurable || AppState.mode === 'free' ? `onclick="handleCanvasCardClick(event, '${node.id}')"` : ''}
+      title="${isConfigurable ? 'Clique para selecionar na barra lateral ou arraste para mover' : 'Arraste para mover livremente'}"
     >
       <div class="mcard-top-label ${isFinalProduct ? 'final-top-label' : ''}">
         <span class="mcard-title">${isFinalProduct ? `🎯 ${node.entity?.name || 'Produto Final'}` : node.topLabel}</span>
@@ -3419,6 +3961,8 @@ function renderMagnificNodeCard(box, orientOrIsTB) {
           ${missingBadgeHtml}
           ${isFinalProduct ? '<span class="final-product-pill">PRODUTO FINAL</span>' : ''}
           ${floorBadgeHtml}
+          ${groupedCircleHtml}
+          ${duplicateBtnHtml}
           ${deleteBtnHtml}
         </div>
       </div>
@@ -3437,21 +3981,9 @@ function renderMagnificNodeCard(box, orientOrIsTB) {
           ${outputsHtml}
           ${logisticsHtml}
         </div>
-        ${groupedCircleHtml}
       </div>
 
-      ${AppState.mode === 'free' ? `
-        ${hasInPort ? `
-          <div class="mcard-port ${portInClass}" title="Entrada">
-            <span>▣</span>
-          </div>
-        ` : ''}
-        ${hasOutPort ? `
-          <div class="mcard-port ${portOutClass}" title="Puxe para conectar">
-            <span>▣</span>
-          </div>
-        ` : ''}
-      ` : ''}
+      ${portsHtml}
     </div>
   `;
 }
@@ -3471,13 +4003,250 @@ function highlightNodeWires(nodeId, active) {
  * INSPECTOR DE CONFIGURAÇÃO AO CLICAR NA MÁQUINA NO ESPAÇO
  * ========================================================================== */
 
+const INSPECTOR_EXCEPTION_KINDS = new Set([
+  'splitter', 'merger', 'smart_splitter', 'programmable_splitter', 'priority_merger',
+  'pipe_junction', 'pipe_pump_mk1', 'pipe_pump_mk2',
+  'storage_mk1', 'storage_mk2', 'fluid_buffer_mk1', 'fluid_buffer_mk2'
+]);
+
+function selectAndRevealSidebarCard(node) {
+  if (!node) return;
+  // Expande sidebar caso esteja recolhida
+  const sidebar = document.getElementById('left-sidebar');
+  if (sidebar && sidebar.classList.contains('collapsed') && typeof toggleSidebarCollapse === 'function') {
+    toggleSidebarCollapse();
+  }
+
+  let selectorKey = null;
+  if (AppState.mode === 'free' && node.blockId) {
+    AppState.free.expandedBlockId = node.blockId;
+    AppState.free.selectedIds = [node.blockId];
+    renderAll(false);
+    selectorKey = `[data-sb-block-id="${node.blockId}"]`;
+  } else if (node.configMeta) {
+    const m = node.configMeta;
+    if (m.itemId) selectorKey = `[data-sb-item-id="${m.itemId}"]`;
+    else if (m.configType) selectorKey = `[data-sb-cfg="${m.configType}"]`;
+  }
+
+  if (selectorKey) {
+    setTimeout(() => {
+      const target = document.querySelector(`#left-sidebar ${selectorKey}`);
+      if (target) {
+        document.querySelectorAll('#left-sidebar .sb-card-selected').forEach(el => el.classList.remove('sb-card-selected'));
+        target.classList.add('sb-card-selected');
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 30);
+  }
+}
+
+function focusCanvasCardByBlockId(blockId) {
+  const card = document.querySelector(`.magnific-card[data-block-id="${blockId}"]`);
+  if (!card) return;
+  const box = AppState.canvas.nodeMap.get(card.id);
+  const vp = document.getElementById('spaces-viewport');
+  if (box && vp) {
+    const rect = vp.getBoundingClientRect();
+    const s = AppState.canvas.scale || 1;
+    AppState.canvas.x = rect.width / 2 - (box.x + (box.w || 260) / 2) * s;
+    AppState.canvas.y = rect.height / 2 - (box.y + (box.h || 220) / 2) * s;
+    applyCanvasTransform();
+  }
+  card.classList.add('card-focus-flash');
+  setTimeout(() => card.classList.remove('card-focus-flash'), 1100);
+}
+
 function handleCanvasCardClick(event, nodeId) {
   if (AppState.canvas.movedDuringDrag || Date.now() < (AppState.canvas.suppressClickUntil || 0)) return;
   event.stopPropagation();
   const box = AppState.canvas.nodeMap.get(nodeId);
-  if (!box || !box.node || !box.node.configMeta) return;
-  openMachineInspector(box.node.configMeta);
+  if (!box || !box.node) return;
+
+  // Shift+Clique na Oficina: seleção múltipla
+  if (event.shiftKey && AppState.mode === 'free' && box.node.blockId) {
+    const list = Array.isArray(AppState.free.selectedIds) ? [...AppState.free.selectedIds] : [];
+    const i = list.indexOf(box.node.blockId);
+    if (i >= 0) list.splice(i, 1);
+    else list.push(box.node.blockId);
+    AppState.free.selectedIds = list;
+    renderAll(false);
+    return;
+  }
+
+  // Exceções (divisores, unificadores, junções, bombas, contêineres) mantêm o modal inspetor
+  if (INSPECTOR_EXCEPTION_KINDS.has(box.node.kind)) {
+    if (box.node.configMeta) openMachineInspector(box.node.configMeta);
+    return;
+  }
+
+  // Máquinas: seleciona, rola e expande na barra lateral esquerda (sem card sobreposto)
+  selectAndRevealSidebarCard(box.node);
 }
+
+function pushFreeUndoSnapshot() {
+  if (!AppState.free.undoStack) AppState.free.undoStack = [];
+  AppState.free.undoStack.push(JSON.stringify({
+    blocks: AppState.free.blocks,
+    customEdges: AppState.free.customEdges
+  }));
+  if (AppState.free.undoStack.length > 40) AppState.free.undoStack.shift();
+  AppState.free.redoStack = [];
+}
+
+function undoFreeAction() {
+  if (!AppState.free.undoStack || AppState.free.undoStack.length === 0) return;
+  AppState.free.redoStack = AppState.free.redoStack || [];
+  AppState.free.redoStack.push(JSON.stringify({ blocks: AppState.free.blocks, customEdges: AppState.free.customEdges }));
+  const prev = JSON.parse(AppState.free.undoStack.pop());
+  AppState.free.blocks = prev.blocks || [];
+  AppState.free.customEdges = prev.customEdges || [];
+  AppState.free.selectedIds = [];
+  renderAll(false);
+}
+
+function redoFreeAction() {
+  if (!AppState.free.redoStack || AppState.free.redoStack.length === 0) return;
+  AppState.free.undoStack = AppState.free.undoStack || [];
+  AppState.free.undoStack.push(JSON.stringify({ blocks: AppState.free.blocks, customEdges: AppState.free.customEdges }));
+  const next = JSON.parse(AppState.free.redoStack.pop());
+  AppState.free.blocks = next.blocks || [];
+  AppState.free.customEdges = next.customEdges || [];
+  AppState.free.selectedIds = [];
+  renderAll(false);
+}
+
+function duplicateCanvasCard(event, nodeId) {
+  if (event) { event.preventDefault(); event.stopPropagation(); }
+  closeCanvasMenus();
+  const box = AppState.canvas.nodeMap.get(nodeId);
+  if (!box?.node?.blockId) return;
+  const orig = AppState.free.blocks.find(b => b.id === box.node.blockId);
+  if (!orig) return;
+  pushFreeUndoSnapshot();
+  const clone = JSON.parse(JSON.stringify(orig));
+  clone.id = uid();
+  clone.x = Math.round((typeof orig.x === 'number' ? orig.x : box.x) + (box.w || 270) + 40);
+  clone.y = Math.round(typeof orig.y === 'number' ? orig.y : box.y);
+  AppState.free.blocks.push(clone);
+  AppState.free.expandedBlockId = clone.id;
+  AppState.free.selectedIds = [clone.id];
+  renderAll(false);
+}
+
+function openCardContextMenu(clientX, clientY, nodeId) {
+  closeCanvasMenus();
+  const menu = document.getElementById('canvas-context-menu');
+  const box = AppState.canvas.nodeMap.get(nodeId);
+  if (!menu || !box?.node) return;
+  const title = box.node.topLabel || box.node.entity?.name || 'Item';
+  menu.innerHTML = `
+    <div class="context-menu-header">${libEsc(title)}</div>
+    <button type="button" class="context-menu-item" onclick="duplicateCanvasCard(event, '${nodeId}')">⧉ Duplicar</button>
+    <button type="button" class="context-menu-item" onclick="closeCanvasMenus(); selectAndRevealSidebarCard(AppState.canvas.nodeMap.get('${nodeId}')?.node)">⚙️ Selecionar na barra</button>
+    <div class="context-menu-divider"></div>
+    <button type="button" class="context-menu-item danger" onclick="closeCanvasMenus(); deleteCanvasCard(event, '${nodeId}')">✕ Remover</button>
+  `;
+  positionFloatingMenu(menu, clientX, clientY);
+  menu.classList.remove('hidden');
+}
+
+function copySelectedFreeBlocks() {
+  const ids = new Set(AppState.free.selectedIds || []);
+  if (ids.size === 0 && AppState.free.expandedBlockId) ids.add(AppState.free.expandedBlockId);
+  if (ids.size === 0) return;
+  const blocks = AppState.free.blocks.filter(b => ids.has(b.id)).map(b => JSON.parse(JSON.stringify(b)));
+  const edges = (AppState.free.customEdges || [])
+    .filter(e => ids.has(e.fromBlockId) && ids.has(e.toBlockId))
+    .map(e => JSON.parse(JSON.stringify(e)));
+  AppState.free.clipboard = { blocks, edges };
+}
+
+function pasteSelectedFreeBlocks() {
+  const clip = AppState.free.clipboard;
+  if (!clip || !clip.blocks || clip.blocks.length === 0) return;
+  pushFreeUndoSnapshot();
+  const idMap = new Map();
+  const newIds = [];
+  clip.blocks.forEach(b => {
+    const clone = JSON.parse(JSON.stringify(b));
+    const newId = uid();
+    idMap.set(b.id, newId);
+    clone.id = newId;
+    clone.x = Math.round((clone.x || 100) + 60);
+    clone.y = Math.round((clone.y || 100) + 60);
+    AppState.free.blocks.push(clone);
+    newIds.push(newId);
+  });
+  (clip.edges || []).forEach(e => {
+    const newFrom = idMap.get(e.fromBlockId);
+    const newTo = idMap.get(e.toBlockId);
+    if (!newFrom || !newTo) return;
+    AppState.free.customEdges.push({
+      ...JSON.parse(JSON.stringify(e)),
+      id: uid(),
+      fromBlockId: newFrom,
+      toBlockId: newTo,
+      fromNodeId: `free_${newFrom}_0`,
+      toNodeId: `free_${newTo}_0`
+    });
+  });
+  AppState.free.selectedIds = newIds;
+  renderAll(false);
+}
+
+function deleteSelectedFreeBlocks() {
+  const ids = new Set(AppState.free.selectedIds || []);
+  if (ids.size === 0) return;
+  pushFreeUndoSnapshot();
+  AppState.free.blocks = AppState.free.blocks.filter(b => !ids.has(b.id));
+  AppState.free.customEdges = (AppState.free.customEdges || []).filter(e => !ids.has(e.fromBlockId) && !ids.has(e.toBlockId));
+  AppState.free.selectedIds = [];
+  if (ids.has(AppState.free.expandedBlockId)) AppState.free.expandedBlockId = null;
+  renderAll(false);
+}
+
+// Atalhos de teclado da Oficina (Ctrl+C, Ctrl+V, Backspace/Delete, Ctrl+Z/Y, Espaço para Pan)
+window.addEventListener('keydown', (e) => {
+  if (AppState.mode !== 'free') return;
+  const active = document.activeElement;
+  const tag = active ? active.tagName : '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+  if (e.code === 'Space') {
+    if (!AppState.canvas.spacePressed) {
+      AppState.canvas.spacePressed = true;
+      document.getElementById('spaces-viewport')?.classList.add('space-pan-ready');
+    }
+    e.preventDefault();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+    e.preventDefault();
+    copySelectedFreeBlocks();
+  } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+    e.preventDefault();
+    pasteSelectedFreeBlocks();
+  } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    undoFreeAction();
+  } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+    e.preventDefault();
+    redoFreeAction();
+  } else if (e.key === 'Backspace' || e.key === 'Delete') {
+    if (AppState.free.selectedIds && AppState.free.selectedIds.length > 0) {
+      e.preventDefault();
+      deleteSelectedFreeBlocks();
+    }
+  }
+});
+
+window.addEventListener('keyup', (e) => {
+  if (e.code === 'Space' && AppState.canvas.spacePressed) {
+    AppState.canvas.spacePressed = false;
+    document.getElementById('spaces-viewport')?.classList.remove('space-pan-ready');
+  }
+});
 
 function openMachineInspector(configMeta) {
   AppState.inspector.isOpen = true;
@@ -4094,11 +4863,11 @@ function getBaseRecipeRateForItem(itemId, explicitRecipeId = null) {
 }
 
 /* --- Ações quando começa pelo Produto Final (Pull) --- */
-function openPullAddTargetModal() {
+function openPullAddTargetModal(preCategory) {
   openPickerModal({
     title: 'Escolher Produto Final',
     filterType: 'craftable',
-    defaultCategory: 'Todos',
+    defaultCategory: preCategory || 'Todos',
     onSelect: (itemId) => {
       AppState.production.driver = 'product';
       const baseRate = getBaseRecipeRateForItem(itemId);
@@ -4212,17 +4981,17 @@ function setPullMinerCustomCount(itemId, countVal) {
 /* --- Ações Aba 2 (Energia) --- */
 function selectPowerGenerator(genId) {
   AppState.power.generatorId = genId;
-  AppState.power.manualGenerators = null;
   AppState.power.manualWaterPumps = null;
-  AppState.power.generatorCount = 1;
-  AppState.power.clockPercent = 100;
-  AppState.power.minerMark = 'mk1';
-  AppState.power.purity = 'normal';
-  AppState.power.minerCount = 1;
-  AppState.power.minerClock = 100;
+  AppState.canvas.customPositions = {};
   const gen = Solver.getPowerGenerators().find(g => g.id === genId);
-  if (gen) {
-    AppState.power.targetMW = gen.powerProduction || 1;
+  if (AppState.power.calcMode === 'by_mw') {
+    AppState.power.manualGenerators = null;
+    if (!AppState.power.targetMW && gen) {
+      AppState.power.targetMW = gen.powerProduction || 1;
+    }
+  } else {
+    if (!AppState.power.generatorCount) AppState.power.generatorCount = 1;
+    AppState.power.manualGenerators = Number(AppState.power.generatorCount) || 1;
   }
   if (gen && gen.fuels.length > 0) {
     AppState.power.fuelItemId = gen.fuels[0].itemId;
@@ -4236,36 +5005,65 @@ function selectPowerGenerator(genId) {
 
 function selectPowerFuel(fuelId) {
   AppState.power.fuelItemId = fuelId;
-  AppState.power.manualGenerators = null;
   AppState.power.manualWaterPumps = null;
+  AppState.canvas.customPositions = {};
+  if (AppState.power.calcMode === 'by_mw') {
+    AppState.power.manualGenerators = null;
+  } else {
+    const cnt = Math.max(1, Math.round(Number(AppState.power.generatorCount) || 1));
+    AppState.power.generatorCount = cnt;
+    AppState.power.manualGenerators = cnt;
+  }
+  const gen = Solver.getPowerGenerators().find(g => g.id === AppState.power.generatorId);
+  const f = gen?.fuels?.find(x => x.itemId === fuelId);
+  if (f) AppState.power.fuelRate = f.ratePerMin * (Number(AppState.power.generatorCount) || 1);
   renderAll(true);
 }
 
 function setPowerCalcMode(mode) {
   AppState.power.calcMode = mode;
-  AppState.power.manualGenerators = null;
+  AppState.canvas.customPositions = {};
+  if (mode === 'by_mw') {
+    AppState.power.manualGenerators = null;
+  } else {
+    const cnt = Math.max(1, Math.round(Number(AppState.power.generatorCount) || 1));
+    AppState.power.generatorCount = cnt;
+    AppState.power.manualGenerators = cnt;
+  }
   renderAll(false);
 }
 
 function setPowerParam(field, value) {
+  if (field === 'clockPercent' || field === 'minerClock' || field === 'waterExtractorClock') {
+    value = Math.max(100, Math.min(250, Math.round(Number(value) || 100)));
+  }
   AppState.power[field] = value;
-  if (field === 'clockPercent' || field === 'minerCount' || field === 'minerClock' || field === 'minerMark' || field === 'purity') {
+  if (field === 'targetMW') {
+    AppState.power.calcMode = 'by_mw';
     AppState.power.manualGenerators = null;
     AppState.power.manualWaterPumps = null;
+    AppState.canvas.customPositions = {};
+  } else if (field === 'clockPercent' || field === 'minerCount' || field === 'minerClock' || field === 'minerMark' || field === 'purity') {
+    if (AppState.power.calcMode !== 'by_generators') AppState.power.manualGenerators = null;
+    AppState.power.manualWaterPumps = null;
+    AppState.canvas.customPositions = {};
   }
   renderAll(false);
 }
 
 function setPowerWaterClock(val) {
-  AppState.power.waterExtractorClock = Math.min(250, Math.max(1, parseFloat(val) || 100));
+  AppState.power.waterExtractorClock = Math.min(250, Math.max(100, Math.round(parseFloat(val) || 100)));
   AppState.power.manualWaterPumps = null;
   renderAll(false);
 }
 
 function setPowerGeneratorCountOverride(val) {
   const num = Math.max(1, Math.round(parseFloat(val) || 1));
+  AppState.power.calcMode = 'by_generators';
   AppState.power.generatorCount = num;
   AppState.power.manualGenerators = num;
+  AppState.power.manualWaterPumps = null;
+  AppState.canvas.customPositions = {};
   renderAll(false);
 }
 
@@ -4453,10 +5251,23 @@ function validateFreeConnection(fromNode, toNode) {
 
   // 3. Incompatibilidade sólido (esteira) vs fluido (tubulação)
   if (src.outType === 'solid' && dst.inType === 'fluid') {
-    return { ok: false, reason: 'Incompatível: não é possível conectar item sólido/esteira em entrada de tubulação/fluido.' };
+    return { ok: false, reason: 'Conexão incompatível' };
   }
   if (src.outType === 'fluid' && dst.inType === 'solid') {
-    return { ok: false, reason: 'Incompatível: não é possível conectar fluido/tubulação em entrada de esteira/sólido.' };
+    return { ok: false, reason: 'Conexão incompatível' };
+  }
+
+  // 4. Limite de portas de saída na origem e portas de entrada no destino
+  const fromSpecs = getNodePortSpecs(fromNode);
+  const toSpecs = getNodePortSpecs(toNode);
+  const edges = AppState.free.customEdges || [];
+  const usedOutCount = edges.filter(e => e.fromNodeId === fromNode.id).length;
+  const usedInCount = edges.filter(e => e.toNodeId === toNode.id).length;
+  if (fromSpecs.outputs.length > 0 && usedOutCount >= fromSpecs.outputs.length) {
+    return { ok: false, reason: 'Quantidade de conexão excedida' };
+  }
+  if (toSpecs.inputs.length > 0 && usedInCount >= toSpecs.inputs.length) {
+    return { ok: false, reason: 'Quantidade de conexão excedida' };
   }
 
   // 4. Se destino for máquina ou gerador com entradas definidas e origem tiver item conhecido, validar compatibilidade do item
@@ -4485,7 +5296,7 @@ function handleWireDropOnCard(fromNodeId, toNodeId) {
 
   const check = canConnectNodes(fromBox.node, toBox.node);
   if (!check.ok) {
-    showConnectionErrorToast('Conexão incompatível');
+    showConnectionErrorToast(check.reason === 'Quantidade de conexão excedida' ? 'Quantidade de conexão excedida' : 'Conexão incompatível');
     return;
   }
 
@@ -6905,55 +7716,15 @@ document.addEventListener('keydown', (e) => {
 
 const CALC_STORAGE_KEY = 'splus_calc_history_v1';
 
-const CALC_GROUPS = [
-  {
-    title: 'Produção',
-    tools: [
-      { id: 'machines', label: 'Máquinas para X/min' },
-      { id: 'clock', label: 'Clock & Overclock' }
-    ]
-  },
-  {
-    title: 'Energia',
-    tools: [
-      { id: 'energy', label: 'Energia completa' }
-    ]
-  },
-  {
-    title: 'Logística',
-    tools: [
-      { id: 'transport', label: 'Esteiras & Tubos' },
-      { id: 'storage', label: 'Armazenamento' }
-    ]
-  },
-  {
-    title: 'Construção',
-    tools: [
-      { id: 'build', label: 'Materiais' }
-    ]
-  },
-  {
-    title: 'Projeto espacial',
-    tools: [
-      { id: 'elevator', label: 'Fases do Elevador' },
-      { id: 'sink', label: 'Triturador SUPIMPA' }
-    ]
-  },
-  {
-    title: 'Numérica',
-    tools: [
-      { id: 'numeric', label: 'Calculadora numérica' }
-    ]
-  }
+const CALC_TOOLS = [
+  { id: 'numeric', label: 'Calculadora', icon: '🧮' },
+  { id: 'resources', label: 'Recursos', icon: '📦' },
+  { id: 'production', label: 'Produção', icon: '🏭' },
+  { id: 'energy', label: 'Energia', icon: '⚡' },
+  { id: 'logistics', label: 'Logística', icon: '🔀' },
+  { id: 'sink', label: 'Triturador SUPIMPA', icon: '♻️' },
+  { id: 'elevator', label: 'Elevador Espacial', icon: '🚀' }
 ];
-
-// Capacidades oficiais de armazenamento do Satisfactory 1.0 (slots sólidos ou m³ fluidos)
-const OFFICIAL_STORAGE_CAPACITY = {
-  Build_StorageContainerMk1_C: { kind: 'solid', slots: 24 },
-  Build_StorageContainerMk2_C: { kind: 'solid', slots: 48 },
-  Build_PipeStorageTank_C: { kind: 'fluid', m3: 400 },
-  Build_IndustrialTank_C: { kind: 'fluid', m3: 2400 }
-};
 
 function loadCalcHistoryLocal() {
   try {
@@ -6976,9 +7747,7 @@ function syncCalcHistoryFromAccount(prefs) {
   const existing = AppState.calculator.recents || [];
   const merged = [...prefs.calcHistory];
   existing.forEach(item => {
-    if (!merged.some(m => m.id === item.id || m.summary === item.summary)) {
-      merged.push(item);
-    }
+    if (!merged.some(m => m.id === item.id || m.summary === item.summary)) merged.push(item);
   });
   AppState.calculator.recents = merged.slice(0, 20);
   try { localStorage.setItem(CALC_STORAGE_KEY, JSON.stringify(AppState.calculator.recents)); } catch {}
@@ -7006,36 +7775,57 @@ function setCalcTool(toolId) {
 }
 
 function setCalcField(field, val, fullRerender = true) {
-  AppState.calculator[field] = val;
-  if (field === 'genId') {
-    const g = Solver.getPowerGenerators().find(x => x.id === val);
-    if (g && g.fuels?.length > 0) AppState.calculator.genFuelId = g.fuels[0].itemId;
-  } else if (field === 'clockMachineId') {
-    const recs = Solver.getRecipesByMachine(val);
-    AppState.calculator.clockRecipeId = recs.find(r => !r.isAlternate)?.id || recs[0]?.id || '';
-    const m = Solver.getMachine(val);
-    const maxSloop = Number(m?.sloopSlots) || 0;
-    if (AppState.calculator.clockSloops > maxSloop) AppState.calculator.clockSloops = maxSloop;
-  } else if (field === 'prodItemId') {
+  const c = AppState.calculator;
+  if (field === 'prodClock' || field === 'genClock') {
+    val = Math.max(100, Math.min(250, Math.round(Number(val) || 100)));
+  }
+  c[field] = val;
+
+  if (field === 'resItemId') {
     const recs = Solver.indexes.recipesByProduct.get(val) || [];
-    AppState.calculator.prodRecipeId = recs.find(r => !r.isAlternate)?.id || recs[0]?.id || '';
-    AppState.calculator.prodSloops = 0;
-  } else if (field === 'prodRecipeId') {
-    const rec = Solver.getRecipe(val);
-    const m = rec ? Solver.getMachine(rec.machine) : null;
-    const maxSloop = Number(m?.sloopSlots) || 0;
-    if (AppState.calculator.prodSloops > maxSloop) AppState.calculator.prodSloops = maxSloop;
-  } else if (field === 'transportKind') {
-    const { belts, pipes } = Solver.getBeltsAndPipes();
-    const list = val === 'pipe' ? pipes : belts;
-    AppState.calculator.transportTierId = list[list.length - 1]?.id || '';
+    const defRec = recs.find(r => !r.isAlternate) || recs[0] || null;
+    c.resRecipeId = defRec ? defRec.id : '';
+    const mainProd = defRec?.products?.find(p => p.item === val);
+    c.resTargetRate = mainProd ? Number(mainProd.ratePerMin) : 1;
+    c.resMachineClocks = {};
+  } else if (field === 'resRecipeId') {
+    c.resMachineClocks = {};
+  } else if (field === 'prodMachineId') {
+    const recs = val ? Solver.getRecipesByMachine(val).filter(r => !r.isFicsmas) : [];
+    const defRec = recs.find(r => !r.isAlternate) || recs[0] || null;
+    c.prodRecipeId = defRec ? defRec.id : '';
+    if (!c.prodMachineCount) c.prodMachineCount = 1;
+    c.prodClock = 100;
+  } else if (field === 'genId') {
+    const g = Solver.getPowerGenerators().find(x => x.id === val);
+    c.genFuelId = g?.fuels?.[0]?.itemId || '';
+    if (c.energyMode === 'by_mw' && !c.energyTargetMw && g) {
+      c.energyTargetMw = g.powerProduction || '';
+    } else if (c.energyMode === 'by_generators' && !c.genCount) {
+      c.genCount = 1;
+    }
+  } else if (field === 'sinkItemId') {
+    if (!c.sinkQty) c.sinkQty = 1;
+    if (!c.sinkRate) c.sinkRate = 1;
+  } else if (field === 'logKind') {
+    c.logItemId = '';
   }
 
-  if (fullRerender) {
-    renderCalculatorWorkspace();
-  } else {
-    updateCalcResultOnly();
-  }
+  if (fullRerender) renderCalculatorWorkspace();
+  else updateCalcResultOnly();
+}
+
+function setCalcResMachineClock(machineId, val) {
+  const pct = Math.max(100, Math.min(250, Math.round(Number(val) || 100)));
+  if (!AppState.calculator.resMachineClocks) AppState.calculator.resMachineClocks = {};
+  AppState.calculator.resMachineClocks[machineId] = pct;
+  renderCalculatorWorkspace();
+}
+
+function setCalcElevatorDelivered(phase, itemId, val) {
+  const key = `${phase}_${itemId}`;
+  AppState.calculator.elevatorDelivered[key] = Math.max(0, Math.round(Number(val) || 0));
+  updateCalcResultOnly();
 }
 
 function stepCalcNumber(field, delta, minVal = 1, maxVal = 999999) {
@@ -7045,27 +7835,12 @@ function stepCalcNumber(field, delta, minVal = 1, maxVal = 999999) {
   renderCalculatorWorkspace();
 }
 
-function openCalcItemPicker(field, filterFn) {
+function openCalcItemPicker(field, filterFn, title = 'Selecionar Item') {
   const items = Object.values(window.SATISFACTORY_DATA?.items || {})
     .filter(it => !filterFn || filterFn(it))
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 
-  openGenericPickerModal('Selecionar Item', items, (selected) => {
-    setCalcField(field, selected.id, true);
-  });
-}
-
-function openCalcBuildingPicker(field) {
-  const data = window.SATISFACTORY_DATA || {};
-  const list = [
-    ...Object.values(data.machines || {}),
-    ...Object.values(data.generators || {}),
-    ...Object.values(data.extractors || {}),
-    ...Object.values(data.logistics || {})
-  ].filter(b => Array.isArray(b.buildCost) && b.buildCost.length > 0)
-    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-
-  openGenericPickerModal('Selecionar Construção', list, (selected) => {
+  openGenericPickerModal(title, items, (selected) => {
     setCalcField(field, selected.id, true);
   });
 }
@@ -7084,7 +7859,7 @@ function openGenericPickerModal(title, entities, onSelect) {
   modal.innerHTML = `
     <div class="modal-card calc-picker-card">
       <div class="modal-header">
-        <h3>${title}</h3>
+        <h3>${title} (${entities.length})</h3>
         <button type="button" class="btn-icon-close" onclick="document.getElementById('calc-picker-modal').classList.add('hidden')">✕</button>
       </div>
       <div class="calc-picker-search-wrap">
@@ -7105,11 +7880,11 @@ function filterCalcPickerList(query) {
   const list = (window._calcPickerEntities || []).filter(e => {
     if (!q) return true;
     return Solver.normalizeText(`${e.name} ${e.nameEn || ''} ${e.category || ''}`).includes(q);
-  }).slice(0, 80);
+  }).slice(0, 120);
 
   grid.innerHTML = list.map(e => `
     <button type="button" class="calc-picker-item" onclick="selectCalcPickerEntity('${e.id}')">
-      ${renderEntityIcon(e, 32)}
+      ${renderEntityIcon(e, 28)}
       <span>${libEsc(e.name)}</span>
     </button>
   `).join('') || '<div class="calc-empty-note">Nenhum resultado.</div>';
@@ -7117,56 +7892,9 @@ function filterCalcPickerList(query) {
 
 function selectCalcPickerEntity(id) {
   const entity = (window._calcPickerEntities || []).find(e => e.id === id);
-  const modal = document.getElementById('calc-picker-modal');
-  if (modal) modal.classList.add('hidden');
+  document.getElementById('calc-picker-modal')?.classList.add('hidden');
   if (entity && typeof window._calcPickerOnSelect === 'function') {
     window._calcPickerOnSelect(entity);
-  }
-}
-
-function formatFractionalMachines(exactCount, clockPct = 100) {
-  if (!Number.isFinite(exactCount) || exactCount <= 0) return null;
-  const whole = Math.floor(exactCount);
-  const frac = exactCount - whole;
-  if (frac < 0.001 || frac > 0.999) {
-    return {
-      isFractional: false,
-      totalInt: Math.max(1, Math.round(exactCount)),
-      mixedText: `${Math.max(1, Math.round(exactCount))} a ${fmt(clockPct, 2)}%`,
-      uniformText: `${Math.max(1, Math.round(exactCount))} a ${fmt(clockPct, 2)}%`
-    };
-  }
-  const totalInt = Math.ceil(exactCount);
-  const lastClock = frac * clockPct;
-  const uniformClock = (exactCount / totalInt) * clockPct;
-  const mixedText = whole > 0
-    ? `${whole} a ${fmt(clockPct, 0)}% + 1 a ${fmt(lastClock, 2)}%`
-    : `1 a ${fmt(lastClock, 2)}%`;
-  const uniformText = `${totalInt} a ${fmt(uniformClock, 2)}%`;
-  return { isFractional: true, totalInt, mixedText, uniformText };
-}
-
-function addCalcBuildRow() {
-  const c = AppState.calculator;
-  const id = c.buildSelectedId;
-  const count = Math.max(1, Math.round(Number(c.buildAddCount) || 1));
-  if (!id) return;
-  const existing = c.buildList.find(r => r.id === id);
-  if (existing) existing.count += count;
-  else c.buildList.push({ id, count });
-  renderCalculatorWorkspace();
-}
-
-function removeCalcBuildRow(idx) {
-  AppState.calculator.buildList.splice(idx, 1);
-  renderCalculatorWorkspace();
-}
-
-function updateCalcBuildRowCount(idx, val) {
-  const n = Math.max(1, Math.round(Number(val) || 1));
-  if (AppState.calculator.buildList[idx]) {
-    AppState.calculator.buildList[idx].count = n;
-    updateCalcResultOnly();
   }
 }
 
@@ -7192,26 +7920,28 @@ function evalMathExpr() {
   const raw = String(AppState.calculator.expr || '').replace(/,/g, '.').replace(/[^0-9+\-*/().%\s]/g, '');
   if (!raw.trim()) return;
   try {
-    // Trata % como /100
     const normalized = raw.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');
     const val = Function(`"use strict"; return (${normalized});`)();
     if (typeof val === 'number' && Number.isFinite(val)) {
       const formatted = fmt(val, 4);
       AppState.calculator.exprResult = formatted;
       AppState.calculator.numHistory.unshift(`${raw} = ${formatted}`);
-      if (AppState.calculator.numHistory.length > 12) AppState.calculator.numHistory.pop();
+      if (AppState.calculator.numHistory.length > 10) AppState.calculator.numHistory.pop();
     } else {
       AppState.calculator.exprResult = 'Erro';
     }
   } catch {
     AppState.calculator.exprResult = 'Erro';
   }
-  updateCalcResultOnly();
   const res = document.getElementById('calc-num-result-readout');
   if (res) res.textContent = `= ${AppState.calculator.exprResult}`;
+  const histEl = document.getElementById('calc-num-hist-inline');
+  if (histEl) {
+    histEl.innerHTML = AppState.calculator.numHistory.slice(0, 5).map(h => `<div class="calc-num-hist-row">${libEsc(h)}</div>`).join('');
+  }
 }
 
-// Teclado físico na Calculadora Numérica (ativo somente na aba Calculadora -> Numérica e sem outro input focado)
+// Teclado físico na Calculadora normal (ativo somente na aba Calculadora -> Calculadora e sem outro input focado)
 window.addEventListener('keydown', (e) => {
   if (AppState.mode !== 'calculator' || AppState.calculator.tool !== 'numeric') return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -7226,7 +7956,7 @@ window.addEventListener('keydown', (e) => {
     evalMathExpr();
     return;
   }
-  if (isCalcInput) return; // deixa o input nativo lidar com digitação normal
+  if (isCalcInput) return;
 
   if (/^[0-9+\-*/().%]$/.test(key)) {
     e.preventDefault();
@@ -7242,6 +7972,503 @@ window.addEventListener('keydown', (e) => {
     appendCalcKey('C');
   }
 });
+
+// 6.7 Logística — Modo A: conta diretamente a partir do grafo atual (fonte única da verdade)
+function computeLogisticsFromGraph(graph) {
+  const { belts, pipes } = Solver.getBeltsAndPipes();
+  const data = window.SATISFACTORY_DATA || {};
+  const splitterOut = data.logistics?.Build_ConveyorAttachmentSplitter_C?.outPorts || 3;
+  const mergerIn = data.logistics?.Build_ConveyorAttachmentMerger_C?.inPorts || 3;
+  const juncPorts = data.logistics?.Build_PipelineJunction_Cross_C?.outPorts || 2;
+
+  const beltCounts = new Map();
+  const pipeCounts = new Map();
+  const itemTotals = new Map();
+  const outDeg = new Map();
+  const inDeg = new Map();
+
+  let explicitSplitters = 0;
+  let explicitMergers = 0;
+  let explicitJunctions = 0;
+
+  (graph?.columns || []).forEach(col => {
+    (col.nodes || []).forEach(n => {
+      const mult = n.badgeText && /^×(\d+)/.test(n.badgeText) ? Number(n.badgeText.slice(1)) : 1;
+      if (n.kind === 'splitter' || n.kind === 'smart_splitter' || n.kind === 'programmable_splitter') explicitSplitters += mult;
+      else if (n.kind === 'merger' || n.kind === 'priority_merger') explicitMergers += mult;
+      else if (n.kind === 'pipe_junction') explicitJunctions += mult;
+    });
+  });
+
+  (graph?.edges || []).forEach(e => {
+    const rate = Math.max(0, Number(e.rate) || 0);
+    const isFluid = Boolean(e.isPipe || e.item?.isFluid);
+    const tiers = isFluid ? pipes : belts;
+    const maxTier = tiers[tiers.length - 1];
+    const best = tiers.find(t => t.ratePerMin >= rate) || maxTier;
+    const parallel = maxTier && rate > maxTier.ratePerMin ? Math.ceil(rate / maxTier.ratePerMin) : 1;
+    const map = isFluid ? pipeCounts : beltCounts;
+    const key = best ? best.id : (isFluid ? 'pipe' : 'belt');
+    const prev = map.get(key) || { tier: best, lines: 0, totalRate: 0 };
+    prev.lines += parallel;
+    prev.totalRate += rate;
+    map.set(key, prev);
+
+    if (e.item?.id) {
+      const ip = itemTotals.get(e.item.id) || { item: e.item, totalRate: 0, lines: 0 };
+      ip.totalRate += rate;
+      ip.lines += parallel;
+      itemTotals.set(e.item.id, ip);
+    }
+
+    const ok = `${e.from}|${isFluid ? 'f' : 's'}`;
+    const ik = `${e.to}|${isFluid ? 'f' : 's'}`;
+    outDeg.set(ok, (outDeg.get(ok) || 0) + 1);
+    inDeg.set(ik, (inDeg.get(ik) || 0) + 1);
+  });
+
+  let inferredSplitters = 0;
+  let inferredMergers = 0;
+  let inferredJunctions = 0;
+  outDeg.forEach((n, k) => {
+    if (n <= 1) return;
+    if (k.endsWith('|f')) inferredJunctions += Math.ceil((n - 1) / Math.max(1, juncPorts - 1));
+    else inferredSplitters += Math.ceil((n - 1) / Math.max(1, splitterOut - 1));
+  });
+  inDeg.forEach((n, k) => {
+    if (n <= 1) return;
+    if (k.endsWith('|f')) inferredJunctions += Math.ceil((n - 1) / Math.max(1, juncPorts - 1));
+    else inferredMergers += Math.ceil((n - 1) / Math.max(1, mergerIn - 1));
+  });
+
+  return {
+    belts: Array.from(beltCounts.values()),
+    pipes: Array.from(pipeCounts.values()),
+    splitters: Math.max(explicitSplitters, inferredSplitters),
+    mergers: Math.max(explicitMergers, inferredMergers),
+    junctions: Math.max(explicitJunctions, inferredJunctions),
+    items: Array.from(itemTotals.values()),
+    edgeCount: (graph?.edges || []).length
+  };
+}
+
+function computeCalcToolResult() {
+  const c = AppState.calculator;
+  const data = window.SATISFACTORY_DATA || {};
+  const powerExp = data.rules?.powerExponent || 1.321929;
+
+  // 6.2 RECURSOS (substitui Clock & Overclock) — sem extratoras/mineradoras, overclock por tipo de máquina
+  if (c.tool === 'resources') {
+    const missing = [];
+    if (!c.resItemId) missing.push('produto');
+    if (!c.resTargetRate || Number(c.resTargetRate) <= 0) missing.push('quantidade (/min)');
+    if (missing.length > 0) {
+      return { title: 'Recursos', incomplete: true, missingText: `Informe: ${missing.join(', ')}.`, heroLabel: 'Aguardando dados', heroValue: '—', rows: [] };
+    }
+
+    const item = Solver.getItem(c.resItemId);
+    const recipeOverrides = c.resRecipeId ? { [c.resItemId]: c.resRecipeId } : {};
+    // Primeiro calcula a cadeia para descobrir os tipos de máquina, aplicando overclock por tipo de máquina
+    const basePlan = Solver.solveProductionChain({
+      targets: [{ id: 'calc_t', itemId: c.resItemId, rate: Number(c.resTargetRate) }],
+      recipeOverrides,
+      stepSettings: {},
+      minerSettings: {}
+    });
+
+    const stepSettings = {};
+    (basePlan?.steps || []).forEach(st => {
+      const mId = st.machine?.id;
+      const oc = mId && c.resMachineClocks?.[mId] ? Math.max(100, Math.min(250, Number(c.resMachineClocks[mId]))) : 100;
+      stepSettings[st.itemId] = { clockPercent: oc };
+    });
+
+    const plan = Solver.solveProductionChain({
+      targets: [{ id: 'calc_t', itemId: c.resItemId, rate: Number(c.resTargetRate) }],
+      recipeOverrides,
+      stepSettings,
+      minerSettings: {}
+    });
+
+    if (!plan || !plan.steps || plan.steps.length === 0) {
+      return { title: item?.name || 'Recursos', incomplete: true, missingText: 'Nenhuma receita encontrada para este item.', heroLabel: '—', heroValue: '—', rows: [] };
+    }
+
+    // Agrega máquinas por tipo (SEM extratoras e mineradoras), energia e fragmentos
+    const byMachine = new Map();
+    let totalMachines = 0;
+    let totalPowerMw = 0;
+    let totalShards = 0;
+    const excessMap = new Map();
+
+    plan.steps.forEach(st => {
+      const m = st.machine;
+      if (!m) return;
+      const cnt = Math.max(1, Math.ceil(st.exactMachines || st.machineCount || 1));
+      const oc = stepSettings[st.itemId]?.clockPercent || 100;
+      const baseMw = st.recipe?.avgPowerMw ?? m.powerConsumption ?? 0;
+      const mw = baseMw * Math.pow(oc / 100, powerExp) * cnt;
+      totalMachines += cnt;
+      totalPowerMw += mw;
+      totalShards += getShardsForClock(oc) * cnt;
+
+      const prev = byMachine.get(m.id) || { machine: m, count: 0, clock: oc, mw: 0 };
+      prev.count += cnt;
+      prev.mw += mw;
+      byMachine.set(m.id, prev);
+
+      // Excesso por arredondamento de máquinas inteiras ou subprodutos
+      const producedMain = (st.ratePerMachine || 0) * cnt;
+      const excessMain = producedMain - (st.requiredRate || 0);
+      if (excessMain > 0.05) {
+        excessMap.set(st.itemId, (excessMap.get(st.itemId) || 0) + excessMain);
+      }
+      (st.recipe?.products || []).filter(p => p.item !== st.itemId).forEach(by => {
+        const out = by.ratePerMin * (oc / 100) * cnt;
+        if (out > 0.01) excessMap.set(by.item, (excessMap.get(by.item) || 0) + out);
+      });
+    });
+
+    const rows = [];
+    Array.from(byMachine.values()).forEach(entry => {
+      rows.push({
+        label: `${entry.machine.name} (${entry.clock}%)`,
+        value: `${entry.count}× · ⚡ ${fmt(entry.mw, 1)} MW`,
+        icon: entry.machine
+      });
+    });
+    (plan.rawResources || []).forEach(r => {
+      rows.push({
+        label: `Recurso: ${r.item?.name || r.itemId}`,
+        value: `${fmt(r.requiredRate, 1)} ${r.item?.unit || 'un'}/min`,
+        icon: r.item
+      });
+    });
+    rows.push({ label: 'Energia necessária (sem extratores)', value: `⚡ ${fmt(totalPowerMw, 1)} MW`, highlight: true });
+    if (totalShards > 0) {
+      rows.push({ label: 'Fragmentos de Energia', value: `💎 ${totalShards}` });
+    }
+    excessMap.forEach((rate, itemId) => {
+      const it = Solver.getItem(itemId);
+      rows.push({ label: `Excesso: ${it ? it.name : itemId}`, value: `+${fmt(rate, 2)} ${it?.unit || 'un'}/min`, icon: it });
+    });
+
+    return {
+      title: `${item?.name || ''} — ${fmt(c.resTargetRate, 1)} ${item?.unit || 'un'}/min`,
+      heroLabel: 'Máquinas necessárias (sem extratores)',
+      heroValue: `${totalMachines}× · ⚡ ${fmt(totalPowerMw, 1)} MW`,
+      rows,
+      machineTypes: Array.from(byMachine.values()),
+      planAction: { itemId: c.resItemId, rate: Number(c.resTargetRate), recipeId: c.resRecipeId }
+    };
+  }
+
+  // 6.3 PRODUÇÃO (substitui Máquinas para X/min) — sem geradores de energia
+  if (c.tool === 'production') {
+    const missing = [];
+    if (!c.prodMachineId) missing.push('máquina');
+    if (!c.prodMachineCount || Number(c.prodMachineCount) <= 0) missing.push('quantidade de máquinas');
+    if (!c.prodRecipeId) missing.push('receita');
+    if (missing.length > 0) {
+      return { title: 'Produção', incomplete: true, missingText: `Informe: ${missing.join(', ')}.`, heroLabel: 'Aguardando dados', heroValue: '—', rows: [] };
+    }
+
+    const machine = Solver.getMachine(c.prodMachineId);
+    const recipe = Solver.getRecipe(c.prodRecipeId);
+    if (!machine || !recipe) {
+      return { title: 'Produção', incomplete: true, missingText: 'Selecione máquina e receita.', heroLabel: '—', heroValue: '—', rows: [] };
+    }
+
+    const count = Math.max(1, Math.round(Number(c.prodMachineCount) || 1));
+    const clock = Math.max(100, Math.min(250, Number(c.prodClock) || 100));
+    const mult = (clock / 100) * count;
+    const mainProd = recipe.products?.[0];
+    const mainItem = mainProd ? Solver.getItem(mainProd.item) : null;
+    const mainOutRate = mainProd ? mainProd.ratePerMin * mult : 0;
+    const baseMw = recipe.avgPowerMw ?? machine.powerConsumption ?? 0;
+    const totalMw = baseMw * Math.pow(clock / 100, powerExp) * count;
+    const totalShards = getShardsForClock(clock) * count;
+
+    const rows = [];
+    (recipe.products || []).slice(1).forEach(by => {
+      const it = Solver.getItem(by.item);
+      rows.push({ label: `Excesso (subproduto): ${it ? it.name : by.item}`, value: `+${fmt(by.ratePerMin * mult, 2)} ${it?.unit || 'un'}/min`, icon: it, highlight: true });
+    });
+
+    const collapsibleRows = [
+      ...(recipe.ingredients || []).map(ing => {
+        const it = Solver.getItem(ing.item);
+        return { label: `Consome: ${it ? it.name : ing.item}`, value: `${fmt(ing.ratePerMin * mult, 2)} ${it?.unit || 'un'}/min`, icon: it };
+      }),
+      { label: 'Energia necessária', value: `⚡ ${fmt(totalMw, 1)} MW` },
+      ...(totalShards > 0 ? [{ label: 'Fragmentos de Energia', value: `💎 ${totalShards}` }] : [])
+    ];
+
+    return {
+      title: `${count}× ${machine.name} (${clock}%)`,
+      heroLabel: mainItem ? `Produção de ${mainItem.name}` : 'Produção',
+      heroValue: mainItem ? `${fmt(mainOutRate, 2)} ${mainItem.unit || 'un'}/min` : '—',
+      rows,
+      collapsibleTitle: 'Insumos consumidos e energia',
+      collapsibleRows,
+      planAction: mainItem ? { itemId: mainItem.id, rate: mainOutRate, recipeId: recipe.id } : null
+    };
+  }
+
+  // 6.4 ENERGIA (mesma lógica da aba Energia: por MW ou por geradores, nada pré-definido)
+  if (c.tool === 'energy') {
+    const missing = [];
+    if (c.energyMode === 'by_mw' && (!c.energyTargetMw || Number(c.energyTargetMw) <= 0)) missing.push('energia desejada (MW)');
+    if (!c.genId) missing.push('gerador');
+    if (!c.genFuelId) missing.push('combustível');
+    if (c.energyMode === 'by_generators' && (!c.genCount || Number(c.genCount) <= 0)) missing.push('quantidade de geradores');
+    if (missing.length > 0) {
+      return { title: 'Energia', incomplete: true, missingText: `Informe: ${missing.join(', ')}.`, heroLabel: 'Aguardando dados', heroValue: '—', rows: [] };
+    }
+
+    const gen = Solver.getPowerGenerators().find(g => g.id === c.genId);
+    const fuelObj = (gen?.fuels || []).find(f => f.itemId === c.genFuelId);
+    const fuelItem = fuelObj ? Solver.getItem(fuelObj.itemId) : null;
+    const waterPump = data.extractors?.Build_WaterPump_C;
+    const pumpRate = waterPump?.baseRatePerMin || 120;
+    const pumpMw = waterPump?.powerConsumption || 20;
+
+    const clock = Math.max(100, Math.min(250, Number(c.genClock) || 100));
+    const marginPct = Math.max(0, Math.min(100, Number(c.genMarginPct) || 0));
+    const mwPerGen = (gen.powerProduction || 0) * (clock / 100);
+    const count = c.energyMode === 'by_mw'
+      ? Math.max(1, Math.ceil((Number(c.energyTargetMw) * (1 + marginPct / 100)) / Math.max(0.01, mwPerGen)))
+      : Math.max(1, Math.round(Number(c.genCount) || 1));
+
+    const grossMw = mwPerGen * count;
+    const totalFuel = (fuelObj?.ratePerMin || 0) * (clock / 100) * count;
+    const totalWater = (fuelObj?.waterPerMin || 0) * (clock / 100) * count;
+    const waterPumps = totalWater > 0 ? Math.ceil(totalWater / pumpRate) : 0;
+    const waterMw = waterPumps * pumpMw;
+    const netMw = grossMw - waterMw;
+    const totalShards = getShardsForClock(clock) * count;
+
+    const rows = [
+      { label: gen.name, value: `${count}× (${fmt(mwPerGen, 1)} MW cada)`, icon: gen },
+      { label: `Combustível: ${fuelItem?.name || ''}`, value: `${fmt(totalFuel, 2)} ${fuelItem?.unit || 'un'}/min`, icon: fuelItem }
+    ];
+    if (totalWater > 0) {
+      rows.push({ label: 'Água necessária', value: `💧 ${fmt(totalWater, 1)} m³/min (${waterPumps}× Bomba · ${fmt(waterMw, 1)} MW)` });
+    }
+    rows.push({ label: 'Energia líquida', value: `⚡ ${fmt(netMw, 1)} MW`, highlight: true });
+    if (totalShards > 0) rows.push({ label: 'Fragmentos de Energia', value: `💎 ${totalShards}` });
+
+    return {
+      title: `${count}× ${gen.name} (${clock}%)`,
+      heroLabel: 'Energia gerada',
+      heroValue: `⚡ ${fmt(grossMw, 1)} MW`,
+      rows,
+      powerAction: { genId: gen.id, fuelId: fuelObj.itemId, count, clock }
+    };
+  }
+
+  // 6.7 LOGÍSTICA (Modo A: grafo existente | Modo B: avulso)
+  if (c.tool === 'logistics') {
+    if (c.logMode === 'graph') {
+      const g = AppState.canvas.lastGraph;
+      if (!g || !g.edges || g.edges.length === 0) {
+        return { title: 'Logística da Linha', incomplete: true, missingText: 'Monte uma linha em Produção ou Oficina para ler o grafo.', heroLabel: 'Nenhuma linha ativa', heroValue: '—', rows: [] };
+      }
+      const stats = computeLogisticsFromGraph(g);
+      const lenM = Number(c.logLengthMeters) > 0 ? Number(c.logLengthMeters) : 0;
+      const rows = [];
+      stats.belts.forEach(b => {
+        const mTxt = lenM > 0 ? ` · ${fmt(b.lines * lenM, 0)} m` : '';
+        rows.push({ label: b.tier?.name || 'Esteira', value: `${b.lines} linha(s) · ${fmt(b.totalRate, 1)} un/min${mTxt}`, icon: b.tier });
+      });
+      stats.pipes.forEach(p => {
+        const mTxt = lenM > 0 ? ` · ${fmt(p.lines * lenM, 0)} m` : '';
+        rows.push({ label: p.tier?.name || 'Tubulação', value: `${p.lines} linha(s) · ${fmt(p.totalRate, 1)} m³/min${mTxt}`, icon: p.tier });
+      });
+      if (stats.splitters > 0) rows.push({ label: 'Divisores de Esteira', value: `${stats.splitters}×`, icon: data.logistics?.Build_ConveyorAttachmentSplitter_C, highlight: true });
+      if (stats.mergers > 0) rows.push({ label: 'Unificadores de Esteira', value: `${stats.mergers}×`, icon: data.logistics?.Build_ConveyorAttachmentMerger_C, highlight: true });
+      if (stats.junctions > 0) rows.push({ label: 'Junções de Tubulação', value: `${stats.junctions}×`, icon: data.logistics?.Build_PipelineJunction_Cross_C, highlight: true });
+      stats.items.forEach(it => {
+        rows.push({ label: `Item: ${it.item.name}`, value: `${fmt(it.totalRate, 1)} ${it.item.unit || 'un'}/min (${it.lines} conexões)`, icon: it.item });
+      });
+      return {
+        title: 'Logística da Linha Atual',
+        heroLabel: 'Conexões no grafo',
+        heroValue: `${stats.edgeCount} conexões`,
+        rows
+      };
+    } else {
+      const missing = [];
+      if (!c.logItemId) missing.push('item');
+      if (!c.logTotalRate || Number(c.logTotalRate) <= 0) missing.push('vazão total (/min)');
+      if (!c.logBranches || Number(c.logBranches) < 2) missing.push('ramais (mín. 2)');
+      if (missing.length > 0) {
+        return { title: 'Logística Avulsa', incomplete: true, missingText: `Informe: ${missing.join(', ')}.`, heroLabel: 'Aguardando dados', heroValue: '—', rows: [] };
+      }
+
+      const { belts, pipes } = Solver.getBeltsAndPipes();
+      const isFluid = c.logKind === 'fluid';
+      const tiers = isFluid ? pipes : belts;
+      const maxTier = tiers[tiers.length - 1];
+      const totalRate = Number(c.logTotalRate);
+      const branches = Math.max(2, Math.round(Number(c.logBranches)));
+      const ratePerBranch = totalRate / branches;
+      const unit = isFluid ? 'm³/min' : 'un/min';
+
+      const trunkTier = tiers.find(t => t.ratePerMin >= totalRate) || maxTier;
+      const branchTier = tiers.find(t => t.ratePerMin >= ratePerBranch) || maxTier;
+      const parallelTrunks = maxTier && totalRate > maxTier.ratePerMin ? Math.ceil(totalRate / maxTier.ratePerMin) : 1;
+
+      const compObj = isFluid
+        ? data.logistics?.Build_PipelineJunction_Cross_C
+        : (c.logAction === 'split' ? data.logistics?.Build_ConveyorAttachmentSplitter_C : data.logistics?.Build_ConveyorAttachmentMerger_C);
+      const fanFactor = isFluid
+        ? Math.max(2, Number(compObj?.outPorts) || 2)
+        : (c.logAction === 'split' ? Math.max(2, Number(compObj?.outPorts) || 3) : Math.max(2, Number(compObj?.inPorts) || 3));
+      const compCount = Math.max(1, Math.ceil((branches - 1) / (fanFactor - 1)));
+      const lenM = Number(c.logLengthMeters) > 0 ? Number(c.logLengthMeters) : 0;
+
+      const rows = [
+        { label: 'Tronco mínimo', value: `${parallelTrunks > 1 ? parallelTrunks + '× ' : ''}${trunkTier?.name || ''} (${fmt(totalRate, 1)} ${unit})`, icon: trunkTier, highlight: parallelTrunks > 1 },
+        { label: 'Cada ramal', value: `${branchTier?.name || ''} (${fmt(ratePerBranch, 2)} ${unit})`, icon: branchTier },
+        { label: compObj?.name || 'Componente', value: `${compCount}× (${branches} ramais)`, icon: compObj, highlight: true }
+      ];
+      if (lenM > 0) {
+        rows.push({ label: 'Comprimento estimado', value: `${fmt((parallelTrunks + branches) * lenM, 0)} m totais` });
+      }
+      const miniTree = c.logAction === 'split'
+        ? `[${fmt(totalRate, 1)} ${unit}] → ${compCount}× ${compObj?.name || 'Divisor'} → ${branches}× [${fmt(ratePerBranch, 1)} ${unit}]`
+        : `${branches}× [${fmt(ratePerBranch, 1)} ${unit}] → ${compCount}× ${compObj?.name || 'Unificador'} → [${fmt(totalRate, 1)} ${unit}]`;
+
+      return {
+        title: `Logística — ${Solver.getItem(c.logItemId)?.name || ''}`,
+        heroLabel: compObj?.name || 'Componentes necessários',
+        heroValue: `${compCount}× · ${parallelTrunks > 1 ? parallelTrunks + ' troncos paralelos' : trunkTier?.shortName || ''}`,
+        rows,
+        miniTree
+      };
+    }
+  }
+
+  // 6.5 TRITURADOR SUPIMPA (todos os itens trituráveis, pontos oficiais exatos)
+  if (c.tool === 'sink') {
+    const missing = [];
+    if (!c.sinkItemId) missing.push('item');
+    if ((!c.sinkQty || Number(c.sinkQty) <= 0) && (!c.sinkRate || Number(c.sinkRate) <= 0)) missing.push('quantidade ou taxa (/min)');
+    if (missing.length > 0) {
+      return { title: 'Triturador SUPIMPA', incomplete: true, missingText: `Informe: ${missing.join(', ')}.`, heroLabel: 'Aguardando dados', heroValue: '—', rows: [] };
+    }
+
+    const item = Solver.getItem(c.sinkItemId);
+    const ptsEach = Number(item?.sinkPoints) || 0;
+    const qty = Math.max(0, Number(c.sinkQty) || 0);
+    const rate = Math.max(0, Number(c.sinkRate) || 0);
+    const ptsForQty = ptsEach * qty;
+    const ptsPerMin = ptsEach * rate;
+    const ptsPerHour = ptsPerMin * 60;
+
+    return {
+      title: `Triturador SUPIMPA — ${item?.name || ''}`,
+      heroLabel: 'Pontos por minuto',
+      heroValue: `${fmt(ptsPerMin, 0)} pts/min`,
+      rows: [
+        { label: 'Pontos por item (oficial)', value: `${fmt(ptsEach, 0)} pts`, icon: item, highlight: true },
+        { label: `Total por quantidade (${fmt(qty, 0)}×)`, value: `${fmt(ptsForQty, 0)} pts` },
+        { label: `Por minuto (${fmt(rate, 2)} /min)`, value: `${fmt(ptsPerMin, 0)} pts/min` },
+        { label: 'Por hora', value: `${fmt(ptsPerHour, 0)} pts/h` }
+      ]
+    };
+  }
+
+  // 6.6 ELEVADOR ESPACIAL (5 fases oficiais 1.0 + entregue + faltando + progresso)
+  if (c.tool === 'elevator') {
+    const phases = Array.isArray(data.spaceElevatorPhases) ? data.spaceElevatorPhases : [];
+    const ph = phases.find(p => Number(p.phase) === Number(c.elevatorPhase)) || phases[0];
+    if (!ph) {
+      return { title: 'Elevador Espacial', incomplete: true, missingText: 'Dados das fases indisponíveis.', heroLabel: '—', heroValue: '—', rows: [] };
+    }
+    let totalReq = 0;
+    let totalDeliv = 0;
+    const rows = (ph.requirements || []).map(req => {
+      const it = Solver.getItem(req.item);
+      const deliv = Math.min(req.amount, Math.max(0, Number(c.elevatorDelivered?.[`${ph.phase}_${req.item}`]) || 0));
+      const rem = Math.max(0, req.amount - deliv);
+      totalReq += req.amount;
+      totalDeliv += deliv;
+      return {
+        label: it ? it.name : req.item,
+        value: rem === 0 ? `Concluído (${fmt(req.amount, 0)}/${fmt(req.amount, 0)})` : `Faltam ${fmt(rem, 0)} de ${fmt(req.amount, 0)}`,
+        icon: it,
+        highlight: rem === 0
+      };
+    });
+    const pct = totalReq > 0 ? Math.min(100, (totalDeliv / totalReq) * 100) : 0;
+    return {
+      title: `${ph.name} (${ph.unlocks})`,
+      heroLabel: 'Progresso da fase',
+      heroValue: `${fmt(pct, 1)}%`,
+      progressPct: pct,
+      rows
+    };
+  }
+
+  return { title: 'Calculadora', heroLabel: 'Resultado', heroValue: c.exprResult || '0', rows: [] };
+}
+
+function renderCalcResultPanelHtml() {
+  const res = computeCalcToolResult();
+  return `
+    <div class="calc-card calc-result-card">
+      <div class="calc-card-head">
+        <h4>Resultado</h4>
+        <span class="calc-card-sub">${libEsc(res.title || '')}</span>
+      </div>
+      ${res.incomplete ? `
+        <div class="calc-incomplete-box">${libEsc(res.missingText || 'Preencha os campos obrigatórios à esquerda.')}</div>
+      ` : `
+        <div class="calc-result-hero">
+          <span class="calc-hero-lbl">${libEsc(res.heroLabel || '')}</span>
+          <strong class="calc-hero-val">${libEsc(res.heroValue || '—')}</strong>
+          ${typeof res.progressPct === 'number' ? `<div class="calc-progress-track"><div class="calc-progress-fill" style="width:${res.progressPct.toFixed(1)}%;"></div></div>` : ''}
+        </div>
+        ${res.miniTree ? `<div class="calc-mini-tree">${libEsc(res.miniTree)}</div>` : ''}
+        <div class="calc-result-rows">
+          ${(res.rows || []).map(r => `
+            <div class="calc-res-row ${r.highlight ? 'is-highlight' : ''}">
+              <span class="calc-res-lbl">${r.icon ? renderEntityIcon(r.icon, 20) : ''}${libEsc(r.label)}</span>
+              <strong class="calc-res-val">${libEsc(r.value)}</strong>
+            </div>
+          `).join('')}
+        </div>
+        ${res.collapsibleRows && res.collapsibleRows.length > 0 ? `
+          <details class="sb-3d-details">
+            <summary>${libEsc(res.collapsibleTitle || 'Detalhes')}</summary>
+            <div class="calc-result-rows" style="margin-top:8px;">
+              ${res.collapsibleRows.map(r => `
+                <div class="calc-res-row">
+                  <span class="calc-res-lbl">${r.icon ? renderEntityIcon(r.icon, 18) : ''}${libEsc(r.label)}</span>
+                  <strong class="calc-res-val">${libEsc(r.value)}</strong>
+                </div>
+              `).join('')}
+            </div>
+          </details>
+        ` : ''}
+        <div class="calc-actions-bar">
+          ${res.planAction ? `<button type="button" class="calc-act-btn primary" onclick="openCalcInProduction('${res.planAction.itemId}', ${res.planAction.rate}, '${res.planAction.recipeId || ''}')">🏭 Planejar</button>` : ''}
+          ${res.powerAction ? `<button type="button" class="calc-act-btn primary" onclick="openCalcInPower('${res.powerAction.genId}', '${res.powerAction.fuelId || ''}', ${res.powerAction.count}, ${res.powerAction.clock})">⚡ Energia</button>` : ''}
+          <button type="button" class="calc-act-btn" onclick="copyCurrentCalcResult()">Copiar lista</button>
+          <button type="button" class="calc-act-btn" onclick="pinCurrentCalc(true)">Fixar</button>
+          <button type="button" class="calc-act-btn" onclick="shareCurrentCalcLink()">Link</button>
+        </div>
+      `}
+    </div>
+  `;
+}
+
+function updateCalcResultOnly() {
+  const el = document.getElementById('calc-result-panel');
+  if (el) el.innerHTML = renderCalcResultPanelHtml();
+}
 
 function getCurrentCalcSnapshot() {
   const c = AppState.calculator;
@@ -7266,7 +8493,7 @@ function pinCurrentCalc(pinFlag = true) {
   AppState.calculator.recents = list.slice(0, 20);
   persistCalcHistory();
   renderCalcRecentsStrip();
-  if (typeof showAccountToast === 'function') showAccountToast(pinFlag ? 'Cálculo fixado.' : 'Salvo nos recentes.', 'success');
+  if (typeof showAccountToast === 'function') showAccountToast('Cálculo fixado.', 'success');
 }
 
 function removeCalcRecent(id) {
@@ -7285,12 +8512,12 @@ function restoreCalcRecent(id) {
 function copyCurrentCalcResult() {
   const res = computeCalcToolResult();
   const lines = [
-    `${res.title}`,
+    res.title,
     `${res.heroLabel}: ${res.heroValue}`,
     ...(res.rows || []).map(r => `${r.label}: ${r.value}`)
   ].join('\n');
   navigator.clipboard?.writeText(lines).then(() => {
-    if (typeof showAccountToast === 'function') showAccountToast('Resultado copiado.', 'success');
+    if (typeof showAccountToast === 'function') showAccountToast('Lista copiada.', 'success');
   }).catch(() => {});
 }
 
@@ -7307,7 +8534,7 @@ function shareCurrentCalcLink() {
 
 function openCalcInProduction(itemId, targetRate, recipeId) {
   if (!itemId) return;
-  AppState.production.driver = 'output';
+  AppState.production.driver = 'product';
   AppState.production.mounted = true;
   AppState.pull.targets = [{ id: uid(), itemId, rate: Math.max(0.1, Number(targetRate) || 10) }];
   AppState.pull.recipeOverrides = recipeId ? { [itemId]: recipeId } : {};
@@ -7319,478 +8546,14 @@ function openCalcInProduction(itemId, targetRate, recipeId) {
 function openCalcInPower(genId, fuelId, count, clock) {
   if (genId) AppState.power.generatorId = genId;
   if (fuelId) AppState.power.fuelItemId = fuelId;
-  if (count) AppState.power.manualGenerators = Math.max(1, Math.round(count));
-  if (clock) AppState.power.clockPercent = Math.max(1, Math.min(250, Math.round(clock)));
+  if (count) {
+    AppState.power.calcMode = 'by_generators';
+    AppState.power.generatorCount = Math.max(1, Math.round(count));
+    AppState.power.manualGenerators = AppState.power.generatorCount;
+  }
+  if (clock) AppState.power.clockPercent = Math.max(100, Math.min(250, Math.round(clock)));
   AppState.power.mounted = true;
   switchMode('power');
-}
-
-function computeCalcToolResult() {
-  const c = AppState.calculator;
-  const data = window.SATISFACTORY_DATA || {};
-  const powerExp = data.rules?.powerExponent || 1.321929;
-
-  if (c.tool === 'machines') {
-    const item = Solver.getItem(c.prodItemId);
-    const recipes = Solver.indexes.recipesByProduct.get(c.prodItemId) || [];
-    const recipe = recipes.find(r => r.id === c.prodRecipeId) || recipes.find(r => !r.isAlternate) || recipes[0] || null;
-    const machine = recipe ? Solver.getMachine(recipe.machine) : null;
-    const prodEntry = recipe ? (recipe.products || []).find(p => p.item === c.prodItemId) : null;
-    const targetRate = Math.max(0.01, Number(c.prodTargetRate) || 0);
-    const clock = Math.max(1, Math.min(250, Number(c.prodClock) || 100));
-    const maxSloop = Number(machine?.sloopSlots) || 0;
-    const sloops = Math.max(0, Math.min(maxSloop, Number(c.prodSloops) || 0));
-    const sloopMult = maxSloop > 0 ? (1 + sloops / maxSloop) : 1;
-
-    if (!item || !recipe || !machine || !prodEntry) {
-      return { title: 'Máquinas para X/min', heroLabel: 'Selecione um produto', heroValue: '—', rows: [] };
-    }
-
-    const ratePerMachine = prodEntry.ratePerMin * (clock / 100) * sloopMult;
-    const exactMachines = ratePerMachine > 0 ? (targetRate / ratePerMachine) : 0;
-    const frac = formatFractionalMachines(exactMachines, clock);
-    const baseMw = recipe.avgPowerMw ?? machine.powerConsumption ?? 0;
-    const mwPerMachine = baseMw * Math.pow(clock / 100, powerExp) * Math.pow(sloopMult, 2);
-    const totalMw = exactMachines * mwPerMachine;
-    const totalShards = getShardsForClock(clock) * (frac?.totalInt || 1);
-    const totalSloops = sloops * (frac?.totalInt || 1);
-
-    const rows = [
-      { label: 'Máquina', value: `${machine.name} (${fmt(ratePerMachine, 2)} ${item.unit || 'un'}/min cada)` },
-      { label: 'Máquinas exatas', value: `${fmt(exactMachines, 2)}x` }
-    ];
-    if (frac?.isFractional) {
-      rows.push({ label: 'Opção mista', value: frac.mixedText, highlight: true });
-      rows.push({ label: 'Opção uniforme', value: frac.uniformText, highlight: true });
-    }
-    rows.push({ label: 'Energia total', value: `⚡ ${fmt(totalMw, 1)} MW (${fmt(mwPerMachine, 1)} MW/máq)` });
-    if (totalShards > 0) rows.push({ label: 'Power Shards', value: `💎 ${totalShards}` });
-    if (totalSloops > 0) rows.push({ label: 'Somersloops', value: `🔮 ${totalSloops}` });
-
-    (recipe.ingredients || []).forEach(ing => {
-      const it = Solver.getItem(ing.item);
-      const req = ing.ratePerMin * (clock / 100) * exactMachines;
-      rows.push({ label: `Consome ${it ? it.name : ing.item}`, value: `${fmt(req, 2)} ${it?.unit || 'un'}/min` });
-    });
-    (recipe.products || []).filter(p => p.item !== c.prodItemId).forEach(by => {
-      const it = Solver.getItem(by.item);
-      const out = by.ratePerMin * (clock / 100) * sloopMult * exactMachines;
-      rows.push({ label: `Subproduto ${it ? it.name : by.item}`, value: `${fmt(out, 2)} ${it?.unit || 'un'}/min` });
-    });
-
-    return {
-      title: `${item.name} — ${fmt(targetRate, 1)} ${item.unit || 'un'}/min`,
-      heroLabel: `${machine.name} necessárias`,
-      heroValue: `${fmt(exactMachines, 2)}x`,
-      rows,
-      planAction: { itemId: item.id, rate: targetRate, recipeId: recipe.id }
-    };
-  }
-
-  if (c.tool === 'clock') {
-    const machine = Solver.getMachine(c.clockMachineId);
-    const recs = machine ? Solver.getRecipesByMachine(machine.id) : [];
-    const recipe = recs.find(r => r.id === c.clockRecipeId) || recs.find(r => !r.isAlternate) || recs[0] || null;
-    const count = Math.max(0.01, Number(c.clockCount) || 1);
-    const clock = Math.max(1, Math.min(250, Number(c.clockPercent) || 100));
-    const maxSloop = Number(machine?.sloopSlots) || 0;
-    const sloops = Math.max(0, Math.min(maxSloop, Number(c.clockSloops) || 0));
-    const sloopMult = maxSloop > 0 ? (1 + sloops / maxSloop) : 1;
-
-    if (!machine || !recipe) {
-      return { title: 'Clock & Overclock', heroLabel: 'Selecione máquina e receita', heroValue: '—', rows: [] };
-    }
-
-    const baseMw = recipe.avgPowerMw ?? machine.powerConsumption ?? 0;
-    const mwPerMachine = baseMw * Math.pow(clock / 100, powerExp) * Math.pow(sloopMult, 2);
-    const totalMw = mwPerMachine * count;
-    const baseTotalMw = baseMw * count;
-    const deltaPct = baseTotalMw > 0 ? ((totalMw / baseTotalMw - 1) * 100) : 0;
-    const mainProd = recipe.products?.[0];
-    const mainItem = mainProd ? Solver.getItem(mainProd.item) : null;
-    const mainOut = mainProd ? mainProd.ratePerMin * (clock / 100) * sloopMult * count : 0;
-    const frac = formatFractionalMachines(count, clock);
-
-    const rows = [
-      { label: 'Energia por máquina', value: `⚡ ${fmt(mwPerMachine, 2)} MW (base ${fmt(baseMw, 1)} MW)` },
-      { label: 'Energia total', value: `⚡ ${fmt(totalMw, 2)} MW (${deltaPct >= 0 ? '+' : ''}${fmt(deltaPct, 1)}%)` },
-      { label: 'Power Shards', value: `💎 ${getShardsForClock(clock) * Math.ceil(count)} (${getShardsForClock(clock)}/máq)` }
-    ];
-    if (frac?.isFractional) {
-      rows.push({ label: 'Opção mista', value: frac.mixedText, highlight: true });
-      rows.push({ label: 'Opção uniforme', value: frac.uniformText, highlight: true });
-    }
-    if (maxSloop > 0) {
-      rows.push({ label: 'Somersloop', value: `${sloops}/${maxSloop} (${fmt(sloopMult * 100, 0)}% saída • ${fmt(Math.pow(sloopMult, 2) * 100, 0)}% energia)` });
-    }
-    (recipe.products || []).forEach(p => {
-      const it = Solver.getItem(p.item);
-      rows.push({ label: `Produz ${it ? it.name : p.item}`, value: `${fmt(p.ratePerMin * (clock / 100) * sloopMult * count, 2)} ${it?.unit || 'un'}/min` });
-    });
-    (recipe.ingredients || []).forEach(i => {
-      const it = Solver.getItem(i.item);
-      rows.push({ label: `Consome ${it ? it.name : i.item}`, value: `${fmt(i.ratePerMin * (clock / 100) * count, 2)} ${it?.unit || 'un'}/min` });
-    });
-
-    return {
-      title: `${fmt(count, 2)}x ${machine.name} (${clock}%)`,
-      heroLabel: mainItem ? `Saída de ${mainItem.name}` : 'Energia total',
-      heroValue: mainItem ? `${fmt(mainOut, 2)} ${mainItem.unit || 'un'}/min` : `⚡ ${fmt(totalMw, 1)} MW`,
-      rows,
-      planAction: mainItem ? { itemId: mainItem.id, rate: mainOut, recipeId: recipe.id } : null
-    };
-  }
-
-  if (c.tool === 'energy') {
-    const gens = Solver.getPowerGenerators();
-    const waterPump = data.extractors?.Build_WaterPump_C;
-    const pumpRate = waterPump?.baseRatePerMin || 120;
-    const pumpMw = waterPump?.powerConsumption || 20;
-
-    if (c.energySource === 'generator') {
-      const gen = gens.find(g => g.id === c.genId) || gens[0];
-      if (!gen) return { title: 'Energia completa', heroLabel: 'Gerador', heroValue: '—', rows: [] };
-      const fuelObj = (gen.fuels || []).find(f => f.itemId === c.genFuelId) || gen.fuels?.[0];
-      const fuelItem = fuelObj ? Solver.getItem(fuelObj.itemId) : null;
-      const count = Math.max(1, Number(c.genCount) || 1);
-      const clock = Math.max(1, Math.min(250, Number(c.genClock) || 100));
-      const marginPct = Math.max(0, Math.min(100, Number(c.genMarginPct) || 0));
-      const clockMult = clock / 100;
-
-      const grossMw = (gen.powerProduction || 0) * clockMult * count;
-      const totalFuel = (fuelObj?.ratePerMin || 0) * clockMult * count;
-      const totalWater = (fuelObj?.waterPerMin || 0) * clockMult * count;
-      const waterPumps = totalWater > 0 ? Math.ceil(totalWater / pumpRate) : 0;
-      const waterPower = waterPumps * pumpMw;
-      const netMw = grossMw - waterPower;
-      const safeMw = netMw * (1 - marginPct / 100);
-
-      const rows = [
-        { label: 'Geração bruta', value: `⚡ ${fmt(grossMw, 1)} MW (${fmt((gen.powerProduction || 0) * clockMult, 1)} MW/usina)` },
-        { label: `Consumo (${fuelItem?.name || 'Combustível'})`, value: `${fmt(totalFuel, 2)} ${fuelItem?.unit || 'un'}/min` }
-      ];
-      if (totalWater > 0) {
-        rows.push({ label: 'Água necessária', value: `💧 ${fmt(totalWater, 1)} m³/min (${waterPumps}x Bomba • −${fmt(waterPower, 1)} MW)` });
-      }
-      rows.push({ label: 'Potência líquida', value: `🔋 ${fmt(netMw, 1)} MW`, highlight: true });
-      if (marginPct > 0) {
-        rows.push({ label: `Com margem (${marginPct}%)`, value: `🛡️ ${fmt(safeMw, 1)} MW disponíveis` });
-      }
-      if (getShardsForClock(clock) > 0) {
-        rows.push({ label: 'Power Shards', value: `💎 ${getShardsForClock(clock) * Math.ceil(count)}` });
-      }
-
-      return {
-        title: `${count}x ${gen.name} (${clock}%)`,
-        heroLabel: 'Geração bruta',
-        heroValue: `⚡ ${fmt(grossMw, 1)} MW`,
-        rows,
-        powerAction: { genId: gen.id, fuelId: fuelObj?.itemId, count, clock }
-      };
-    } else {
-      const exMap = data.extractors || {};
-      const isOil = c.energyResourceId === 'Desc_LiquidOil_C';
-      const exObj = isOil
-        ? exMap.Build_OilPump_C
-        : (c.minerMark === 'mk1' ? exMap.Build_MinerMk1_C : (c.minerMark === 'mk3' ? exMap.Build_MinerMk3_C : exMap.Build_MinerMk2_C));
-      const baseRate = exObj?.baseRatePerMin || 0;
-      const purityMult = data.rules?.purityMultipliers?.[c.minerPurity] || 1;
-      const count = Math.max(1, Number(c.minerCount) || 1);
-      const clock = Math.max(1, Math.min(250, Number(c.minerClock) || 100));
-      const totalExtracted = baseRate * purityMult * (clock / 100) * count;
-      const resItem = Solver.getItem(c.energyResourceId);
-
-      let gen = gens.find(g => g.id === 'Build_GeneratorCoal_C');
-      let fuelId = 'Desc_Coal_C';
-      let gensSupported = 0;
-      let waterNeeded = 0;
-      let note = '';
-
-      if (c.energyResourceId === 'Desc_Coal_C') {
-        const cf = (gen?.fuels || []).find(f => f.itemId === 'Desc_Coal_C');
-        gensSupported = cf?.ratePerMin ? (totalExtracted / cf.ratePerMin) : 0;
-        waterNeeded = gensSupported * (cf?.waterPerMin || 0);
-      } else if (c.energyResourceId === 'Desc_LiquidOil_C') {
-        gen = gens.find(g => g.id === 'Build_GeneratorFuel_C');
-        fuelId = 'Desc_LiquidFuel_C';
-        const fuelRec = data.recipes?.Recipe_LiquidFuel_C;
-        const oilIn = fuelRec?.ingredients?.[0]?.ratePerMin || 0;
-        const fuelOut = fuelRec?.products?.[0]?.ratePerMin || 0;
-        const fg = (gen?.fuels || []).find(f => f.itemId === 'Desc_LiquidFuel_C');
-        const fuelProduced = oilIn > 0 ? totalExtracted * (fuelOut / oilIn) : 0;
-        gensSupported = fg?.ratePerMin ? (fuelProduced / fg.ratePerMin) : 0;
-        note = `Refinaria produz ${fmt(fuelProduced, 1)} m³/min de Combustível`;
-      }
-
-      const grossMw = gensSupported * (gen?.powerProduction || 0);
-      const waterPumps = waterNeeded > 0 ? Math.ceil(waterNeeded / pumpRate) : 0;
-      const exPower = (exObj?.powerConsumption || 0) * Math.pow(clock / 100, powerExp) * count;
-      const netMw = grossMw - exPower - (waterPumps * pumpMw);
-      const frac = formatFractionalMachines(gensSupported, 100);
-
-      const rows = [
-        { label: `Extração (${resItem?.name || ''})`, value: `${fmt(totalExtracted, 1)} ${resItem?.unit || 'un'}/min` },
-        { label: `${gen?.name || 'Geradores'} suportados`, value: `${fmt(gensSupported, 2)}x` }
-      ];
-      if (frac?.isFractional) {
-        rows.push({ label: 'Opção mista', value: frac.mixedText, highlight: true });
-        rows.push({ label: 'Opção uniforme', value: frac.uniformText, highlight: true });
-      }
-      if (waterNeeded > 0) {
-        rows.push({ label: 'Água necessária', value: `💧 ${fmt(waterNeeded, 1)} m³/min (${waterPumps}x Bomba)` });
-      }
-      rows.push({ label: 'Potência líquida est.', value: `🔋 ${fmt(netMw, 1)} MW`, highlight: true });
-      if (note) rows.push({ label: 'Processo', value: note });
-
-      return {
-        title: `${count}x ${exObj?.name || 'Extrator'} (${resItem?.name || ''})`,
-        heroLabel: 'Geração bruta',
-        heroValue: `⚡ ${fmt(grossMw, 1)} MW`,
-        rows,
-        powerAction: gen ? { genId: gen.id, fuelId, count: Math.max(1, Math.floor(gensSupported)), clock: 100 } : null
-      };
-    }
-  }
-
-  if (c.tool === 'transport') {
-    const { belts, pipes } = Solver.getBeltsAndPipes();
-    const list = c.transportKind === 'pipe' ? pipes : belts;
-    const tier = list.find(t => t.id === c.transportTierId) || list[list.length - 1];
-    const rate = Math.max(0.1, Number(c.transportRate) || 0);
-    const unit = c.transportKind === 'pipe' ? 'm³/min' : 'un/min';
-
-    if (!tier || !tier.ratePerMin) {
-      return { title: 'Esteiras & Tubos', heroLabel: 'Selecione um nível', heroValue: '—', rows: [] };
-    }
-
-    const exactLines = rate / tier.ratePerMin;
-    const intLines = Math.ceil(exactLines);
-    const loadPerLine = intLines > 0 ? (rate / intLines) : 0;
-    const satPct = (loadPerLine / tier.ratePerMin) * 100;
-    const bestFit = list.find(t => t.ratePerMin >= rate) || list[list.length - 1];
-
-    const rows = [
-      { label: 'Capacidade por linha', value: `${fmt(tier.ratePerMin, 0)} ${unit}` },
-      { label: 'Linhas exatas', value: `${fmt(exactLines, 2)}x` },
-      { label: 'Carga por linha', value: `${fmt(loadPerLine, 1)} ${unit} (${fmt(satPct, 1)}% saturação)` },
-      { label: 'Melhor nível único', value: `${bestFit.name} (${fmt(bestFit.ratePerMin, 0)} ${unit})` }
-    ];
-
-    return {
-      title: `${fmt(rate, 1)} ${unit} — ${tier.name}`,
-      heroLabel: c.transportKind === 'pipe' ? 'Tubulações necessárias' : 'Esteiras necessárias',
-      heroValue: `${intLines}x ${tier.shortName || tier.name}`,
-      rows
-    };
-  }
-
-  if (c.tool === 'storage') {
-    const capInfo = OFFICIAL_STORAGE_CAPACITY[c.storageId] || OFFICIAL_STORAGE_CAPACITY.Build_StorageContainerMk1_C;
-    const building = data.logistics?.[c.storageId];
-    const item = Solver.getItem(c.storageItemId);
-    const rate = Math.max(0.1, Number(c.storageRate) || 60);
-    const count = Math.max(1, Math.round(Number(c.storageCount) || 1));
-
-    const totalCapacity = capInfo.kind === 'fluid'
-      ? (capInfo.m3 * count)
-      : (capInfo.slots * (Number(item?.stackSize) || 100) * count);
-    const unit = capInfo.kind === 'fluid' ? 'm³' : 'un';
-    const minutes = totalCapacity / rate;
-    const hrs = Math.floor(minutes / 60);
-    const mins = Math.floor(minutes % 60);
-    const secs = Math.round((minutes - Math.floor(minutes)) * 60);
-    const timeStr = hrs > 0 ? `${hrs}h ${mins}m ${secs}s` : (mins > 0 ? `${mins}m ${secs}s` : `${secs}s`);
-
-    const rows = [
-      { label: 'Capacidade total', value: `${fmt(totalCapacity, 0)} ${unit}` },
-      { label: 'Vazão', value: `${fmt(rate, 1)} ${unit}/min` }
-    ];
-    if (capInfo.kind === 'solid' && item) {
-      rows.push({ label: 'Pilha do item', value: `${item.stackSize} un/pilha • ${capInfo.slots * count} slots` });
-    }
-    rows.push({ label: 'Tempo em minutos', value: `${fmt(minutes, 2)} min` });
-
-    return {
-      title: `${count}x ${building?.name || 'Armazenamento'}`,
-      heroLabel: 'Tempo para encher / esvaziar',
-      heroValue: timeStr,
-      rows
-    };
-  }
-
-  if (c.tool === 'build') {
-    const allBuildings = {
-      ...(data.machines || {}),
-      ...(data.generators || {}),
-      ...(data.extractors || {}),
-      ...(data.logistics || {})
-    };
-    const totals = new Map();
-    let totalCount = 0;
-    (c.buildList || []).forEach(row => {
-      const b = allBuildings[row.id];
-      const qty = Math.max(1, Math.round(Number(row.count) || 1));
-      if (!b || !Array.isArray(b.buildCost)) return;
-      totalCount += qty;
-      b.buildCost.forEach(bc => {
-        totals.set(bc.item, (totals.get(bc.item) || 0) + bc.amount * qty);
-      });
-    });
-
-    const rows = Array.from(totals.entries())
-      .map(([itemId, amount]) => {
-        const it = Solver.getItem(itemId);
-        const stacks = it?.stackSize ? Math.ceil(amount / it.stackSize) : null;
-        return {
-          label: it ? it.name : itemId,
-          value: `${fmt(amount, 0)}x${stacks ? ` (${stacks} pilhas)` : ''}`,
-          icon: it
-        };
-      })
-      .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
-
-    return {
-      title: `Lista de Construção (${totalCount} estruturas)`,
-      heroLabel: 'Tipos de materiais',
-      heroValue: `${rows.length} itens`,
-      rows
-    };
-  }
-
-  if (c.tool === 'elevator') {
-    const phases = Array.isArray(data.spaceElevatorPhases) ? data.spaceElevatorPhases : [];
-    const ph = phases.find(p => Number(p.phase) === Number(c.elevatorPhase)) || phases[0];
-    const hours = Math.max(0.1, Number(c.elevatorTargetHours) || 1);
-    const totalMins = hours * 60;
-    if (!ph) {
-      return { title: 'Fases do Elevador', heroLabel: 'Fase', heroValue: '—', rows: [] };
-    }
-    const rows = (ph.requirements || []).map(req => {
-      const it = Solver.getItem(req.item);
-      const ratePerMin = req.amount / totalMins;
-      return {
-        label: `${it ? it.name : req.item} (${fmt(req.amount, 0)}x)`,
-        value: `${fmt(ratePerMin, 2)} /min`,
-        icon: it,
-        highlight: true
-      };
-    });
-    const firstReq = ph.requirements?.[0];
-    return {
-      title: `${ph.name} (${ph.unlocks})`,
-      heroLabel: `Concluir em ${fmt(hours, 1)}h (${fmt(totalMins, 0)} min)`,
-      heroValue: `${ph.requirements.length} peças`,
-      rows,
-      planAction: firstReq ? { itemId: firstReq.item, rate: Number((firstReq.amount / totalMins).toFixed(2)), recipeId: '' } : null
-    };
-  }
-
-  if (c.tool === 'elevator') {
-    const phases = Array.isArray(data.spaceElevatorPhases) ? data.spaceElevatorPhases : [];
-    return `
-      <div class="calc-card">
-        <div class="calc-card-head"><h4>Entradas</h4></div>
-        <div class="field-group">
-          <label>Fase do Projeto Montagem (1.0)</label>
-          <div class="btn-group-row">
-            ${phases.map(p => `
-              <button type="button" class="seg-btn ${Number(c.elevatorPhase) === Number(p.phase) ? 'active' : ''}" onclick="setCalcField('elevatorPhase', ${p.phase}, true)">Fase ${p.phase}</button>
-            `).join('')}
-          </div>
-        </div>
-        <div class="field-group">
-          <label>Tempo alvo (horas)</label>
-          <div class="calc-qty-row">
-            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('elevatorTargetHours', -0.5, 0.5)">−</button>
-            <input type="number" class="sidebar-input" min="0.1" step="0.5" value="${c.elevatorTargetHours}" oninput="setCalcField('elevatorTargetHours', Math.max(0.1, parseFloat(this.value)||1), false)" />
-            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('elevatorTargetHours', 0.5, 0.5)">+</button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  if (c.tool === 'sink') {
-    const item = Solver.getItem(c.sinkItemId);
-    const rate = Math.max(0.1, Number(c.sinkRate) || 0);
-    const ptsEach = Number(item?.sinkPoints) || 0;
-    const ptsMin = ptsEach * rate;
-    const ptsHour = ptsMin * 60;
-
-    const rows = [
-      { label: 'Item', value: item ? item.name : '—' },
-      { label: 'Pontos por unidade', value: ptsEach > 0 ? `${fmt(ptsEach, 0)} pts` : 'Não triturável' },
-      { label: 'Taxa de entrada', value: `${fmt(rate, 2)} ${item?.unit || 'un'}/min` },
-      { label: 'Pontos por hora', value: `${fmt(ptsHour, 0)} pts/h`, highlight: true }
-    ];
-
-    return {
-      title: `Triturador SUPIMPA — ${item?.name || ''}`,
-      heroLabel: 'Pontos por minuto',
-      heroValue: `${fmt(ptsMin, 0)} pts/min`,
-      rows
-    };
-  }
-
-  // Numérica
-  const v = Number(c.convValue) || 0;
-  const perMin = c.convFrom === 'sec' ? v * 60 : (c.convFrom === 'hour' ? v / 60 : v);
-  const stackSize = Math.max(1, Number(c.convStackSize) || 100);
-  return {
-    title: 'Calculadora Numérica',
-    heroLabel: 'Resultado',
-    heroValue: c.exprResult || '0',
-    rows: [
-      { label: 'Por minuto', value: `${fmt(perMin, 3)} /min` },
-      { label: 'Por segundo', value: `${fmt(perMin / 60, 4)} /s` },
-      { label: 'Por hora', value: `${fmt(perMin * 60, 2)} /h` },
-      { label: `Pilhas/min (${stackSize}/pilha)`, value: `${fmt(perMin / stackSize, 3)} pilhas/min` }
-    ]
-  };
-}
-
-function renderCalcResultPanelHtml() {
-  const res = computeCalcToolResult();
-  const c = AppState.calculator;
-
-  return `
-    <div class="calc-card calc-result-card">
-      <div class="calc-card-head">
-        <h4>Resultado</h4>
-        <span class="calc-card-sub">${libEsc(res.title || '')}</span>
-      </div>
-      <div class="calc-result-hero">
-        <span class="calc-hero-lbl">${libEsc(res.heroLabel || '')}</span>
-        <strong class="calc-hero-val">${libEsc(res.heroValue || '—')}</strong>
-      </div>
-      <div class="calc-result-rows">
-        ${(res.rows || []).map(r => `
-          <div class="calc-res-row ${r.highlight ? 'is-highlight' : ''}">
-            <span class="calc-res-lbl">${r.icon ? renderEntityIcon(r.icon, 20) : ''}${libEsc(r.label)}</span>
-            <strong class="calc-res-val">${libEsc(r.value)}</strong>
-          </div>
-        `).join('') || '<div class="calc-empty-note">Configure os campos à esquerda.</div>'}
-      </div>
-      ${c.tool === 'numeric' && c.numHistory.length > 0 ? `
-        <div class="calc-num-history">
-          <div class="calc-num-hist-title">Histórico numérico</div>
-          ${c.numHistory.slice(0, 6).map(h => `<div class="calc-num-hist-row">${libEsc(h)}</div>`).join('')}
-        </div>
-      ` : ''}
-      <div class="calc-actions-bar">
-        ${res.planAction ? `<button type="button" class="calc-act-btn primary" onclick="openCalcInProduction('${res.planAction.itemId}', ${res.planAction.rate}, '${res.planAction.recipeId || ''}')">🏭 Planejar</button>` : ''}
-        ${res.powerAction ? `<button type="button" class="calc-act-btn primary" onclick="openCalcInPower('${res.powerAction.genId}', '${res.powerAction.fuelId || ''}', ${res.powerAction.count}, ${res.powerAction.clock})">⚡ Energia</button>` : ''}
-        <button type="button" class="calc-act-btn" onclick="copyCurrentCalcResult()">Copiar</button>
-        <button type="button" class="calc-act-btn" onclick="pinCurrentCalc(true)">Fixar</button>
-        <button type="button" class="calc-act-btn" onclick="shareCurrentCalcLink()">Link</button>
-      </div>
-    </div>
-  `;
-}
-
-function updateCalcResultOnly() {
-  const el = document.getElementById('calc-result-panel');
-  if (el) el.innerHTML = renderCalcResultPanelHtml();
 }
 
 function renderCalcRecentsStrip() {
@@ -7815,436 +8578,278 @@ function renderCalcInputsPanelHtml() {
   const c = AppState.calculator;
   const data = window.SATISFACTORY_DATA || {};
 
-  if (c.tool === 'machines') {
-    const item = Solver.getItem(c.prodItemId);
-    const recipes = Solver.indexes.recipesByProduct.get(c.prodItemId) || [];
-    const recipe = recipes.find(r => r.id === c.prodRecipeId) || recipes.find(r => !r.isAlternate) || recipes[0] || null;
-    const machine = recipe ? Solver.getMachine(recipe.machine) : null;
-    const maxSloop = Number(machine?.sloopSlots) || 0;
+  // 6.2 RECURSOS
+  if (c.tool === 'resources') {
+    const item = c.resItemId ? Solver.getItem(c.resItemId) : null;
+    const recipes = c.resItemId ? (Solver.indexes.recipesByProduct.get(c.resItemId) || []) : [];
+    const recipe = recipes.find(r => r.id === c.resRecipeId) || recipes.find(r => !r.isAlternate) || recipes[0] || null;
+    const resObj = computeCalcToolResult();
+    const machineTypes = resObj.machineTypes || [];
 
     return `
       <div class="calc-card">
         <div class="calc-card-head"><h4>Entradas</h4></div>
         <div class="field-group">
           <label>Produto</label>
-          <button type="button" class="calc-entity-pick-btn" onclick="openCalcItemPicker('prodItemId', it => (Solver.indexes.recipesByProduct.get(it.id)||[]).length > 0)">
+          <button type="button" class="calc-entity-pick-btn" onclick="openCalcItemPicker('resItemId', it => (Solver.indexes.recipesByProduct.get(it.id)||[]).length > 0, 'Escolher Produto')">
             ${item ? renderEntityIcon(item, 28) : ''}
-            <span>${item ? libEsc(item.name) : 'Selecionar produto'}</span>
+            <span>${item ? libEsc(item.name) : 'Escolher produto...'}</span>
             <span class="calc-pick-caret">▾</span>
           </button>
         </div>
         ${recipes.length > 0 ? `
           <div class="field-group">
             <label>Receita (${recipes.length})</label>
-            <select class="sidebar-select" onchange="setCalcField('prodRecipeId', this.value, true)">
-              ${recipes.map(r => {
-                const m = Solver.getMachine(r.machine);
-                return `<option value="${r.id}" ${r.id === recipe?.id ? 'selected' : ''}>${r.isAlternate ? '★ [Alt] ' : ''}${libEsc(r.cleanName || r.name)} — ${m ? libEsc(m.name) : ''}</option>`;
-              }).join('')}
-            </select>
+            ${renderRecipePickerTriggerHtml(recipe, recipes, `setCalcField('resRecipeId', __RID__, true)`)}
           </div>
         ` : ''}
         <div class="field-group">
-          <label>Meta (${item?.unit || 'un'}/min)</label>
+          <label>Quantidade desejada (${item?.unit || 'un'}/min)</label>
           <div class="calc-qty-row">
-            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('prodTargetRate', -10, 0.1)">−</button>
-            <input type="number" class="sidebar-input" min="0.1" step="any" value="${c.prodTargetRate}" oninput="setCalcField('prodTargetRate', Math.max(0.01, parseFloat(this.value)||0), false)" />
-            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('prodTargetRate', 10, 0.1)">+</button>
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('resTargetRate', -5, 0.1)">−</button>
+            <input type="number" class="sidebar-input" min="0.1" step="any" placeholder="Ex.: 30" value="${c.resTargetRate === '' ? '' : c.resTargetRate}" oninput="setCalcField('resTargetRate', this.value === '' ? '' : Math.max(0.01, parseFloat(this.value)||0), false)" />
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('resTargetRate', 5, 0.1)">+</button>
           </div>
         </div>
-        <div class="field-group">
-          ${renderOverclockSliderHtml({ value: c.prodClock, onChangeExpr: `setCalcField('prodClock', __VAL__, true)`, label: 'Overclock' })}
-        </div>
-        ${maxSloop > 0 ? `
-          <div class="field-group">
-            <label>Somersloop (0–${maxSloop})</label>
-            <div class="btn-group-row">
-              ${Array.from({ length: maxSloop + 1 }, (_, i) => `
-                <button type="button" class="seg-btn ${Number(c.prodSloops) === i ? 'active' : ''}" onclick="setCalcField('prodSloops', ${i}, true)">${i}</button>
-              `).join('')}
-            </div>
+        ${machineTypes.length > 0 ? `
+          <div class="calc-per-machine-oc">
+            <div class="calc-conv-title">Overclock opcional por tipo de máquina</div>
+            ${machineTypes.map(mt => `
+              <div class="calc-mt-oc-card">
+                <div class="calc-mt-oc-head">
+                  ${renderEntityIcon(mt.machine, 24)}
+                  <strong>${libEsc(mt.machine.name)} (${mt.count}×)</strong>
+                </div>
+                ${renderOverclockSliderHtml({ value: c.resMachineClocks?.[mt.machine.id] || 100, onChangeExpr: `setCalcResMachineClock('${mt.machine.id}', __VAL__)`, label: 'Overclock' })}
+              </div>
+            `).join('')}
           </div>
         ` : ''}
       </div>
     `;
   }
 
-  if (c.tool === 'clock') {
+  // 6.3 PRODUÇÃO (sem geradores de energia)
+  if (c.tool === 'production') {
     const machines = Solver.getProductionMachines();
-    const machine = machines.find(m => m.id === c.clockMachineId) || machines[0];
-    const recs = machine ? Solver.getRecipesByMachine(machine.id) : [];
-    const recipe = recs.find(r => r.id === c.clockRecipeId) || recs.find(r => !r.isAlternate) || recs[0] || null;
-    const maxSloop = Number(machine?.sloopSlots) || 0;
+    const machine = c.prodMachineId ? machines.find(m => m.id === c.prodMachineId) : null;
+    const recs = machine ? Solver.getRecipesByMachine(machine.id).filter(r => !r.isFicsmas) : [];
+    const recipe = recs.find(r => r.id === c.prodRecipeId) || null;
 
     return `
       <div class="calc-card">
         <div class="calc-card-head"><h4>Entradas</h4></div>
         <div class="field-group">
           <label>Máquina</label>
-          <select class="sidebar-select" onchange="setCalcField('clockMachineId', this.value, true)">
+          <select class="sidebar-select" onchange="setCalcField('prodMachineId', this.value, true)">
+            <option value="" ${!machine ? 'selected' : ''}>Escolher máquina...</option>
             ${machines.map(m => `<option value="${m.id}" ${m.id === machine?.id ? 'selected' : ''}>${libEsc(m.name)}</option>`).join('')}
           </select>
         </div>
-        <div class="field-group">
-          <label>Receita</label>
-          <select class="sidebar-select" onchange="setCalcField('clockRecipeId', this.value, true)">
-            ${recs.map(r => `<option value="${r.id}" ${r.id === recipe?.id ? 'selected' : ''}>${r.isAlternate ? '★ [Alt] ' : ''}${libEsc(r.cleanName || r.name)}</option>`).join('')}
-          </select>
-        </div>
+        ${machine ? `
+          <div class="field-group">
+            <label>Receita (${recs.length})</label>
+            ${renderRecipePickerTriggerHtml(recipe, recs, `setCalcField('prodRecipeId', __RID__, true)`)}
+          </div>
+        ` : ''}
         <div class="field-group">
           <label>Quantidade de máquinas</label>
           <div class="calc-qty-row">
-            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('clockCount', -1, 0.1)">−</button>
-            <input type="number" class="sidebar-input" min="0.1" step="any" value="${c.clockCount}" oninput="setCalcField('clockCount', Math.max(0.01, parseFloat(this.value)||1), false)" />
-            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('clockCount', 1, 0.1)">+</button>
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('prodMachineCount', -1, 1)">−</button>
+            <input type="number" class="sidebar-input" min="1" step="1" placeholder="Ex.: 4" value="${c.prodMachineCount === '' ? '' : c.prodMachineCount}" oninput="setCalcField('prodMachineCount', this.value === '' ? '' : Math.max(1, Math.round(parseFloat(this.value)||1)), false)" />
+            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('prodMachineCount', 1, 1)">+</button>
           </div>
         </div>
         <div class="field-group">
-          ${renderOverclockSliderHtml({ value: c.clockPercent, onChangeExpr: `setCalcField('clockPercent', __VAL__, true)`, label: 'Overclock' })}
+          ${renderOverclockSliderHtml({ value: c.prodClock, onChangeExpr: `setCalcField('prodClock', __VAL__, true)`, label: 'Overclock' })}
         </div>
-        ${maxSloop > 0 ? `
-          <div class="field-group">
-            <label>Somersloop (0–${maxSloop})</label>
-            <div class="btn-group-row">
-              ${Array.from({ length: maxSloop + 1 }, (_, i) => `
-                <button type="button" class="seg-btn ${Number(c.clockSloops) === i ? 'active' : ''}" onclick="setCalcField('clockSloops', ${i}, true)">${i}</button>
-              `).join('')}
-            </div>
-          </div>
-        ` : ''}
       </div>
     `;
   }
 
+  // 6.4 ENERGIA
   if (c.tool === 'energy') {
     const gens = Solver.getPowerGenerators();
-    const gen = gens.find(g => g.id === c.genId) || gens[0];
-    const isOil = c.energyResourceId === 'Desc_LiquidOil_C';
-
+    const gen = c.genId ? gens.find(g => g.id === c.genId) : null;
     return `
       <div class="calc-card">
         <div class="calc-card-head"><h4>Entradas</h4></div>
-        <div class="btn-group-row" style="margin-bottom:12px;">
-          <button type="button" class="seg-btn ${c.energySource === 'generator' ? 'active' : ''}" onclick="setCalcField('energySource', 'generator', true)">Por Geradores</button>
-          <button type="button" class="seg-btn ${c.energySource === 'extractor' ? 'active' : ''}" onclick="setCalcField('energySource', 'extractor', true)">Por Extração</button>
+        <div class="btn-group-row">
+          <button type="button" class="seg-btn ${c.energyMode === 'by_mw' ? 'active' : ''}" onclick="setCalcField('energyMode', 'by_mw', true)">Por energia (MW)</button>
+          <button type="button" class="seg-btn ${c.energyMode === 'by_generators' ? 'active' : ''}" onclick="setCalcField('energyMode', 'by_generators', true)">Por geradores</button>
         </div>
-        ${c.energySource === 'generator' ? `
+        ${c.energyMode === 'by_mw' ? `
           <div class="field-group">
-            <label>Gerador</label>
-            <select class="sidebar-select" onchange="setCalcField('genId', this.value, true)">
-              ${gens.map(g => `<option value="${g.id}" ${g.id === gen?.id ? 'selected' : ''}>${libEsc(g.name)} (${fmt(g.powerProduction, 0)} MW)</option>`).join('')}
-            </select>
+            <label>Energia desejada (MW)</label>
+            <input type="number" class="sidebar-input" min="1" step="any" placeholder="Ex.: 1200" value="${c.energyTargetMw === '' ? '' : c.energyTargetMw}" oninput="setCalcField('energyTargetMw', this.value === '' ? '' : Math.max(1, parseFloat(this.value)||0), false)" />
           </div>
+        ` : ''}
+        <div class="field-group">
+          <label>Gerador</label>
+          <select class="sidebar-select" onchange="setCalcField('genId', this.value, true)">
+            <option value="" ${!gen ? 'selected' : ''}>Escolher gerador...</option>
+            ${gens.map(g => `<option value="${g.id}" ${g.id === gen?.id ? 'selected' : ''}>${libEsc(g.name)} (${fmt(g.powerProduction, 0)} MW)</option>`).join('')}
+          </select>
+        </div>
+        ${gen ? `
           <div class="field-group">
             <label>Combustível</label>
             <select class="sidebar-select" onchange="setCalcField('genFuelId', this.value, true)">
-              ${(gen?.fuels || []).map(f => {
+              <option value="" ${!c.genFuelId ? 'selected' : ''}>Escolher combustível...</option>
+              ${(gen.fuels || []).map(f => {
                 const it = Solver.getItem(f.itemId);
                 return `<option value="${f.itemId}" ${f.itemId === c.genFuelId ? 'selected' : ''}>${libEsc(it ? it.name : f.itemId)} (${fmt(f.ratePerMin, 2)}/min)</option>`;
               }).join('')}
             </select>
           </div>
-          <div class="field-row-2">
+        ` : ''}
+        <div class="field-row-2">
+          ${c.energyMode === 'by_generators' ? `
             <div class="field-group">
               <label>Quantidade</label>
-              <div class="calc-qty-row">
-                <button type="button" class="oc-step-btn" onclick="stepCalcNumber('genCount', -1, 1)">−</button>
-                <input type="number" class="sidebar-input" min="1" step="1" value="${c.genCount}" oninput="setCalcField('genCount', Math.max(1, parseFloat(this.value)||1), false)" />
-                <button type="button" class="oc-step-btn" onclick="stepCalcNumber('genCount', 1, 1)">+</button>
-              </div>
-            </div>
-            <div class="field-group">
-              <label>Margem (%)</label>
-              <input type="number" class="sidebar-input" min="0" max="90" step="5" value="${c.genMarginPct}" oninput="setCalcField('genMarginPct', Math.max(0, Math.min(90, parseFloat(this.value)||0)), false)" />
-            </div>
-          </div>
-          <div class="field-group">
-            ${renderOverclockSliderHtml({ value: c.genClock, onChangeExpr: `setCalcField('genClock', __VAL__, true)`, label: 'Overclock' })}
-          </div>
-        ` : `
-          <div class="field-group">
-            <label>Recurso</label>
-            <div class="btn-group-row">
-              <button type="button" class="seg-btn ${c.energyResourceId === 'Desc_Coal_C' ? 'active' : ''}" onclick="setCalcField('energyResourceId', 'Desc_Coal_C', true)">Carvão</button>
-              <button type="button" class="seg-btn ${c.energyResourceId === 'Desc_LiquidOil_C' ? 'active' : ''}" onclick="setCalcField('energyResourceId', 'Desc_LiquidOil_C', true)">Petróleo</button>
-            </div>
-          </div>
-          ${!isOil ? `
-            <div class="field-group">
-              <label>Mineradora</label>
-              <div class="btn-group-row">
-                <button type="button" class="seg-btn ${c.minerMark === 'mk1' ? 'active' : ''}" onclick="setCalcField('minerMark', 'mk1', true)">v.1</button>
-                <button type="button" class="seg-btn ${c.minerMark === 'mk2' ? 'active' : ''}" onclick="setCalcField('minerMark', 'mk2', true)">v.2</button>
-                <button type="button" class="seg-btn ${c.minerMark === 'mk3' ? 'active' : ''}" onclick="setCalcField('minerMark', 'mk3', true)">v.3</button>
-              </div>
+              <input type="number" class="sidebar-input" min="1" step="1" placeholder="Ex.: 8" value="${c.genCount === '' ? '' : c.genCount}" oninput="setCalcField('genCount', this.value === '' ? '' : Math.max(1, Math.round(parseFloat(this.value)||1)), false)" />
             </div>
           ` : ''}
           <div class="field-group">
-            <label>Pureza</label>
+            <label>Folga (%)</label>
+            <input type="number" class="sidebar-input" min="0" max="100" step="5" value="${c.genMarginPct}" oninput="setCalcField('genMarginPct', Math.max(0, Math.min(100, parseFloat(this.value)||0)), false)" />
+          </div>
+        </div>
+        <div class="field-group">
+          ${renderOverclockSliderHtml({ value: c.genClock, onChangeExpr: `setCalcField('genClock', __VAL__, true)`, label: 'Overclock' })}
+        </div>
+      </div>
+    `;
+  }
+
+  // 6.7 LOGÍSTICA
+  if (c.tool === 'logistics') {
+    const item = c.logItemId ? Solver.getItem(c.logItemId) : null;
+    return `
+      <div class="calc-card">
+        <div class="calc-card-head"><h4>Entradas</h4></div>
+        <div class="btn-group-row">
+          <button type="button" class="seg-btn ${c.logMode === 'graph' ? 'active' : ''}" onclick="setCalcField('logMode', 'graph', true)">Linha existente</button>
+          <button type="button" class="seg-btn ${c.logMode === 'standalone' ? 'active' : ''}" onclick="setCalcField('logMode', 'standalone', true)">Avulso</button>
+        </div>
+        ${c.logMode === 'standalone' ? `
+          <div class="field-group">
+            <label>Tipo de transporte</label>
             <div class="btn-group-row">
-              <button type="button" class="seg-btn ${c.minerPurity === 'impure' ? 'active' : ''}" onclick="setCalcField('minerPurity', 'impure', true)">Impuro</button>
-              <button type="button" class="seg-btn ${c.minerPurity === 'normal' ? 'active' : ''}" onclick="setCalcField('minerPurity', 'normal', true)">Normal</button>
-              <button type="button" class="seg-btn ${c.minerPurity === 'pure' ? 'active' : ''}" onclick="setCalcField('minerPurity', 'pure', true)">Puro</button>
+              <button type="button" class="seg-btn ${c.logKind === 'solid' ? 'active' : ''}" onclick="setCalcField('logKind', 'solid', true)">Sólido (Esteira)</button>
+              <button type="button" class="seg-btn ${c.logKind === 'fluid' ? 'active' : ''}" onclick="setCalcField('logKind', 'fluid', true)">Líquido (Tubulação)</button>
             </div>
           </div>
           <div class="field-group">
-            <label>Nº Extratores</label>
-            <div class="calc-qty-row">
-              <button type="button" class="oc-step-btn" onclick="stepCalcNumber('minerCount', -1, 1)">−</button>
-              <input type="number" class="sidebar-input" min="1" step="1" value="${c.minerCount}" oninput="setCalcField('minerCount', Math.max(1, parseFloat(this.value)||1), false)" />
-              <button type="button" class="oc-step-btn" onclick="stepCalcNumber('minerCount', 1, 1)">+</button>
-            </div>
-          </div>
-          <div class="field-group">
-            ${renderOverclockSliderHtml({ value: c.minerClock, onChangeExpr: `setCalcField('minerClock', __VAL__, true)`, label: 'Overclock' })}
-          </div>
-        `}
-      </div>
-    `;
-  }
-
-  if (c.tool === 'transport') {
-    const { belts, pipes } = Solver.getBeltsAndPipes();
-    const list = c.transportKind === 'pipe' ? pipes : belts;
-    const selected = list.find(t => t.id === c.transportTierId) || list[list.length - 1];
-    return `
-      <div class="calc-card">
-        <div class="calc-card-head"><h4>Entradas</h4></div>
-        <div class="btn-group-row" style="margin-bottom:12px;">
-          <button type="button" class="seg-btn ${c.transportKind === 'belt' ? 'active' : ''}" onclick="setCalcField('transportKind', 'belt', true)">Esteiras (Sólidos)</button>
-          <button type="button" class="seg-btn ${c.transportKind === 'pipe' ? 'active' : ''}" onclick="setCalcField('transportKind', 'pipe', true)">Tubos (Fluidos)</button>
-        </div>
-        <div class="field-group">
-          <label>Nível</label>
-          <select class="sidebar-select" onchange="setCalcField('transportTierId', this.value, true)">
-            ${list.map(t => `<option value="${t.id}" ${t.id === selected?.id ? 'selected' : ''}>${libEsc(t.name)} (${fmt(t.ratePerMin, 0)}/min)</option>`).join('')}
-          </select>
-        </div>
-        <div class="field-group">
-          <label>Vazão desejada (${c.transportKind === 'pipe' ? 'm³/min' : 'un/min'})</label>
-          <div class="calc-qty-row">
-            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('transportRate', -60, 1)">−</button>
-            <input type="number" class="sidebar-input" min="0.1" step="any" value="${c.transportRate}" oninput="setCalcField('transportRate', Math.max(0.1, parseFloat(this.value)||0.1), false)" />
-            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('transportRate', 60, 1)">+</button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  if (c.tool === 'storage') {
-    const storageIds = Object.keys(OFFICIAL_STORAGE_CAPACITY);
-    const capInfo = OFFICIAL_STORAGE_CAPACITY[c.storageId] || OFFICIAL_STORAGE_CAPACITY.Build_StorageContainerMk1_C;
-    const item = Solver.getItem(c.storageItemId);
-    return `
-      <div class="calc-card">
-        <div class="calc-card-head"><h4>Entradas</h4></div>
-        <div class="field-group">
-          <label>Contêiner / Tanque</label>
-          <select class="sidebar-select" onchange="setCalcField('storageId', this.value, true)">
-            ${storageIds.map(id => {
-              const b = data.logistics?.[id];
-              return `<option value="${id}" ${id === c.storageId ? 'selected' : ''}>${libEsc(b?.name || id)}</option>`;
-            }).join('')}
-          </select>
-        </div>
-        ${capInfo.kind === 'solid' ? `
-          <div class="field-group">
-            <label>Item armazenado</label>
-            <button type="button" class="calc-entity-pick-btn" onclick="openCalcItemPicker('storageItemId', it => !it.isFluid)">
-              ${item ? renderEntityIcon(item, 28) : ''}
-              <span>${item ? `${libEsc(item.name)} (${item.stackSize}/pilha)` : 'Selecionar item'}</span>
+            <label>Item</label>
+            <button type="button" class="calc-entity-pick-btn" onclick="openCalcItemPicker('logItemId', it => AppState.calculator.logKind === 'fluid' ? Boolean(it.isFluid) : !it.isFluid, 'Escolher Item')">
+              ${item ? renderEntityIcon(item, 24) : ''}
+              <span>${item ? libEsc(item.name) : 'Escolher item...'}</span>
               <span class="calc-pick-caret">▾</span>
             </button>
           </div>
-        ` : ''}
-        <div class="field-row-2">
           <div class="field-group">
-            <label>Nº Contêineres</label>
-            <div class="calc-qty-row">
-              <button type="button" class="oc-step-btn" onclick="stepCalcNumber('storageCount', -1, 1)">−</button>
-              <input type="number" class="sidebar-input" min="1" step="1" value="${c.storageCount}" oninput="setCalcField('storageCount', Math.max(1, Math.round(parseFloat(this.value)||1)), false)" />
-              <button type="button" class="oc-step-btn" onclick="stepCalcNumber('storageCount', 1, 1)">+</button>
+            <label>Ação</label>
+            <div class="btn-group-row">
+              <button type="button" class="seg-btn ${c.logAction === 'split' ? 'active' : ''}" onclick="setCalcField('logAction', 'split', true)">Dividir</button>
+              <button type="button" class="seg-btn ${c.logAction === 'merge' ? 'active' : ''}" onclick="setCalcField('logAction', 'merge', true)">Unificar</button>
             </div>
           </div>
-          <div class="field-group">
-            <label>Vazão (${capInfo.kind === 'fluid' ? 'm³/min' : 'un/min'})</label>
-            <input type="number" class="sidebar-input" min="0.1" step="any" value="${c.storageRate}" oninput="setCalcField('storageRate', Math.max(0.1, parseFloat(this.value)||1), false)" />
+          <div class="field-row-2">
+            <div class="field-group">
+              <label>Vazão total (${c.logKind === 'fluid' ? 'm³/min' : 'un/min'})</label>
+              <input type="number" class="sidebar-input" min="0.1" step="any" placeholder="Ex.: 480" value="${c.logTotalRate === '' ? '' : c.logTotalRate}" oninput="setCalcField('logTotalRate', this.value === '' ? '' : Math.max(0.1, parseFloat(this.value)||0), false)" />
+            </div>
+            <div class="field-group">
+              <label>Número de ramais</label>
+              <input type="number" class="sidebar-input" min="2" step="1" placeholder="Ex.: 6" value="${c.logBranches === '' ? '' : c.logBranches}" oninput="setCalcField('logBranches', this.value === '' ? '' : Math.max(2, Math.round(parseFloat(this.value)||2)), false)" />
+            </div>
           </div>
+        ` : `
+          <div class="calc-empty-note">Lê automaticamente as conexões, esteiras, tubulações, divisores e unificadores da linha ativa em Produção ou Oficina.</div>
+        `}
+        <div class="field-group">
+          <label>Comprimento médio por linha em metros (opcional)</label>
+          <input type="number" class="sidebar-input" min="0" step="1" placeholder="Vazio = não calcular metros" value="${c.logLengthMeters === '' ? '' : c.logLengthMeters}" oninput="setCalcField('logLengthMeters', this.value === '' ? '' : Math.max(0, parseFloat(this.value)||0), false)" />
         </div>
       </div>
     `;
   }
 
-  if (c.tool === 'build') {
-    const allBuildings = {
-      ...(data.machines || {}),
-      ...(data.generators || {}),
-      ...(data.extractors || {}),
-      ...(data.logistics || {})
-    };
-    const selB = allBuildings[c.buildSelectedId];
+  // 6.5 TRITURADOR SUPIMPA
+  if (c.tool === 'sink') {
+    const item = c.sinkItemId ? Solver.getItem(c.sinkItemId) : null;
+    const totalSinkable = Object.values(data.items || {}).filter(it => (Number(it.sinkPoints) || 0) > 0).length;
     return `
       <div class="calc-card">
-        <div class="calc-card-head"><h4>Estruturas</h4></div>
+        <div class="calc-card-head">
+          <h4>Entradas</h4>
+          <span class="calc-card-sub">${totalSinkable} itens trituráveis</span>
+        </div>
         <div class="field-group">
-          <label>Adicionar construção</label>
-          <button type="button" class="calc-entity-pick-btn" onclick="openCalcBuildingPicker('buildSelectedId')">
-            ${selB ? renderEntityIcon(selB, 28) : ''}
-            <span>${selB ? libEsc(selB.name) : 'Selecionar estrutura'}</span>
+          <label>Item para triturar</label>
+          <button type="button" class="calc-entity-pick-btn" onclick="openCalcItemPicker('sinkItemId', it => (Number(it.sinkPoints)||0) > 0, 'Todos os Itens Trituráveis')">
+            ${item ? renderEntityIcon(item, 28) : ''}
+            <span>${item ? `${libEsc(item.name)} (${fmt(item.sinkPoints, 0)} pts)` : 'Escolher item triturável...'}</span>
             <span class="calc-pick-caret">▾</span>
           </button>
         </div>
         <div class="field-row-2">
           <div class="field-group">
-            <label>Quantidade</label>
-            <input type="number" class="sidebar-input" min="1" step="1" value="${c.buildAddCount}" oninput="AppState.calculator.buildAddCount = Math.max(1, Math.round(parseFloat(this.value)||1))" />
+            <label>Quantidade fixa (un)</label>
+            <input type="number" class="sidebar-input" min="1" step="1" placeholder="Ex.: 100" value="${c.sinkQty === '' ? '' : c.sinkQty}" oninput="setCalcField('sinkQty', this.value === '' ? '' : Math.max(0, parseFloat(this.value)||0), false)" />
           </div>
           <div class="field-group">
-            <label>&nbsp;</label>
-            <button type="button" class="calc-act-btn primary" style="width:100%;height:36px;" onclick="addCalcBuildRow()">+ Adicionar</button>
+            <label>Taxa (${item?.unit || 'un'}/min)</label>
+            <input type="number" class="sidebar-input" min="0.1" step="any" placeholder="Ex.: 10" value="${c.sinkRate === '' ? '' : c.sinkRate}" oninput="setCalcField('sinkRate', this.value === '' ? '' : Math.max(0, parseFloat(this.value)||0), false)" />
           </div>
-        </div>
-        <div class="calc-build-list">
-          ${(c.buildList || []).map((row, idx) => {
-            const b = allBuildings[row.id];
-            return `
-              <div class="calc-build-row">
-                ${b ? renderEntityIcon(b, 24) : ''}
-                <span class="calc-build-name">${libEsc(b?.name || row.id)}</span>
-                <input type="number" class="sidebar-input calc-build-qty" min="1" step="1" value="${row.count}" oninput="updateCalcBuildRowCount(${idx}, this.value)" />
-                <button type="button" class="btn-icon-danger" onclick="removeCalcBuildRow(${idx})">✕</button>
-              </div>
-            `;
-          }).join('') || '<div class="calc-empty-note">Adicione estruturas acima.</div>'}
         </div>
       </div>
     `;
   }
 
+  // 6.6 ELEVADOR ESPACIAL
   if (c.tool === 'elevator') {
     const phases = Array.isArray(data.spaceElevatorPhases) ? data.spaceElevatorPhases : [];
     const ph = phases.find(p => Number(p.phase) === Number(c.elevatorPhase)) || phases[0];
-    const hours = Math.max(0.1, Number(c.elevatorTargetHours) || 1);
-    const totalMins = hours * 60;
-    if (!ph) {
-      return { title: 'Fases do Elevador', heroLabel: 'Fase', heroValue: '—', rows: [] };
-    }
-    const rows = (ph.requirements || []).map(req => {
-      const it = Solver.getItem(req.item);
-      const ratePerMin = req.amount / totalMins;
-      return {
-        label: `${it ? it.name : req.item} (${fmt(req.amount, 0)}x)`,
-        value: `${fmt(ratePerMin, 2)} /min`,
-        icon: it,
-        highlight: true
-      };
-    });
-    const firstReq = ph.requirements?.[0];
-    return {
-      title: `${ph.name} (${ph.unlocks})`,
-      heroLabel: `Concluir em ${fmt(hours, 1)}h (${fmt(totalMins, 0)} min)`,
-      heroValue: `${ph.requirements.length} peças`,
-      rows,
-      planAction: firstReq ? { itemId: firstReq.item, rate: Number((firstReq.amount / totalMins).toFixed(2)), recipeId: '' } : null
-    };
-  }
-
-  if (c.tool === 'elevator') {
-    const phases = Array.isArray(data.spaceElevatorPhases) ? data.spaceElevatorPhases : [];
     return `
       <div class="calc-card">
-        <div class="calc-card-head"><h4>Entradas</h4></div>
+        <div class="calc-card-head"><h4>Fases do Elevador Espacial</h4></div>
         <div class="field-group">
-          <label>Fase do Projeto Montagem (1.0)</label>
+          <label>Fase</label>
           <div class="btn-group-row">
             ${phases.map(p => `
               <button type="button" class="seg-btn ${Number(c.elevatorPhase) === Number(p.phase) ? 'active' : ''}" onclick="setCalcField('elevatorPhase', ${p.phase}, true)">Fase ${p.phase}</button>
             `).join('')}
           </div>
         </div>
-        <div class="field-group">
-          <label>Tempo alvo (horas)</label>
-          <div class="calc-qty-row">
-            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('elevatorTargetHours', -0.5, 0.5)">−</button>
-            <input type="number" class="sidebar-input" min="0.1" step="0.5" value="${c.elevatorTargetHours}" oninput="setCalcField('elevatorTargetHours', Math.max(0.1, parseFloat(this.value)||1), false)" />
-            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('elevatorTargetHours', 0.5, 0.5)">+</button>
+        ${ph ? `
+          <div class="calc-elev-inputs">
+            <div class="calc-conv-title">Já entregue (${libEsc(ph.name)})</div>
+            ${(ph.requirements || []).map(req => {
+              const it = Solver.getItem(req.item);
+              const key = `${ph.phase}_${req.item}`;
+              const val = c.elevatorDelivered?.[key] || '';
+              return `
+                <div class="calc-elev-row">
+                  <div class="calc-elev-item">
+                    ${it ? renderEntityIcon(it, 26) : ''}
+                    <div>
+                      <strong>${libEsc(it ? it.name : req.item)}</strong>
+                      <small>Exige ${fmt(req.amount, 0)} un</small>
+                    </div>
+                  </div>
+                  <input type="number" class="sidebar-input calc-elev-input" min="0" max="${req.amount}" step="1" placeholder="0" value="${val}" oninput="setCalcElevatorDelivered(${ph.phase}, '${req.item}', this.value)" />
+                </div>
+              `;
+            }).join('')}
           </div>
-        </div>
+        ` : ''}
       </div>
     `;
   }
 
-  if (c.tool === 'sink') {
-    const item = Solver.getItem(c.sinkItemId);
-    return `
-      <div class="calc-card">
-        <div class="calc-card-head"><h4>Entradas</h4></div>
-        <div class="field-group">
-          <label>Item para triturar</label>
-          <button type="button" class="calc-entity-pick-btn" onclick="openCalcItemPicker('sinkItemId', it => (Number(it.sinkPoints)||0) > 0)">
-            ${item ? renderEntityIcon(item, 28) : ''}
-            <span>${item ? `${libEsc(item.name)} (${fmt(item.sinkPoints, 0)} pts)` : 'Selecionar item'}</span>
-            <span class="calc-pick-caret">▾</span>
-          </button>
-        </div>
-        <div class="field-group">
-          <label>Taxa (${item?.unit || 'un'}/min)</label>
-          <div class="calc-qty-row">
-            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('sinkRate', -10, 0.1)">−</button>
-            <input type="number" class="sidebar-input" min="0.1" step="any" value="${c.sinkRate}" oninput="setCalcField('sinkRate', Math.max(0.1, parseFloat(this.value)||0), false)" />
-            <button type="button" class="oc-step-btn" onclick="stepCalcNumber('sinkRate', 10, 0.1)">+</button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  // Numérica (única com visor escuro + teclado físico + conversor de unidades)
-  const keys = ['7','8','9','/','4','5','6','*','1','2','3','-','0','.','(',')','+','%','C','BACK','='];
-  return `
-    <div class="calc-card">
-      <div class="calc-card-head">
-        <h4>Numérica</h4>
-        <span class="calc-card-sub">Teclado físico ativo</span>
-      </div>
-      <div class="calc-num-screen">
-        <input
-          id="calc-num-expr-input"
-          type="text"
-          class="calc-expr-input"
-          value="${libEsc(c.expr)}"
-          oninput="AppState.calculator.expr = this.value"
-          placeholder="0"
-        />
-        <div id="calc-num-result-readout" class="calc-result-readout">= ${libEsc(c.exprResult)}</div>
-      </div>
-      <div class="calc-keypad">
-        ${keys.map(k => `
-          <button type="button" class="calc-key ${k === '=' ? 'eq' : (k === 'C' || k === 'BACK' ? 'fn' : '')}" onclick="appendCalcKey('${k}')">
-            ${k === 'BACK' ? '⌫' : k}
-          </button>
-        `).join('')}
-      </div>
-      <div class="calc-conv-box">
-        <div class="calc-conv-title">Conversão de vazão</div>
-        <div class="field-row-2">
-          <div class="field-group">
-            <label>Valor</label>
-            <input type="number" class="sidebar-input" step="any" value="${c.convValue}" oninput="setCalcField('convValue', parseFloat(this.value)||0, false)" />
-          </div>
-          <div class="field-group">
-            <label>Unidade</label>
-            <select class="sidebar-select" onchange="setCalcField('convFrom', this.value, false)">
-              <option value="min" ${c.convFrom === 'min' ? 'selected' : ''}>/min</option>
-              <option value="sec" ${c.convFrom === 'sec' ? 'selected' : ''}>/s</option>
-              <option value="hour" ${c.convFrom === 'hour' ? 'selected' : ''}>/h</option>
-            </select>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
+  return '';
 }
 
 function renderCalculatorMode(sidebarEl, emptyOverlay) {
@@ -8252,18 +8857,21 @@ function renderCalculatorMode(sidebarEl, emptyOverlay) {
   emptyOverlay.innerHTML = '';
 
   const c = AppState.calculator;
-  sidebarEl.innerHTML = CALC_GROUPS.map(grp => `
-    <div class="calc-sb-group">
-      <div class="calc-sb-group-title">${grp.title}</div>
+  sidebarEl.innerHTML = `
+    <div class="sidebar-step-block">
+      <div class="step-header-row">
+        <span class="step-badge">CALCULADORA</span>
+        <h4>Ferramentas</h4>
+      </div>
       <div class="library-cat-list">
-        ${grp.tools.map(t => `
+        ${CALC_TOOLS.map(t => `
           <button type="button" class="library-cat-btn ${c.tool === t.id ? 'active' : ''}" onclick="setCalcTool('${t.id}')">
-            <span>${t.label}</span>
+            <span class="lib-cat-left"><span>${t.icon}</span><span>${t.label}</span></span>
           </button>
         `).join('')}
       </div>
     </div>
-  `).join('');
+  `;
 
   renderCalculatorWorkspace();
 }
@@ -8271,6 +8879,44 @@ function renderCalculatorMode(sidebarEl, emptyOverlay) {
 function renderCalculatorWorkspace() {
   const view = document.getElementById('calculator-workspace-view');
   if (!view) return;
+  const c = AppState.calculator;
+
+  // 6.1 Calculadora normal pura: centralizada, visor escuro só aqui, SEM conversão de vazão e SEM painel lateral
+  if (c.tool === 'numeric') {
+    const keys = ['7','8','9','/','4','5','6','*','1','2','3','-','0','.','(',')','+','%','C','BACK','='];
+    view.innerHTML = `
+      <div class="calc-shell calc-numeric-only-shell">
+        <div class="calc-card calc-numeric-card">
+          <div class="calc-card-head">
+            <h4>Calculadora</h4>
+            <span class="calc-card-sub">Teclado físico ativo</span>
+          </div>
+          <div class="calc-num-screen">
+            <input
+              id="calc-num-expr-input"
+              type="text"
+              class="calc-expr-input"
+              value="${libEsc(c.expr)}"
+              oninput="AppState.calculator.expr = this.value"
+              placeholder="0"
+            />
+            <div id="calc-num-result-readout" class="calc-result-readout">= ${libEsc(c.exprResult)}</div>
+          </div>
+          <div class="calc-keypad">
+            ${keys.map(k => `
+              <button type="button" class="calc-key ${k === '=' ? 'eq' : (k === 'C' || k === 'BACK' ? 'fn' : '')}" onclick="appendCalcKey('${k}')">
+                ${k === 'BACK' ? '⌫' : k}
+              </button>
+            `).join('')}
+          </div>
+          <div id="calc-num-hist-inline" class="calc-num-history">
+            ${c.numHistory.slice(0, 5).map(h => `<div class="calc-num-hist-row">${libEsc(h)}</div>`).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+    return;
+  }
 
   view.innerHTML = `
     <div class="calc-shell">

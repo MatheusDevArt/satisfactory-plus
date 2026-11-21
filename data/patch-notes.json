@@ -1,5 +1,19 @@
 [
   {
+    "id": "2026-11-21-oficina-portas-calculadora-tutorial",
+    "date": "21/11/2026",
+    "title": "Aba Oficina, Portas nas bordas, Calculadora reformulada e Tutorial por tópicos",
+    "items": [
+      { "tag": "Novo", "text": "Aba Livre renomeada para Oficina com o mesmo visual da Produção, lista compacta expansível, duplicação no card e no botão direito, atalhos (Ctrl+C/V, Shift+clique, Backspace, Espaço+arrastar, seleção por retângulo, Ctrl+Z/Y) e botão global de Overclock (150%, 200%, 250%)." },
+      { "tag": "Novo", "text": "Portas circulares nas bordas de todos os cards (laranja #EA580C para esteiras e azul para tubulações), conexões ligadas ao centro exato das portas e bloqueio com aviso \"Quantidade de conexão excedida\"." },
+      { "tag": "Novo", "text": "Seletor de receitas pesquisável com ícones reais em Produção, Oficina e Calculadora, além de seleção de produtos por categoria da Biblioteca em Produção." },
+      { "tag": "Novo", "text": "Calculadora reformulada em português: Calculadora normal em primeiro (visor escuro e teclado físico), Recursos (com overclock por tipo de máquina, sem extratores), Produção, Energia, Logística (da linha atual ou avulsa), Triturador SUPIMPA (todos os itens trituráveis) e Elevador Espacial (5 fases 1.0 com progresso)." },
+      { "tag": "Novo", "text": "Tutorial reorganizado em grade de tópicos com todos os 14 prints reais regerados." },
+      { "tag": "Melhoria", "text": "Overclock padronizado de 100% a 250% (Fragmentos de Energia), selo de quantidade no canto superior direito, barra de status com energia neutra e logística/armazenamento agrupados também no modo resumido." },
+      { "tag": "Correção", "text": "Restaurados os 15 itens de Logística e Armazenamento no banco de dados e corrigida a integração de Reports e Projetos com Upstash Redis e botão \"Tentar de novo\"." }
+    ]
+  },
+  {
     "id": "2026-11-20-nova-calculadora-login-overclock-slider",
     "date": "20/11/2026",
     "title": "Nova Calculadora S+, Slider de Overclock, correção de Login e melhorias visuais",

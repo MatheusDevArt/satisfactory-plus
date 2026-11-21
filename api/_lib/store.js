@@ -20,8 +20,22 @@ function getToken() {
 }
 
 function getRedisConfig() {
-  const url = (process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL || '').replace(/\/+$/, '');
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN || '';
+  let url = (process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL || '').replace(/\/+$/, '');
+  let token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN || '';
+  if (!url || !token) {
+    for (const k of Object.keys(process.env)) {
+      if (k.endsWith('_KV_REST_API_URL') && process.env[k]) {
+        const prefix = k.slice(0, -'_KV_REST_API_URL'.length);
+        const t = process.env[`${prefix}_KV_REST_API_TOKEN`];
+        if (t) { url = String(process.env[k]).replace(/\/+$/, ''); token = String(t); break; }
+      }
+      if (k.endsWith('_UPSTASH_REDIS_REST_URL') && process.env[k]) {
+        const prefix = k.slice(0, -'_UPSTASH_REDIS_REST_URL'.length);
+        const t = process.env[`${prefix}_UPSTASH_REDIS_REST_TOKEN`];
+        if (t) { url = String(process.env[k]).replace(/\/+$/, ''); token = String(t); break; }
+      }
+    }
+  }
   return (url && token) ? { url, token } : null;
 }
 

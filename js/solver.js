@@ -1755,20 +1755,71 @@
     const mergerEntity = isFluid ? PIPE_JUNCTION_ENTITY : MERGER_ENTITY;
 
     // -------------------------------------------------------------------------
-    // 0. Modo agrupado (Todas as Máquinas: NÃO): liga diretamente 1→1 com a vazão total
-    //    sem criar longas cadeias de divisores/unificadores desnecessários
+    // 0. Modo resumido (Todas as Máquinas: NÃO): exibe divisores/unificadores/junções
+    //    agrupados em 1 card com selo ×N quando S_real > 1 ou T_real > 1
     // -------------------------------------------------------------------------
     if (!expandIndividual && S_cards === 1 && T_cards === 1) {
       const logi = getLogisticsInfo(totalFlow, isFluid, maxBeltId);
-      connections.push({
-        fromNodeId: sourceNodes[0].id,
-        toNodeId: targetNodes[0].id,
-        rate: totalFlow,
-        unit,
-        item,
-        logistics: logi,
-        splitLabel: formatCompactWireLabel(logi, totalFlow, isFluid)
-      });
+      const wireLabel = formatCompactWireLabel(logi, totalFlow, isFluid);
+      const needMerger = S_real > 1 && S_real !== T_real;
+      const needSplitter = T_real > 1 && S_real !== T_real;
+
+      if (!needMerger && !needSplitter) {
+        connections.push({
+          fromNodeId: sourceNodes[0].id,
+          toNodeId: targetNodes[0].id,
+          rate: totalFlow,
+          unit,
+          item,
+          logistics: logi,
+          splitLabel: wireLabel
+        });
+        return;
+      }
+
+      let prevId = sourceNodes[0].id;
+      const splitterOutPorts = isFluid ? (DATA.logistics?.Build_PipelineJunction_Cross_C?.outPorts || 2) : (DATA.logistics?.Build_ConveyorAttachmentSplitter_C?.outPorts || 3);
+      const mergerInPorts = isFluid ? (DATA.logistics?.Build_PipelineJunction_Cross_C?.inPorts || 2) : (DATA.logistics?.Build_ConveyorAttachmentMerger_C?.inPorts || 3);
+
+      if (needMerger) {
+        const mCount = Math.max(1, Math.ceil((S_real - 1) / Math.max(1, mergerInPorts - 1)));
+        const mId = `${idPrefix}_grp_merger`;
+        const mNode = {
+          id: mId,
+          kind: isFluid ? 'pipe_junction' : 'merger',
+          topLabel: isFluid ? 'Junção de Tubulação' : 'Unificador',
+          badgeText: `×${mCount}`,
+          entity: mergerEntity,
+          inputsList: [{ item, rate: totalFlow, unit }],
+          outputsList: [{ item, rate: totalFlow, unit }],
+          outRate: totalFlow,
+          accent: isFluid ? '#2563EB' : '#EA580C'
+        };
+        columns.push({ id: `col_${mId}`, title: mNode.topLabel, nodes: [mNode] });
+        connections.push({ fromNodeId: prevId, toNodeId: mId, rate: totalFlow, unit, item, logistics: logi, splitLabel: wireLabel });
+        prevId = mId;
+      }
+
+      if (needSplitter) {
+        const sCount = Math.max(1, Math.ceil((T_real - 1) / Math.max(1, splitterOutPorts - 1)));
+        const sId = `${idPrefix}_grp_splitter`;
+        const sNode = {
+          id: sId,
+          kind: isFluid ? 'pipe_junction' : 'splitter',
+          topLabel: isFluid ? 'Junção de Tubulação' : 'Divisor',
+          badgeText: `×${sCount}`,
+          entity: splitterEntity,
+          inputsList: [{ item, rate: totalFlow, unit }],
+          outputsList: [{ item, rate: totalFlow, unit }],
+          outRate: totalFlow,
+          accent: isFluid ? '#2563EB' : '#EA580C'
+        };
+        columns.push({ id: `col_${sId}`, title: sNode.topLabel, nodes: [sNode] });
+        connections.push({ fromNodeId: prevId, toNodeId: sId, rate: totalFlow, unit, item, logistics: logi, splitLabel: wireLabel });
+        prevId = sId;
+      }
+
+      connections.push({ fromNodeId: prevId, toNodeId: targetNodes[0].id, rate: totalFlow, unit, item, logistics: logi, splitLabel: wireLabel });
       return;
     }
 

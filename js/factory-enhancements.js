@@ -309,9 +309,8 @@ function renderFactorySummaryPanel({ mode, plan, freeBlocks, freeEdges, graph })
   `;
 
   const energyBody = `
-    <div class="fs-row"><span>Consumo</span><strong class="${powerConsumed > 0 ? 'fs-neg' : ''}">-${fmt(powerConsumed, 1)} MW</strong></div>
-    <div class="fs-row"><span>Geração</span><strong class="${powerGenerated > 0 ? 'fs-pos' : ''}">+${fmt(powerGenerated, 1)} MW</strong></div>
-    <div class="fs-row"><span>Balanço</span><strong class="${balanceMw >= 0 ? 'fs-pos' : 'fs-neg'}">${balanceMw >= 0 ? '+' : ''}${fmt(balanceMw, 1)} MW</strong></div>
+    <div class="fs-row"><span>Energia necessária</span><strong>${fmt(powerConsumed, 1)} MW</strong></div>
+    ${powerGenerated > 0 ? `<div class="fs-row"><span>Energia gerada</span><strong>${fmt(powerGenerated, 1)} MW</strong></div>` : ''}
     ${mainGen ? `
       <div class="fs-gen-box">
         <div class="fs-gen-head">
@@ -411,7 +410,7 @@ function renderFactorySummaryPanel({ mode, plan, freeBlocks, freeEdges, graph })
 
   const tabs = [
     { id: 'visao', label: `Visão geral (${totalBuildings})`, body: overviewBody },
-    { id: 'energia', label: `Energia (${balanceMw >= 0 ? '+' : ''}${fmt(balanceMw, 0)} MW)`, body: energyBody, tone: balanceMw < 0 ? 'neg' : 'pos' },
+    { id: 'energia', label: powerGenerated > 0 && powerConsumed === 0 ? `Energia gerada (${fmt(powerGenerated, 0)} MW)` : `Energia (${fmt(powerConsumed, 0)} MW)`, body: energyBody },
     { id: 'entradas', label: `Entradas (${inputsMap.size})`, body: inputsBody },
     { id: 'saidas', label: `Saídas (${outputsMap.size})`, body: outputsBody },
     ...(missingMap.size > 0 ? [{ id: 'faltando', label: `Não produzido (${missingMap.size})`, body: missingBody, tone: 'neg' }] : []),

@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./styles.css?v=29" />
+  <link rel="stylesheet" href="./styles.css?v=31" />
   <script>
     (function () {
       try {
@@ -100,7 +100,7 @@
             ⚡ Energia
           </button>
           <button id="tab-free" class="real-tab" role="tab" onclick="switchMode('free')">
-            🛠️ Livre
+            🛠️ Oficina
           </button>
           <button id="tab-map" class="real-tab" role="tab" onclick="switchMode('map')">
             🗺️ Mapa
@@ -259,6 +259,12 @@
             <line x1="19" y1="12" x2="22" y2="12"></line>
           </svg>
         </button>
+        <button id="btn-global-overclock" class="hud-icon-btn hud-oc-btn" onclick="cycleGlobalOverclock()" title="Overclock global: Desligado (clique para 150% / 200% / 250%)" aria-label="Overclock global">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          <span id="global-oc-badge" class="hud-oc-badge hidden"></span>
+        </button>
       </div>
 
       <!-- AVISO DESFAZER LIMPEZA -->
@@ -405,15 +411,15 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="./js/elk.bundled.js?v=13"></script>
-  <script src="./data/satisfactory-data.js?v=30"></script>
-  <script src="./js/map-data.js?v=30"></script>
-  <script src="./js/library-data.js?v=30"></script>
-  <script src="./js/icons.js?v=30"></script>
-  <script src="./js/solver.js?v=30"></script>
-  <script src="./js/app.js?v=30"></script>
-  <script src="./js/factory-enhancements.js?v=30"></script>
-  <script src="./js/tutorial.js?v=30"></script>
-  <script src="./js/patch-notes.js?v=30"></script>
-  <script src="./js/account-features.js?v=30"></script>
+  <script src="./data/satisfactory-data.js?v=31"></script>
+  <script src="./js/map-data.js?v=31"></script>
+  <script src="./js/library-data.js?v=31"></script>
+  <script src="./js/icons.js?v=31"></script>
+  <script src="./js/solver.js?v=31"></script>
+  <script src="./js/app.js?v=31"></script>
+  <script src="./js/factory-enhancements.js?v=31"></script>
+  <script src="./js/tutorial.js?v=31"></script>
+  <script src="./js/patch-notes.js?v=31"></script>
+  <script src="./js/account-features.js?v=31"></script>
 </body>
 </html>

@@ -1365,7 +1365,7 @@ function renderAdminReportsWorkspace() {
       </div>
     </div>
 
-    ${st.error ? `<div class="form-alert error">⚠️ ${escText(st.error)}</div>` : ''}
+    ${st.error ? `<div class="form-alert error" style="display:flex;align-items:center;justify-content:space-between;gap:12px;"><span>⚠️ ${escText(st.error)}</span><button type="button" class="btn-small-accent" onclick="fetchAdminReports()">Tentar de novo</button></div>` : ''}
     ${st.loading ? '<div class="picker-empty">⏳ Carregando reports...</div>' : `
       <div class="admin-reports-stack">
         ${filtered.length === 0 ? `<div class="picker-empty">${isHistory ? 'Histórico vazio.' : 'Não há reportes a serem resolvidos'}</div>` : filtered.map((r) => {
@@ -1923,7 +1923,7 @@ function renderProjectsMode(sidebarEl, emptyOverlay) {
         <h4>Suas Fábricas Salvas</h4>
       </div>
       <p class="step-help-text">
-        Salve qualquer linha da aba <strong>🏭 Produção</strong> ou <strong>🛠️ Livre</strong> e reabra exatamente com todas as receitas, máquinas, conexões, clock e posições dos cards.
+        Salve qualquer linha da aba <strong>🏭 Produção</strong> ou <strong>🛠️ Oficina</strong> e reabra com todas as receitas, máquinas, conexões e posições.
       </p>
       <button type="button" class="btn-small-accent" style="width:100%; padding:8px;" onclick="loadUserProjects()">🔄 Atualizar Projetos</button>
     </div>
@@ -1945,17 +1945,17 @@ function renderProjectsWorkspace() {
       </div>
     </div>
 
-    ${pState.error ? `<div class="form-alert error">⚠️ ${escText(pState.error)}</div>` : ''}
+    ${pState.error ? `<div class="form-alert error" style="display:flex;align-items:center;justify-content:space-between;gap:12px;"><span>⚠️ ${escText(pState.error)}</span><button type="button" class="btn-small-accent" onclick="loadUserProjects()">Tentar de novo</button></div>` : ''}
     ${pState.loading ? '<div class="picker-empty">⏳ Carregando projetos...</div>' : `
       <div class="projects-cards-grid">
         ${pState.list.length === 0 ? `
           <div class="picker-empty">
-            Você ainda não salvou nenhum projeto. Monte uma linha na aba <strong>🏭 Produção</strong> ou <strong>🛠️ Livre</strong> e clique em <strong>💾 Salvar</strong>!
+            Você ainda não salvou nenhum projeto. Monte uma linha na aba <strong>🏭 Produção</strong> ou <strong>🛠️ Oficina</strong> e clique em <strong>💾 Salvar</strong>.
           </div>
         ` : pState.list.map((p) => `
           <div class="project-saved-card ${pState.activeProjectId === p.id ? 'is-active' : ''}">
             <div class="project-card-top">
-              <span class="lib-badge">${p.sourceMode === 'free' ? '🛠️ Modo Livre' : '🏭 Produção'}</span>
+              <span class="lib-badge">${p.sourceMode === 'free' ? '🛠️ Oficina' : '🏭 Produção'}</span>
               <small>Atualizado: ${fmtDateBR(p.updatedAt)}</small>
             </div>
             <h3>${escText(p.name)}</h3>

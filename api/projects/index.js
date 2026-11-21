@@ -6,13 +6,15 @@ const {
   getToken,
   readJsonBlob,
   writeJsonBlob,
+  deleteBlobByPathname,
   listJsonBlobs,
   fetchJsonFromBlobUrl,
   applySecurityHeaders,
   verifyCsrf,
   sendJson,
   readRequestBody,
-  getAuthenticatedUser
+  getAuthenticatedUser,
+  StorageUnavailableError
 } = require('../_lib/store');
 
 function validateProjectName(name) {
@@ -62,7 +64,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const auth = await getAuthenticatedUser(req, res, true);
+    const auth = await getAuthenticatedUser(req, res, true, { allowStatelessFallback: true });
     if (!auth) {
       return sendJson(res, 401, { error: 'Você precisa entrar na sua conta para acessar seus projetos.' });
     }
@@ -223,7 +225,7 @@ module.exports = async function handler(req, res) {
       if (!existing || existing.userId !== userId) {
         return sendJson(res, 403, { error: 'Você não tem permissão para remover este projeto.' });
       }
-      await del(exact.url, { token: getToken() });
+      await deleteBlobByPathname(exact.pathname);
       return sendJson(res, 200, { ok: true, deletedId: projectId });
     }
 
@@ -231,6 +233,9 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     if (err.message === 'PAYLOAD_TOO_LARGE') return sendJson(res, 413, { error: 'O projeto excedeu o limite máximo de 1 MB.' });
     if (err.message === 'INVALID_JSON') return sendJson(res, 400, { error: 'Dados enviados em formato inválido.' });
+    if (err instanceof StorageUnavailableError || err?.name === 'StorageUnavailableError') {
+      return sendJson(res, 503, { error: 'Armazenamento temporariamente indisponível.', code: 'STORAGE_UNAVAILABLE' });
+    }
     console.error('[api/projects] error:', err.message);
     return sendJson(res, 500, { error: 'Erro interno ao processar projetos.' });
   }

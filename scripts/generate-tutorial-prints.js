@@ -195,16 +195,23 @@ async function run() {
     await cdp.send('Page.navigate', { url });
     await sleep(2600);
 
-    // Garante splash removido, tema claro limpo e patch notes auto-card silenciado nos prints
+    // Garante splash removido, body.home-active removido, tema claro limpo e patch notes silenciado
     await cdp.eval(`(() => {
+      if (typeof dismissIntroSplash === 'function') dismissIntroSplash();
       const splash = document.getElementById('intro-splash');
       if (splash) splash.remove();
-      try { localStorage.setItem('splus_last_seen_patch_id', '2026-11-19-resumo-logistica-esteiras-lr'); } catch {}
+      document.body.classList.remove('home-active');
+      document.documentElement.classList.remove('home-active');
+      const root = document.getElementById('app-layout-root');
+      if (root) { root.style.opacity = '1'; root.style.visibility = 'visible'; }
+      try { localStorage.setItem('splus_last_seen_patch_id', 'latest-suppressed'); } catch {}
+      const pm = document.getElementById('patch-auto-modal');
+      if (pm) pm.classList.add('hidden');
       if (typeof closePatchAutoCard === 'function') closePatchAutoCard(true);
       document.body.classList.remove('theme-dark');
       document.body.classList.add('theme-light');
     })()`);
-    await sleep(400);
+    await sleep(600);
 
     // 1. Tela inicial limpa
     await cdp.captureWebp('tutorial-01-inicio.webp', { x: 0, y: 0, width: 1440, height: 900 }, 82);

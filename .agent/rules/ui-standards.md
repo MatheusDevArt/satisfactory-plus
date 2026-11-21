@@ -1,8 +1,12 @@
 # Padrões Visuais e de Interação da Interface
 
-1. **Item selecionado / ativo:** Todo botão, aba, chip, filtro ou item de lista selecionado no site inteiro deve usar preenchimento sólido `#EA580C` com texto e ícones em branco (`#ffffff`), mantendo hover/focus neutros.
-2. **Painel de status:** O painel de resumo/status da fábrica (`#factory-status-footer`) deve permanecer SEMPRE na parte inferior da área de trabalho em todos os modos (Produção, Energia e Livre) — nunca dentro da barra lateral.
-3. **Barra lateral do Modo Livre:** As 6 categorias de filtro (`Todos`, `Máquinas`, `Receitas`, `Logística`, `Armazenamento`, `Energia`) devem ser exibidas em lista vertical de 1 item por linha.
-4. **Feedback de conexões:** Durante o arraste de uma ligação no Modo Livre, apenas a borda do card sob o ponteiro muda de cor (verde se compatível, vermelha se incompatível), sem anéis extras ou deslocamento de layout. Conexões inválidas exibem a notificação centralizada `"Conexão incompatível"`.
-5. **Overclock:** Todo ajuste de Overclock/Clock no site deve usar o componente unificado de slider (`renderOverclockSliderHtml`, 1%–250%, botões `−/+`, atalhos 100/150/200/250% e contador de Power Shards), nunca `<input type="number">` avulso.
-6. **Digitação sem perda de foco:** Nenhum campo de busca ou número pode ser recriado durante `oninput`; atualizações parciais devem re-renderizar apenas a área de resultados.
+1. **Aba Oficina:** A antiga aba "Livre" chama-se **Oficina** em todo o projeto (abas, textos, tutorial, patch notes e botões) e compartilha a mesma hierarquia visual da aba Produção.
+2. **Item selecionado / ativo:** Todo botão, aba, chip, filtro ou item de lista selecionado no site inteiro deve usar preenchimento sólido `#EA580C` com texto e ícones em branco (`#ffffff`), mantendo hover/focus neutros.
+3. **Portas e conexões dos cards:** Todos os cards exibem portas circulares nas bordas — laranja (`#EA580C`) para esteiras e azul (`#2563EB`) para tubulações — respeitando a quantidade e o tipo oficial de cada máquina. Toda conexão sai e chega no centro exato de uma porta. Exceder o limite bloqueia e exibe `"Quantidade de conexão excedida"`; tipos incompatíveis exibem `"Conexão incompatível"`.
+4. **Selo de quantidade:** O selo de quantidade agrupada (`×N`) fica no **canto superior direito** do card.
+5. **Overclock:** Todo ajuste de Overclock usa o componente único de slide de **100% a 250%** (nunca abaixo de 100%), com botões `−/+`, atalhos `100/150/200/250%` e contador de **Fragmentos de Energia**. O botão de raio na barra direita alterna overclock global `desligado → 150% (1,5x) → 200% (2x) → 250% (2,5x) → desligado`, restaurando os valores individuais ao desligar.
+6. **Painel de status:** Permanece sempre na parte inferior da área de trabalho em todos os modos. O dado de energia é exibido em **cor neutra** (sem verde nem vermelho).
+7. **Nada pré-definido:** Em Oficina, Calculadora e Energia, nenhum campo nasce pré-selecionado até o usuário escolher; após escolher, assume o valor base real de 1 máquina a 100%.
+8. **Seletor de receitas com ícones:** Produção, Oficina e Calculadora usam seletor pesquisável com ícones reais dos ingredientes, máquina, saídas (`/min`), etiqueta `ALT` e energia.
+9. **Navegação bidirecional e atalhos da Oficina:** Clicar em uma máquina no espaço seleciona, rola e expande o bloco na barra lateral (sem modal sobreposto, exceto divisores, unificadores, junções e contêineres). Atalhos da Oficina: `Ctrl+C/V`, `Shift+clique`, `Backspace/Delete`, `Espaço+arrastar` (pan), arrastar fundo (seleção por retângulo) e `Ctrl+Z/Y`.
+10. **Digitação sem perda de foco:** Nenhum campo de busca ou número pode ser recriado durante `oninput`; atualizações parciais re-renderizam apenas a área de resultados.

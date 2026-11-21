@@ -8,6 +8,7 @@ const {
   MAX_USER_IMAGE_QUOTA_BYTES,
   getToken,
   writeJsonBlob,
+  deleteBlobByPathname,
   listJsonBlobs,
   fetchJsonFromBlobUrl,
   applySecurityHeaders,
@@ -109,7 +110,7 @@ async function loadAllValidReportsAndCleanup() {
         for (const img of (rep.images || [])) {
           if (img.blobUrl) await del(img.blobUrl, { token: getToken() }).catch(() => {});
         }
-        await del(b.url, { token: getToken() }).catch(() => {});
+        await deleteBlobByPathname(b.pathname).catch(() => {});
         continue;
       }
       active.push({ rep, blobUrl: b.url });
@@ -131,7 +132,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const auth = await getAuthenticatedUser(req, res, true);
+    const auth = await getAuthenticatedUser(req, res, true, { allowStatelessFallback: true });
     if (!auth) {
       return sendJson(res, 401, { error: 'Você precisa entrar na sua conta para acessar os reports.' });
     }
@@ -379,7 +380,7 @@ module.exports = async function handler(req, res) {
             for (const img of (entry.rep.images || [])) {
               if (img.blobUrl) await del(img.blobUrl, { token: getToken() }).catch(() => {});
             }
-            await del(entry.blobUrl, { token: getToken() }).catch(() => {});
+            await deleteBlobByPathname(`db/reports/${entry.rep.id}.json`).catch(() => {});
             deleted++;
           }
         }
@@ -470,7 +471,7 @@ module.exports = async function handler(req, res) {
           if (img.blobUrl) await del(img.blobUrl, { token: getToken() }).catch(() => {});
         }
       }
-      await del(targetBlob.url, { token: getToken() });
+      await deleteBlobByPathname(targetBlob.pathname);
       return sendJson(res, 200, { ok: true, deletedId: id });
     }
 

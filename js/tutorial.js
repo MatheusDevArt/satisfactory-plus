@@ -337,16 +337,27 @@ const TUTORIAL_SLIDES = [
       { term: 'Nó de recurso', desc: 'Ponto no mapa de onde saem minérios, petróleo ou água.' },
       { term: 'Produto final', desc: 'Item principal que você escolheu fabricar, destacado em laranja.' },
       { term: 'Excesso', desc: 'Item extra gerado por uma receita que nenhuma outra máquina da linha usa.' },
-      { term: 'Clock (Overclock / Underclock)', desc: 'Velocidade da máquina (1% a 250%); altera produção e energia.' },
-      { term: 'Agrupar máquinas', desc: 'Junta máquinas iguais em um único card usando Todas Máquinas: NÃO.' },
+      { term: 'Overclock', desc: 'Velocidade da máquina (100% a 250%); usa Fragmentos de Energia e altera produção e consumo.' },
+      { term: 'Agrupar máquinas', desc: 'Junta máquinas e logística iguais em um único card usando Todas as Máquinas: NÃO.' },
       { term: 'Modo foco', desc: 'Destaca só a máquina sob o mouse e as conexões ligadas a ela.' },
-      { term: 'Divisor / Unificador', desc: 'Divide uma esteira em várias saídas ou junta várias entradas em uma só.' }
+      { term: 'Divisor / Unificador', desc: 'Divide uma esteira em várias saídas ou junta várias entradas em uma só.' },
+      { term: 'Atalhos na Oficina', desc: 'Ctrl+C/V copiar e colar, Shift+clique selecionar vários, Backspace apagar, Espaço+arrastar mover câmera, arrastar fundo seleciona área.' }
     ]
   }
 ];
 
+const TUTORIAL_TOPICS = [
+  { id: 'primeiros-passos', icon: '🧭', title: 'Primeiros passos', sub: 'Visão geral da tela e abas', slideIds: ['como-usar', 'abas'] },
+  { id: 'producao', icon: '🏭', title: 'Produção', sub: 'Montar linha, fluxo, esteiras e cards', slideIds: ['primeira-linha', 'como-ler-fluxo', 'etiquetas-esteiras', 'cards-maquina', 'nos-recurso', 'produto-final'] },
+  { id: 'oficina', icon: '🛠️', title: 'Oficina', sub: 'Portas laranja/azul, duplicar, atalhos', slideIds: ['modo-livre', 'navegacao-foco'] },
+  { id: 'energia-status', icon: '⚡', title: 'Energia e Status', sub: 'Barra inferior neutra e excesso', slideIds: ['status-excesso'] },
+  { id: 'conta-reports', icon: '📁', title: 'Projetos, Conta e Reports', sub: 'Salvar na nuvem, Resolvido e Histórico', slideIds: ['conta-projetos-reportar', 'patch-notes'] },
+  { id: 'atalhos-glossario', icon: '⌨️', title: 'Atalhos e Glossário', sub: 'Termos do jogo e atalhos rápidos', slideIds: ['glossario'] }
+];
+
 const TutorialState = {
   isOpen: false,
+  activeTopicId: null, // null = grade de tópicos
   step: 0,
   sceneIdx: 0,
   indexOpen: false,
@@ -354,17 +365,42 @@ const TutorialState = {
   touchStartY: null
 };
 
-function openTutorialModal(startStep = 0) {
+function getActiveTutorialSlides() {
+  if (!TutorialState.activeTopicId) return TUTORIAL_SLIDES;
+  const topic = TUTORIAL_TOPICS.find(t => t.id === TutorialState.activeTopicId);
+  if (!topic) return TUTORIAL_SLIDES;
+  const list = topic.slideIds.map(id => TUTORIAL_SLIDES.find(s => s.id === id)).filter(Boolean);
+  return list.length > 0 ? list : TUTORIAL_SLIDES;
+}
+
+function openTutorialModal(startTopicOrStep = null) {
   TutorialState.isOpen = true;
-  TutorialState.step = Math.max(0, Math.min(TUTORIAL_SLIDES.length - 1, Number(startStep) || 0));
+  TutorialState.activeTopicId = (typeof startTopicOrStep === 'string') ? startTopicOrStep : null;
+  TutorialState.step = 0;
   TutorialState.sceneIdx = 0;
   TutorialState.indexOpen = false;
   if (typeof AppState !== 'undefined' && AppState.tutorial) {
     AppState.tutorial.isOpen = true;
-    AppState.tutorial.step = TutorialState.step;
+    AppState.tutorial.step = 0;
   }
   const modal = document.getElementById('tutorial-modal');
   if (modal) modal.classList.remove('hidden');
+  renderTutorialSlide();
+}
+
+function openTutorialTopic(topicId) {
+  TutorialState.activeTopicId = topicId;
+  TutorialState.step = 0;
+  TutorialState.sceneIdx = 0;
+  TutorialState.indexOpen = false;
+  renderTutorialSlide();
+}
+
+function backToTutorialTopics() {
+  TutorialState.activeTopicId = null;
+  TutorialState.step = 0;
+  TutorialState.sceneIdx = 0;
+  TutorialState.indexOpen = false;
   renderTutorialSlide();
 }
 
@@ -382,24 +418,25 @@ function closeTutorialModal() {
 }
 
 function goToTutorialStep(idx) {
-  TutorialState.step = Math.max(0, Math.min(TUTORIAL_SLIDES.length - 1, idx));
+  const slides = getActiveTutorialSlides();
+  TutorialState.step = Math.max(0, Math.min(slides.length - 1, idx));
   TutorialState.sceneIdx = 0;
   TutorialState.indexOpen = false;
-  if (typeof AppState !== 'undefined' && AppState.tutorial) {
-    AppState.tutorial.step = TutorialState.step;
-  }
   renderTutorialSlide();
 }
 
 function nextTutorialStep() {
-  if (TutorialState.step < TUTORIAL_SLIDES.length - 1) {
+  if (!TutorialState.activeTopicId) return;
+  const slides = getActiveTutorialSlides();
+  if (TutorialState.step < slides.length - 1) {
     goToTutorialStep(TutorialState.step + 1);
   } else {
-    closeTutorialModal();
+    backToTutorialTopics();
   }
 }
 
 function prevTutorialStep() {
+  if (!TutorialState.activeTopicId) return;
   if (TutorialState.step > 0) {
     goToTutorialStep(TutorialState.step - 1);
   }
@@ -436,10 +473,35 @@ function renderTutorialSlide() {
   const footer = document.getElementById('tutorial-footer');
   if (!body || !footer) return;
 
-  const idx = TutorialState.step;
-  const slide = TUTORIAL_SLIDES[idx];
+  // Tela inicial: grade de tópicos de interesse
+  if (!TutorialState.activeTopicId) {
+    body.innerHTML = `
+      <div class="tut-card-header">
+        <h4 class="tut-slide-title">Escolha um tópico</h4>
+        <p class="tut-one-liner">Veja apenas o passo a passo do que você precisa agora.</p>
+      </div>
+      <div class="tut-topics-grid">
+        ${TUTORIAL_TOPICS.map(t => `
+          <button type="button" class="tut-topic-card" onclick="openTutorialTopic('${t.id}')">
+            <span class="tut-topic-icon">${t.icon}</span>
+            <strong class="tut-topic-title">${t.title}</strong>
+            <span class="tut-topic-sub">${t.sub} (${t.slideIds.length})</span>
+          </button>
+        `).join('')}
+      </div>
+    `;
+    footer.innerHTML = `
+      <span></span>
+      <button type="button" class="btn-tutorial-nav primary" onclick="closeTutorialModal()">Fechar</button>
+    `;
+    return;
+  }
+
+  const activeSlides = getActiveTutorialSlides();
+  const idx = Math.max(0, Math.min(activeSlides.length - 1, TutorialState.step));
+  const slide = activeSlides[idx];
   const isFirst = idx === 0;
-  const isLast = idx === TUTORIAL_SLIDES.length - 1;
+  const isLast = idx === activeSlides.length - 1;
   const scenes = slide.scenes || [];
   const activeScene = scenes[TutorialState.sceneIdx] || scenes[0] || null;
 
@@ -487,9 +549,9 @@ function renderTutorialSlide() {
     const mediaHtml = activeScene ? `
       <div class="tut-media-col">
         ${sceneTabsHtml}
-        <div class="tut-figure-box" onclick="openImageLightbox('${activeScene.src}')" title="Clique para ampliar a imagem">
+        <div class="tut-figure-box" onclick="openImageLightbox('${activeScene.src}?v=31')" title="Clique para ampliar a imagem">
           <img
-            src="${activeScene.src}"
+            src="${activeScene.src}?v=31"
             alt="${activeScene.alt}"
             loading="lazy"
             decoding="async"
@@ -564,10 +626,8 @@ function renderTutorialSlide() {
     ${indexDrawerHtml}
     <div class="tut-card-header">
       <div class="tut-header-top-row">
-        <span class="tutorial-step-counter">Passo ${idx + 1} de ${TUTORIAL_SLIDES.length}</span>
-        <button type="button" class="tut-index-toggle" onclick="toggleTutorialIndex()">
-          ☰ Índice
-        </button>
+        <button type="button" class="tut-back-btn" onclick="backToTutorialTopics()">← Tópicos</button>
+        <span class="tutorial-step-counter">Passo ${idx + 1} de ${activeSlides.length}</span>
       </div>
       <h4 class="tut-slide-title">${slide.title}</h4>
       <p class="tut-one-liner"><strong>Em uma frase:</strong> ${slide.oneLiner}</p>
@@ -579,8 +639,8 @@ function renderTutorialSlide() {
     <button type="button" class="btn-tutorial-nav" onclick="prevTutorialStep()" ${isFirst ? 'disabled' : ''}>
       ⬅ Anterior
     </button>
-    <div class="tutorial-dots" role="tablist" aria-label="Passos do tutorial">
-      ${TUTORIAL_SLIDES.map((s, i) => `
+    <div class="tutorial-dots" role="tablist" aria-label="Passos do tópico">
+      ${activeSlides.map((s, i) => `
         <button
           type="button"
           class="tutorial-dot ${i === idx ? 'active' : ''}"
@@ -591,7 +651,7 @@ function renderTutorialSlide() {
       `).join('')}
     </div>
     <button type="button" class="btn-tutorial-nav primary" onclick="nextTutorialStep()">
-      ${isLast ? 'Concluir ✅' : 'Próximo ➡'}
+      ${isLast ? 'Voltar aos tópicos' : 'Próximo ➡'}
     </button>
   `;
 }
