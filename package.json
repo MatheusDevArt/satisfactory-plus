@@ -4,10 +4,11 @@
   "private": true,
   "description": "Satisfactory+ — Planejador Visual, Contas, Reports e Projetos",
   "scripts": {
+    "check": "node scripts/check-syntax.js",
     "dados:gerar": "node scripts/generate-game-data.js",
     "tutorial:prints": "node scripts/generate-tutorial-prints.js"
   },
   "dependencies": {
-    "@vercel/blob": "^1.1.1"
+    "@vercel/blob": "2.4.0"
   }
 }

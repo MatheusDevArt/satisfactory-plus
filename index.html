@@ -12,8 +12,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./styles.css?v=45" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link rel="stylesheet" href="./styles.css?v=48" />
   <script>
     (function () {
       try {
@@ -66,7 +66,7 @@
           <img src="./assets/logo-splus.jpg" alt="Satisfactory+" class="brand-logo-img" />
           <div class="brand-text">
             <h1>Satisfactory+</h1>
-            <span id="app-version-label" class="brand-subtitle">v2.5</span>
+            <span id="app-version-label" class="brand-subtitle">v2.6</span>
           </div>
         </button>
         <div class="nav-rail-quick-actions">
@@ -76,6 +76,7 @@
             class="btn-header-icon nav-rail-util-btn"
             onclick="toggleTheme()"
             title="Alternar entre Modo Claro e Modo Escuro"
+            aria-label="Alternar entre Modo Claro e Modo Escuro"
           >
             <svg class="ui-ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
             <span class="nav-rail-util-lbl" data-i18n="nav.dark">Escuro</span>
@@ -86,6 +87,7 @@
             class="btn-header-icon nav-rail-util-btn"
             onclick="toggleNavRailCollapse()"
             title="Minimizar / Expandir barra de navegação"
+            aria-label="Minimizar ou expandir barra de navegação"
           >
             ⇤
           </button>
@@ -95,6 +97,7 @@
             class="btn-header-icon nav-rail-util-btn"
             onclick="toggleSidebarCollapse()"
             title="Ocultar / Mostrar painel de controle da ferramenta"
+            aria-label="Ocultar ou mostrar painel de controle da ferramenta"
           >
             ◀
           </button>
@@ -103,25 +106,25 @@
 
       <!-- GRUPO 1: Produção, Energia, Oficina, Mapa -->
       <div class="nav-rail-group" role="tablist" aria-label="Planejamento e Mapa">
-        <button id="tab-production" class="real-tab nav-rail-item active" role="tab" onclick="switchMode('production')" title="Produção">
+        <button id="tab-production" class="real-tab nav-rail-item active" role="tab" aria-selected="true" onclick="switchMode('production')" title="Produção">
           <span class="nav-rail-ico" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
           </span>
           <span class="nav-rail-label" data-i18n="nav.production">Produção</span>
         </button>
-        <button id="tab-power" class="real-tab nav-rail-item" role="tab" onclick="switchMode('power')" title="Energia">
+        <button id="tab-power" class="real-tab nav-rail-item" role="tab" aria-selected="false" onclick="switchMode('power')" title="Energia">
           <span class="nav-rail-ico" aria-hidden="true">
             <svg class="tab-power-bolt" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
           </span>
           <span class="nav-rail-label" data-i18n="nav.power">Energia</span>
         </button>
-        <button id="tab-free" class="real-tab nav-rail-item" role="tab" onclick="switchMode('free')" title="Oficina">
+        <button id="tab-free" class="real-tab nav-rail-item" role="tab" aria-selected="false" onclick="switchMode('free')" title="Oficina">
           <span class="nav-rail-ico" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
           </span>
           <span class="nav-rail-label" data-i18n="nav.workshop">Oficina</span>
         </button>
-        <button id="tab-map" class="real-tab nav-rail-item" role="tab" onclick="switchMode('map')" title="Mapa">
+        <button id="tab-map" class="real-tab nav-rail-item" role="tab" aria-selected="false" onclick="switchMode('map')" title="Mapa">
           <span class="nav-rail-ico" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
           </span>
@@ -133,35 +136,41 @@
 
       <!-- GRUPO 2: Receitas, Biblioteca, Calculadora, Projetos, Reports -->
       <div class="nav-rail-group" role="tablist" aria-label="Consulta e Ferramentas">
-        <button id="tab-recipes" class="real-tab nav-rail-item" role="tab" onclick="switchMode('recipes')" title="Receitas">
+        <button id="tab-recipes" class="real-tab nav-rail-item" role="tab" aria-selected="false" onclick="switchMode('recipes')" title="Receitas">
           <span class="nav-rail-ico" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
           </span>
           <span class="nav-rail-label" data-i18n="nav.recipes">Receitas</span>
         </button>
-        <button id="tab-library" class="real-tab nav-rail-item" role="tab" onclick="switchMode('library')" title="Biblioteca">
+        <button id="tab-library" class="real-tab nav-rail-item" role="tab" aria-selected="false" onclick="switchMode('library')" title="Biblioteca">
           <span class="nav-rail-ico" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
           </span>
           <span class="nav-rail-label" data-i18n="nav.library">Biblioteca</span>
         </button>
-        <button id="tab-calculator" class="real-tab nav-rail-item" role="tab" onclick="switchMode('calculator')" title="Calculadora">
+        <button id="tab-calculator" class="real-tab nav-rail-item" role="tab" aria-selected="false" onclick="switchMode('calculator')" title="Calculadora">
           <span class="nav-rail-ico" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"></rect><line x1="8" y1="6" x2="16" y2="6"></line><line x1="16" y1="14" x2="16" y2="18"></line><path d="M16 10h.01"></path><path d="M12 10h.01"></path><path d="M8 10h.01"></path><path d="M12 14h.01"></path><path d="M8 14h.01"></path><path d="M12 18h.01"></path><path d="M8 18h.01"></path></svg>
           </span>
           <span class="nav-rail-label" data-i18n="nav.calculator">Calculadora</span>
         </button>
-        <button id="tab-projects" class="real-tab nav-rail-item hidden" role="tab" onclick="switchMode('projects')" title="Projetos">
+        <button id="tab-projects" class="real-tab nav-rail-item hidden" role="tab" aria-selected="false" onclick="switchMode('projects')" title="Projetos">
           <span class="nav-rail-ico" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
           </span>
           <span class="nav-rail-label" data-i18n="nav.projects">Projetos</span>
         </button>
-        <button id="tab-reports" class="real-tab nav-rail-item hidden" role="tab" onclick="switchMode('reports')" title="Reports">
+        <button id="tab-reports" class="real-tab nav-rail-item hidden" role="tab" aria-selected="false" onclick="switchMode('reports')" title="Reports">
           <span class="nav-rail-ico" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
           </span>
           <span class="nav-rail-label" data-i18n="nav.reports">Reports</span>
+        </button>
+        <button id="tab-ceo" class="real-tab nav-rail-item hidden" role="tab" aria-selected="false" onclick="switchMode('ceo')" title="Painel CEO">
+          <span class="nav-rail-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"></path><path d="M4 17l2-11 6 5 6-5 2 11z"></path></svg>
+          </span>
+          <span class="nav-rail-label">Painel CEO</span>
         </button>
       </div>
 
@@ -226,8 +235,11 @@
       <!-- CAMADA DE PROJETOS SALVOS (SOMENTE USUÁRIOS LOGADOS) -->
       <div id="projects-workspace-view" class="library-workspace-view hidden"></div>
 
-      <!-- CAMADA DE REPORTS DO ADMIN (SOMENTE ADMIN) -->
+      <!-- CAMADA DE REPORTS DO CEO -->
       <div id="reports-workspace-view" class="library-workspace-view hidden"></div>
+
+      <!-- CAMADA DO PAINEL EXECUTIVO CEO (SOMENTE CEO) -->
+      <div id="ceo-workspace-view" class="library-workspace-view hidden"></div>
 
       <!-- ESTADO VAZIO (QUANDO AINDA NÃO SELECIONOU NADA) -->
       <div id="spaces-empty-overlay" class="spaces-empty-overlay"></div>
@@ -486,19 +498,19 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="./js/elk.bundled.js?v=13"></script>
-  <script src="./data/satisfactory-data.js?v=38"></script>
+  <script src="./data/satisfactory-data.js?v=48"></script>
   <script src="./js/map-data.js?v=33"></script>
   <script src="./js/library-data.js?v=33"></script>
   <script src="./js/icons.js?v=33"></script>
   <script src="./js/solver.js?v=42"></script>
   <script src="./js/design-system.js?v=41"></script>
-  <script src="./js/app.js?v=44"></script>
+  <script src="./js/app.js?v=48"></script>
   <script src="./js/factory-enhancements.js?v=41"></script>
-  <script src="./js/tutorial.js?v=45"></script>
+  <script src="./js/tutorial.js?v=48"></script>
   <script src="./js/patch-notes.js?v=41"></script>
-  <script src="./js/account-features.js?v=44"></script>
+  <script src="./js/account-features.js?v=48"></script>
   <script src="./js/settings-i18n.js?v=44"></script>
 </body>
 </html>

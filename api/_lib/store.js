@@ -107,8 +107,12 @@ function getSessionSecret() {
   if (process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 16) {
     return process.env.SESSION_SECRET;
   }
-  const fallbackSeed = process.env.BLOB_READ_WRITE_TOKEN || process.env.ADMIN_PASSWORD || 'splus-dev-fallback';
-  return crypto.createHash('sha256').update(`splus-session-v2:${fallbackSeed}`).digest('hex');
+  const fallbackSeed = process.env.BLOB_READ_WRITE_TOKEN || process.env.ADMIN_PASSWORD || '';
+  const isProd = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  if (isProd && !fallbackSeed) {
+    throw new Error('SESSION_SECRET ausente em ambiente de produção.');
+  }
+  return crypto.createHash('sha256').update(`splus-session-v2:${fallbackSeed || 'splus-dev-fallback'}`).digest('hex');
 }
 
 class StorageUnavailableError extends Error {
@@ -134,6 +138,21 @@ function logStorageError(stage, err) {
 
 const _blobCache = new Map(); // pathname -> { data, exp }
 const BLOB_CACHE_TTL_MS = 45 * 1000;
+const MAX_CACHE_ENTRIES = 2000;
+
+function setBlobCache(pathname, data, ttlMs = BLOB_CACHE_TTL_MS) {
+  if (_blobCache.size >= MAX_CACHE_ENTRIES) {
+    const now = Date.now();
+    for (const [k, v] of _blobCache.entries()) {
+      if (!v || v.exp <= now) _blobCache.delete(k);
+    }
+    if (_blobCache.size >= MAX_CACHE_ENTRIES) {
+      const oldestKey = _blobCache.keys().next().value;
+      if (oldestKey) _blobCache.delete(oldestKey);
+    }
+  }
+  _blobCache.set(pathname, { data, exp: Date.now() + ttlMs });
+}
 
 function invalidateBlobCache(pathname) {
   if (pathname) _blobCache.delete(pathname);
@@ -171,11 +190,11 @@ async function readJsonBlob(pathname, useCache = true) {
     try {
       const raw = await redisCmd(['GET', pathname]);
       if (raw === null || raw === undefined) {
-        _blobCache.set(pathname, { data: null, exp: Date.now() + 15000 });
+        setBlobCache(pathname, null, 15000);
         return null;
       }
       const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      _blobCache.set(pathname, { data: parsed, exp: Date.now() + BLOB_CACHE_TTL_MS });
+      setBlobCache(pathname, parsed, BLOB_CACHE_TTL_MS);
       return JSON.parse(JSON.stringify(parsed));
     } catch (err) {
       logStorageError(`redis:readJson:${pathname}`, err);
@@ -197,12 +216,12 @@ async function readJsonBlob(pathname, useCache = true) {
     try {
       const res = await fetchBlobUrl(directUrl, token);
       if (res.status === 404) {
-        _blobCache.set(pathname, { data: null, exp: Date.now() + 15000 });
+        setBlobCache(pathname, null, 15000);
         return null;
       }
       if (res.ok) {
         const parsed = await res.json();
-        _blobCache.set(pathname, { data: parsed, exp: Date.now() + BLOB_CACHE_TTL_MS });
+        setBlobCache(pathname, parsed, BLOB_CACHE_TTL_MS);
         return JSON.parse(JSON.stringify(parsed));
       }
       logStorageError(`readJsonBlob:direct_http_${res.status}:${pathname}`, new Error(`HTTP ${res.status}`));
@@ -216,7 +235,7 @@ async function readJsonBlob(pathname, useCache = true) {
     const { blobs } = await list({ prefix: pathname, limit: 10, token });
     const exact = blobs.find((b) => b.pathname === pathname);
     if (!exact) {
-      _blobCache.set(pathname, { data: null, exp: Date.now() + 15000 });
+      setBlobCache(pathname, null, 15000);
       return null;
     }
     if (/\.private\.blob\.vercel-storage\.com/i.test(exact.url)) {
@@ -229,7 +248,7 @@ async function readJsonBlob(pathname, useCache = true) {
       throw err;
     }
     const parsed = await res.json();
-    _blobCache.set(pathname, { data: parsed, exp: Date.now() + BLOB_CACHE_TTL_MS });
+    setBlobCache(pathname, parsed, BLOB_CACHE_TTL_MS);
     return JSON.parse(JSON.stringify(parsed));
   } catch (err) {
     logStorageError(`readJsonBlob:${pathname}`, err);
@@ -243,7 +262,7 @@ async function writeJsonBlob(pathname, obj) {
   if (getRedisConfig()) {
     try {
       await redisCmd(['SET', pathname, payload]);
-      _blobCache.set(pathname, { data: obj, exp: Date.now() + BLOB_CACHE_TTL_MS });
+      setBlobCache(pathname, obj, BLOB_CACHE_TTL_MS);
       return { pathname, url: `redis://${pathname}` };
     } catch (err) {
       logStorageError(`redis:writeJson:${pathname}`, err);
@@ -262,7 +281,7 @@ async function writeJsonBlob(pathname, obj) {
   };
   try {
     const res = await put(pathname, payload, opts);
-    _blobCache.set(pathname, { data: obj, exp: Date.now() + BLOB_CACHE_TTL_MS });
+    setBlobCache(pathname, obj, BLOB_CACHE_TTL_MS);
     return res;
   } catch (err) {
     const msg = String(err?.message || '').toLowerCase();
@@ -271,7 +290,7 @@ async function writeJsonBlob(pathname, obj) {
       try {
         const res = await put(pathname, payload, { ...opts, access: altAccess });
         _blobAccessMode = altAccess;
-        _blobCache.set(pathname, { data: obj, exp: Date.now() + BLOB_CACHE_TTL_MS });
+        setBlobCache(pathname, obj, BLOB_CACHE_TTL_MS);
         return res;
       } catch (err2) {
         logStorageError(`writeJsonBlob:${pathname}`, err2);
@@ -311,10 +330,20 @@ async function deleteBlobByPathname(pathname) {
 async function listJsonBlobs(prefix) {
   if (getRedisConfig()) {
     try {
-      const keys = await redisCmd(['KEYS', `${prefix}*`]);
-      return (Array.isArray(keys) ? keys : []).map((k) => ({
-        pathname: String(k),
-        url: `redis://${String(k)}`
+      const seen = new Set();
+      let cursor = '0';
+      let safety = 0;
+      do {
+        const res = await redisCmd(['SCAN', cursor, 'MATCH', `${prefix}*`, 'COUNT', '200']);
+        if (!Array.isArray(res) || res.length < 2) break;
+        cursor = String(res[0] || '0');
+        const batch = Array.isArray(res[1]) ? res[1] : [];
+        for (const k of batch) seen.add(String(k));
+        safety++;
+      } while (cursor !== '0' && safety < 200);
+      return Array.from(seen).map((k) => ({
+        pathname: k,
+        url: `redis://${k}`
       }));
     } catch (err) {
       logStorageError(`redis:list:${prefix}`, err);
@@ -344,18 +373,29 @@ async function fetchJsonFromBlobUrl(url) {
 
 // ---------- Security: CORS, CSRF, Cookies, Sanitization ----------
 function getClientIp(req) {
+  const vff = req.headers['x-vercel-forwarded-for'];
+  if (typeof vff === 'string' && vff.length > 0) return vff.split(',')[0].trim();
+  const realIp = req.headers['x-real-ip'];
+  if (typeof realIp === 'string' && realIp.length > 0) return realIp.trim();
   const xf = req.headers['x-forwarded-for'];
   if (typeof xf === 'string' && xf.length > 0) return xf.split(',')[0].trim();
-  return req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown';
+  return req.socket?.remoteAddress || 'unknown';
 }
 
 function getAllowedOrigin(req) {
   const origin = req.headers.origin;
   if (!origin) return null;
   const host = req.headers.host || '';
+  const isProd = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  const extraAllowed = String(process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   try {
     const u = new URL(origin);
-    if (u.host === host || u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname.endsWith('.vercel.app')) {
+    if (u.host === host) return origin;
+    if (extraAllowed.includes(origin) || extraAllowed.includes(u.host)) return origin;
+    if (!isProd && (u.hostname === 'localhost' || u.hostname === '127.0.0.1')) {
       return origin;
     }
   } catch {
@@ -368,6 +408,7 @@ function applySecurityHeaders(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
   res.setHeader('Cache-Control', 'no-store');
   const allowedOrigin = getAllowedOrigin(req);
   if (allowedOrigin) {
@@ -382,19 +423,22 @@ function applySecurityHeaders(req, res) {
 function verifyCsrf(req) {
   const method = (req.method || 'GET').toUpperCase();
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return true;
-  // Requer cabeçalho customizado X-Requested-With ou Origin do mesmo host
-  const xrw = req.headers['x-requested-with'];
-  if (xrw === 'SatisfactoryPlus') return true;
   const origin = req.headers.origin;
   const host = req.headers.host;
-  if (origin && host) {
+  // Se o cabeçalho Origin existir, ele DEVE coincidir estritamente com o host (bloqueia CSRF cross-origin primeiro)
+  if (origin) {
+    if (!host) return false;
     try {
       const u = new URL(origin);
-      if (u.host === host) return true;
+      if (u.host !== host) return false;
     } catch {
       return false;
     }
   }
+  // Exige cabeçalho customizado X-Requested-With ou Origin validado do mesmo host
+  const xrw = req.headers['x-requested-with'];
+  if (xrw === 'SatisfactoryPlus') return true;
+  if (origin && host) return true;
   return false;
 }
 
@@ -406,7 +450,11 @@ function parseCookies(req) {
     if (idx > 0) {
       const k = part.slice(0, idx).trim();
       const v = part.slice(idx + 1).trim();
-      map[k] = decodeURIComponent(v);
+      try {
+        map[k] = decodeURIComponent(v);
+      } catch {
+        map[k] = v;
+      }
     }
   });
   return map;
@@ -446,7 +494,23 @@ function sendJson(res, status, data) {
 }
 
 async function readRequestBody(req, maxBytes = 4 * 1024 * 1024) {
-  if (req.body && typeof req.body === 'object') return req.body;
+  if (req.body !== undefined) {
+    if (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) {
+      const approxLen = Buffer.byteLength(JSON.stringify(req.body), 'utf8');
+      if (approxLen > maxBytes) throw new Error('PAYLOAD_TOO_LARGE');
+      return req.body;
+    }
+    if (typeof req.body === 'string') {
+      if (Buffer.byteLength(req.body, 'utf8') > maxBytes) throw new Error('PAYLOAD_TOO_LARGE');
+      try {
+        const parsed = req.body ? JSON.parse(req.body) : {};
+        return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+      } catch {
+        throw new Error('INVALID_JSON');
+      }
+    }
+    return {};
+  }
   return new Promise((resolve, reject) => {
     const chunks = [];
     let total = 0;
@@ -462,7 +526,12 @@ async function readRequestBody(req, maxBytes = 4 * 1024 * 1024) {
     req.on('end', () => {
       try {
         const raw = Buffer.concat(chunks).toString('utf8');
-        resolve(raw ? JSON.parse(raw) : {});
+        const parsed = raw ? JSON.parse(raw) : {};
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          resolve({});
+          return;
+        }
+        resolve(parsed);
       } catch {
         reject(new Error('INVALID_JSON'));
       }
@@ -501,7 +570,21 @@ function getReservedAdminUsernameLower() {
   return normalizeUsername(process.env.ADMIN_USERNAME || 'Sungzeira_');
 }
 
-const EXTRA_ADMIN_USERNAMES = new Set(['darkblood1331']);
+const EXTRA_ADMIN_USERNAMES = new Set(
+  [
+    'darkblood1331',
+    ...String(process.env.EXTRA_ADMIN_USERNAMES || '')
+      .split(',')
+      .map((s) => normalizeUsername(s))
+      .filter(Boolean)
+  ]
+);
+
+function isReservedAdminUsernameLower(username) {
+  const lower = normalizeUsername(username);
+  if (!lower) return false;
+  return lower === getReservedAdminUsernameLower() || EXTRA_ADMIN_USERNAMES.has(lower);
+}
 
 function isAdminUser(user) {
   if (!user) return false;
@@ -583,10 +666,10 @@ async function ensureAdminSeeded() {
   }
 }
 
-async function getUserByUsername(username) {
+async function getUserByUsername(username, useCache = true) {
   const lower = normalizeUsername(username);
-  if (!lower) return null;
-  return await readJsonBlob(`db/users/${lower}.json`);
+  if (!lower || !/^[a-z0-9_.-]{3,20}$/.test(lower)) return null;
+  return await readJsonBlob(`db/users/${lower}.json`, useCache);
 }
 
 // ---------- Sessions (Stateless HMAC-SHA256 Signed Cookie, 90-day sliding window) ----------
@@ -656,7 +739,7 @@ async function getAuthenticatedUser(req, res, renew = true, options = {}) {
     // mas se o Blob estiver indisponível, mantém usuário logado sem devolver 401/500!
     let user = null;
     try {
-      user = await getUserByUsername(payload.ul);
+      user = await getUserByUsername(payload.ul, options.useCache !== false);
     } catch (err) {
       if (options.allowStatelessFallback) {
         return {
@@ -676,6 +759,10 @@ async function getAuthenticatedUser(req, res, renew = true, options = {}) {
     }
 
     if (!user) return null;
+    if (payload.uid && user.id && payload.uid !== user.id) {
+      if (res) clearSessionCookie(res);
+      return null;
+    }
     const currentSv = Number(user.sessionVersion) || 1;
     if ((Number(payload.sv) || 1) !== currentSv) {
       if (res) clearSessionCookie(res);
@@ -696,14 +783,20 @@ async function getAuthenticatedUser(req, res, renew = true, options = {}) {
     return null;
   }
 
-  const user = await getUserByUsername(session.usernameLower);
+  const user = await getUserByUsername(session.usernameLower, options.useCache !== false);
   if (!user) return null;
+  if (session.userId && user.id && session.userId !== user.id) {
+    await deleteBlobByPathname(`db/sessions/${tokenHash}.json`).catch(() => {});
+    if (res) clearSessionCookie(res);
+    return null;
+  }
   if (isAdminUser(user)) user.role = 'admin';
 
-  // Migra imediatamente para cookie assinado stateless
+  // Migra imediatamente para cookie assinado stateless e remove blob legado
   if (res) {
     const v2Token = await createSession(user);
     setSessionCookie(res, v2Token);
+    await deleteBlobByPathname(`db/sessions/${tokenHash}.json`).catch(() => {});
   }
   return { user, session, tokenHash };
 }
@@ -718,10 +811,46 @@ async function invalidateSession(req, res) {
   if (res) clearSessionCookie(res);
 }
 
-// ---------- Rate Limiting (In-memory por instância — zero operações no Blob) ----------
+// ---------- Rate Limiting (Redis distribuído quando disponível + fallback in-memory por instância) ----------
 const _rateLimitMap = new Map(); // bucketKey -> number[] (timestamps)
 
+function pruneRateLimitMap(now) {
+  if (_rateLimitMap.size < MAX_CACHE_ENTRIES) return;
+  for (const [k, v] of _rateLimitMap.entries()) {
+    if (!Array.isArray(v) || v.length === 0 || now - v[v.length - 1] > 60 * 60 * 1000) {
+      _rateLimitMap.delete(k);
+    }
+  }
+  if (_rateLimitMap.size >= MAX_CACHE_ENTRIES) {
+    const firstKey = _rateLimitMap.keys().next().value;
+    if (firstKey) _rateLimitMap.delete(firstKey);
+  }
+}
+
 async function checkRateLimit(bucketKey, maxAttempts, windowMs) {
+  if (getRedisConfig()) {
+    try {
+      const rKey = `rl:${bucketKey}`;
+      const count = Number(await redisCmd(['GET', rKey]) || 0);
+      if (count >= maxAttempts) {
+        const pttl = Number(await redisCmd(['PTTL', rKey]) || windowMs);
+        return {
+          blocked: true,
+          remaining: 0,
+          retryAfterMs: pttl > 0 ? pttl : windowMs,
+          valid: []
+        };
+      }
+      return {
+        blocked: false,
+        remaining: Math.max(0, maxAttempts - count),
+        retryAfterMs: 0,
+        valid: []
+      };
+    } catch {
+      // fallback in-memory se Redis oscilar
+    }
+  }
   const now = Date.now();
   const arr = (_rateLimitMap.get(bucketKey) || []).filter((ts) => now - ts < windowMs);
   if (arr.length > 0) _rateLimitMap.set(bucketKey, arr);
@@ -736,7 +865,20 @@ async function checkRateLimit(bucketKey, maxAttempts, windowMs) {
 }
 
 async function recordRateLimitHit(bucketKey, windowMs) {
+  if (getRedisConfig()) {
+    try {
+      const rKey = `rl:${bucketKey}`;
+      const count = Number(await redisCmd(['INCR', rKey]) || 1);
+      if (count === 1) {
+        await redisCmd(['PEXPIRE', rKey, String(windowMs)]);
+      }
+      return;
+    } catch {
+      // fallback in-memory
+    }
+  }
   const now = Date.now();
+  pruneRateLimitMap(now);
   const arr = (_rateLimitMap.get(bucketKey) || []).filter((ts) => now - ts < windowMs);
   arr.push(now);
   _rateLimitMap.set(bucketKey, arr);
@@ -744,6 +886,9 @@ async function recordRateLimitHit(bucketKey, windowMs) {
 
 async function clearRateLimit(bucketKey) {
   _rateLimitMap.delete(bucketKey);
+  if (getRedisConfig()) {
+    await redisCmd(['DEL', `rl:${bucketKey}`]).catch(() => {});
+  }
 }
 
 // ---------- Magic Bytes Image Validation ----------
@@ -836,6 +981,7 @@ module.exports = {
   validateUsername,
   validatePassword,
   getReservedAdminUsernameLower,
+  isReservedAdminUsernameLower,
   sanitizeUser,
   ensureAdminSeeded,
   getUserByUsername,

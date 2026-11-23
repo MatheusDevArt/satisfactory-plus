@@ -164,7 +164,7 @@ const TUTORIAL_TOPICS = [
             <div class="ti-card accent">
               <span class="ti-step"><i>1</i> Expandida (padrão)</span>
               <div class="ti-entity">
-                <img src="./assets/logo-splus.jpg" style="border-radius:7px" />
+                <img src="./assets/logo-splus.jpg" alt="Satisfactory+" style="border-radius:7px" />
                 <div><b>Satisfactory+ · v2.5</b><small>Clique na logo para voltar à Home</small></div>
               </div>
               <div class="ti-pill-row">

@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-23-v26-seguranca-estabilidade-pan-mouse",
+    "date": "23/11/2026",
+    "title": "v2.6 — Blindagem de Segurança, Estabilidade da Nuvem e Pan com Botão do Meio",
+    "items": [
+      { "tag": "Novo", "text": "Agora você também pode mover a câmera do canvas arrastando com o botão do meio do mouse (clique do scroll) em Produção, Energia e Oficina, além do Espaço + Arrastar." },
+      { "tag": "Melhoria", "text": "Blindagem completa de segurança em contas, sessões, projetos compartilhados, anexos e cabeçalhos HTTP, além de novo motor matemático seguro na Calculadora." },
+      { "tag": "Melhoria", "text": "Mais estabilidade e velocidade nas operações de nuvem (Projetos e Reports), com proteção contra oscilações de rede e timeout automático." },
+      { "tag": "Correção", "text": "Corrigidas as imagens do Carrinho de Fábrica™ e Carrinho Dourado de Fábrica™ nas abas Receitas e Biblioteca, além de ajustes finos de acessibilidade e padronização visual." }
+    ]
+  },
+  {
     "id": "2026-11-23-v25-auditoria-completa-energia-barra-lateral-configuracoes",
     "date": "23/11/2026",
     "title": "v2.5 — Nova Barra de Navegação Principal, Configurações (i18n + Recuperação), Áreas de Etapa Dinâmicas e Auditoria Completa de Energia",

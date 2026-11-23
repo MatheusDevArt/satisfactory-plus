@@ -3267,8 +3267,8 @@
       "stackSize": 1,
       "category": "Equipamentos",
       "color": "#ffffff",
-      "wikiImage": "https://satisfactory.wiki.gg/images/c/c8/Factory_Cart%E2%84%A2.png",
-      "wikiImageFallback": "https://static.wikia.nocookie.net/satisfactory_gamepedia_en/images/c/c8/Factory_Cart%E2%84%A2.png"
+      "wikiImage": "https://satisfactory.wiki.gg/images/Factory_Cart.png",
+      "wikiImageFallback": "https://satisfactory.wiki.gg/images/c/c8/Factory_Cart.png"
     },
     "Desc_GolfCartGold_C": {
       "id": "Desc_GolfCartGold_C",
@@ -3286,8 +3286,8 @@
       "stackSize": 1,
       "category": "Equipamentos",
       "color": "#ffffff",
-      "wikiImage": "https://satisfactory.wiki.gg/images/a/ab/Golden_Factory_Cart%E2%84%A2.png",
-      "wikiImageFallback": "https://static.wikia.nocookie.net/satisfactory_gamepedia_en/images/a/ab/Golden_Factory_Cart%E2%84%A2.png"
+      "wikiImage": "https://satisfactory.wiki.gg/images/Golden_Factory_Cart.png",
+      "wikiImageFallback": "https://satisfactory.wiki.gg/images/a/ab/Golden_Factory_Cart.png"
     },
     "Desc_Chainsaw_C": {
       "id": "Desc_Chainsaw_C",

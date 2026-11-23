@@ -352,10 +352,22 @@ function toggleTheme() {
  * ========================================================================== */
 
 function switchMode(mode) {
+  if ((mode === 'ceo' || mode === 'reports') && !(typeof AccountState === 'object' && AccountState.user && AccountState.user.role === 'admin')) {
+    mode = 'production';
+  }
   AppState.mode = mode;
-  document.querySelectorAll('.real-tab').forEach(btn => btn.classList.remove('active'));
+  if (typeof trackAnalyticsModeSwitch === 'function') {
+    trackAnalyticsModeSwitch(mode);
+  }
+  document.querySelectorAll('.real-tab').forEach(btn => {
+    btn.classList.remove('active');
+    btn.setAttribute('aria-selected', 'false');
+  });
   const activeBtn = document.getElementById(`tab-${mode}`);
-  if (activeBtn) activeBtn.classList.add('active');
+  if (activeBtn) {
+    activeBtn.classList.add('active');
+    activeBtn.setAttribute('aria-selected', 'true');
+  }
 
   const actionSec = document.getElementById('sidebar-action-section');
   const orientPillWrap = document.getElementById('orient-pill-wrap');
@@ -367,6 +379,7 @@ function switchMode(mode) {
   const calcView = document.getElementById('calculator-workspace-view');
   const projectsView = document.getElementById('projects-workspace-view');
   const reportsView = document.getElementById('reports-workspace-view');
+  const ceoView = document.getElementById('ceo-workspace-view');
   const spacesWorld = document.getElementById('spaces-world');
 
   const isMap = mode === 'map';
@@ -375,7 +388,8 @@ function switchMode(mode) {
   const isCalc = mode === 'calculator';
   const isProjects = mode === 'projects';
   const isReports = mode === 'reports';
-  const isWorkspaceOverlay = isMap || isLibrary || isRecipes || isCalc || isProjects || isReports;
+  const isCeo = mode === 'ceo';
+  const isWorkspaceOverlay = isMap || isLibrary || isRecipes || isCalc || isProjects || isReports || isCeo;
   const isFree = mode === 'free';
   const freeToolbar = document.getElementById('free-logistics-toolbar');
   if (actionSec) actionSec.classList.toggle('hidden', isWorkspaceOverlay);
@@ -389,6 +403,7 @@ function switchMode(mode) {
   if (calcView) calcView.classList.toggle('hidden', !isCalc);
   if (projectsView) projectsView.classList.toggle('hidden', !isProjects);
   if (reportsView) reportsView.classList.toggle('hidden', !isReports);
+  if (ceoView) ceoView.classList.toggle('hidden', !isCeo);
   if (spacesWorld) spacesWorld.classList.toggle('hidden', isWorkspaceOverlay);
 
   closeCanvasMenus();
@@ -676,11 +691,23 @@ function initInfiniteCanvasEvents() {
   });
 
   viewport.addEventListener('mousedown', (e) => {
-    if (AppState.mode === 'map' || AppState.mode === 'library' || AppState.mode === 'recipes' || AppState.mode === 'calculator' || AppState.mode === 'projects' || AppState.mode === 'reports') return;
+    if (AppState.mode === 'map' || AppState.mode === 'library' || AppState.mode === 'recipes' || AppState.mode === 'calculator' || AppState.mode === 'projects' || AppState.mode === 'reports' || AppState.mode === 'ceo') return;
 
     // Fecha menus se clicar fora deles
     if (!e.target.closest('#canvas-context-menu, #wire-drop-menu')) {
       closeCanvasMenus();
+    }
+
+    // Botão do meio do mouse (scroll click): Pan imediato no canvas (padrão CAD/jogos)
+    if (e.button === 1) {
+      if (e.target.closest('button, input, select, .hud-btn, .modal-backdrop')) return;
+      e.preventDefault();
+      AppState.canvas.isPanning = true;
+      AppState.canvas.movedDuringDrag = false;
+      AppState.canvas.startX = e.clientX - AppState.canvas.x;
+      AppState.canvas.startY = e.clientY - AppState.canvas.y;
+      viewport.classList.add('panning');
+      return;
     }
 
     if (e.button !== 0) return;
@@ -1055,7 +1082,7 @@ function initInfiniteCanvasEvents() {
   });
 
   viewport.addEventListener('wheel', (e) => {
-    if (AppState.mode === 'map' || AppState.mode === 'library' || AppState.mode === 'recipes' || AppState.mode === 'calculator' || AppState.mode === 'projects' || AppState.mode === 'reports') return;
+    if (AppState.mode === 'map' || AppState.mode === 'library' || AppState.mode === 'recipes' || AppState.mode === 'calculator' || AppState.mode === 'projects' || AppState.mode === 'reports' || AppState.mode === 'ceo') return;
     e.preventDefault();
     const rect = viewport.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
@@ -1198,6 +1225,8 @@ function renderAll(autoFit = false) {
     renderProjectsMode(sidebarContent, emptyOverlay);
   } else if (AppState.mode === 'reports' && typeof renderAdminReportsMode === 'function') {
     renderAdminReportsMode(sidebarContent, emptyOverlay);
+  } else if (AppState.mode === 'ceo' && typeof renderCeoMode === 'function') {
+    renderCeoMode(sidebarContent, emptyOverlay);
   }
 
   updateTopRightFloatingActions();
@@ -1565,7 +1594,7 @@ function updateTopRightFloatingActions() {
     }
   };
 
-  if (AppState.mode === 'map' || AppState.mode === 'library' || AppState.mode === 'recipes' || AppState.mode === 'calculator' || AppState.mode === 'projects' || AppState.mode === 'reports') {
+  if (AppState.mode === 'map' || AppState.mode === 'library' || AppState.mode === 'recipes' || AppState.mode === 'calculator' || AppState.mode === 'projects' || AppState.mode === 'reports' || AppState.mode === 'ceo') {
     container.classList.add('hidden');
     container.innerHTML = '';
     setFooterHtml('');
@@ -10331,12 +10360,84 @@ function appendCalcKey(k) {
   if (inp) inp.value = AppState.calculator.expr;
 }
 
+function safeEvaluateArithmeticExpr(expr) {
+  const src = String(expr || '').replace(/\s+/g, '');
+  if (!src || src.length > 200) throw new Error('EMPTY_OR_TOO_LONG');
+  let pos = 0;
+
+  function peek() { return src[pos] || ''; }
+  function consume() { return src[pos++] || ''; }
+
+  function parseExpression() {
+    let left = parseTerm();
+    while (peek() === '+' || peek() === '-') {
+      const op = consume();
+      const right = parseTerm();
+      left = op === '+' ? left + right : left - right;
+    }
+    return left;
+  }
+
+  function parseTerm() {
+    let left = parseUnary();
+    while (peek() === '*' || peek() === '/') {
+      const op = consume();
+      const right = parseUnary();
+      if (op === '/') {
+        if (right === 0) throw new Error('DIV_ZERO');
+        left = left / right;
+      } else {
+        left = left * right;
+      }
+    }
+    return left;
+  }
+
+  function parseUnary() {
+    if (peek() === '+') { consume(); return parseUnary(); }
+    if (peek() === '-') { consume(); return -parseUnary(); }
+    return parsePrimary();
+  }
+
+  function parsePrimary() {
+    let val;
+    if (peek() === '(') {
+      consume();
+      val = parseExpression();
+      if (consume() !== ')') throw new Error('UNCLOSED_PAREN');
+    } else {
+      const start = pos;
+      let dotCount = 0;
+      while ((peek() >= '0' && peek() <= '9') || peek() === '.') {
+        if (peek() === '.') {
+          dotCount++;
+          if (dotCount > 1) throw new Error('BAD_NUM');
+        }
+        consume();
+      }
+      if (pos === start || (pos === start + 1 && src[start] === '.')) {
+        throw new Error('UNEXPECTED_TOKEN');
+      }
+      val = Number(src.slice(start, pos));
+      if (!Number.isFinite(val)) throw new Error('NON_FINITE');
+    }
+    while (peek() === '%') {
+      consume();
+      val = val / 100;
+    }
+    return val;
+  }
+
+  const result = parseExpression();
+  if (pos !== src.length) throw new Error('TRAILING_TOKENS');
+  return result;
+}
+
 function evalMathExpr() {
   const raw = String(AppState.calculator.expr || '').replace(/,/g, '.').replace(/[^0-9+\-*/().%\s]/g, '');
   if (!raw.trim()) return;
   try {
-    const normalized = raw.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');
-    const val = Function(`"use strict"; return (${normalized});`)();
+    const val = safeEvaluateArithmeticExpr(raw);
     if (typeof val === 'number' && Number.isFinite(val)) {
       const cleanVal = String(Math.round(val * 10000) / 10000);
       const formatted = fmt(val, 4);

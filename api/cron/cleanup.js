@@ -1,4 +1,12 @@
+const crypto = require('crypto');
 const { cleanupExpiredReports, applySecurityHeaders, sendJson } = require('../_lib/store');
+
+function isValidCronAuth(authHeader, cronSecret) {
+  const expected = Buffer.from(`Bearer ${cronSecret}`, 'utf8');
+  const actual = Buffer.from(String(authHeader || ''), 'utf8');
+  if (expected.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expected, actual);
+}
 
 module.exports = async function handler(req, res) {
   applySecurityHeaders(req, res);
@@ -9,7 +17,8 @@ module.exports = async function handler(req, res) {
   // Autorização da rotina agendada (Vercel Cron envia Authorization: Bearer <CRON_SECRET>)
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = req.headers.authorization || '';
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  const isProd = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  if ((isProd && !cronSecret) || (cronSecret && !isValidCronAuth(authHeader, cronSecret))) {
     return sendJson(res, 401, { error: 'Não autorizado.' });
   }
 

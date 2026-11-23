@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { del } = require('@vercel/blob');
 const {
   getToken,
   getBlobStoreId,
@@ -12,6 +13,7 @@ const {
   writeJsonBlob,
   deleteBlobByPathname,
   listJsonBlobs,
+  fetchJsonFromBlobUrl,
   clearSessionCookie,
   getClientIp,
   applySecurityHeaders,
@@ -24,6 +26,7 @@ const {
   validateUsername,
   validatePassword,
   getReservedAdminUsernameLower,
+  isReservedAdminUsernameLower,
   sanitizeUser,
   ensureAdminSeeded,
   getUserByUsername,
@@ -35,6 +38,17 @@ const {
   clearRateLimit,
   StorageUnavailableError
 } = require('../_lib/store');
+
+const DUMMY_PASSWORD_HASH = hashPassword('splus_dummy_timing_guard_password');
+
+function extractReqGeo(req) {
+  const rawCountry = String(req.headers['x-vercel-ip-country'] || '').trim().toUpperCase();
+  const rawRegion = String(req.headers['x-vercel-ip-country-region'] || '').trim().toUpperCase();
+  return {
+    country: /^[A-Z]{2}$/.test(rawCountry) ? rawCountry : '',
+    region: /^[A-Z0-9]{1,6}$/.test(rawRegion) ? rawRegion : ''
+  };
+}
 
 module.exports = async function handler(req, res) {
   applySecurityHeaders(req, res);
@@ -100,15 +114,17 @@ module.exports = async function handler(req, res) {
       }
 
       const lower = normalizeUsername(username);
-      if (lower === getReservedAdminUsernameLower()) {
+      if (isReservedAdminUsernameLower(lower)) {
         return sendJson(res, 409, { error: 'Este nome de usuário é reservado e não está disponível.' });
       }
 
-      const existing = await getUserByUsername(lower);
+      const existing = await getUserByUsername(lower, false);
       if (existing) {
         return sendJson(res, 409, { error: 'Este nome de usuário já está em uso.' });
       }
 
+      const regGeo = extractReqGeo(req);
+      const nowIso = new Date().toISOString();
       const userObj = {
         id: `usr_${crypto.randomBytes(8).toString('hex')}`,
         username,
@@ -117,8 +133,11 @@ module.exports = async function handler(req, res) {
         passwordHash: hashPassword(password),
         securityQuestion: (securityQuestion && normAnswer.length >= 2) ? securityQuestion : '',
         securityAnswerHash: (securityQuestion && normAnswer.length >= 2) ? hashPassword(normAnswer) : '',
-        profile: { gender: 'prefer_not_to_say', age: null, country: '' },
-        createdAt: new Date().toISOString()
+        profile: { gender: 'prefer_not_to_say', age: null, country: regGeo.country || '' },
+        lastCountry: regGeo.country || '',
+        lastRegion: regGeo.region || '',
+        lastSeenAt: nowIso,
+        createdAt: nowIso
       };
 
       await writeJsonBlob(`db/users/${lower}.json`, userObj);
@@ -151,7 +170,7 @@ module.exports = async function handler(req, res) {
       let user = null;
       let storageErr = null;
       try {
-        user = await getUserByUsername(lower);
+        user = await getUserByUsername(lower, false);
       } catch (err) {
         if (err instanceof StorageUnavailableError || err?.name === 'StorageUnavailableError') {
           storageErr = err;
@@ -183,7 +202,9 @@ module.exports = async function handler(req, res) {
 
       if (storageErr) throw storageErr;
 
-      const valid = user ? verifyPassword(password, user.passwordHash) : false;
+      const valid = user
+        ? verifyPassword(password, user.passwordHash)
+        : (verifyPassword(password, DUMMY_PASSWORD_HASH) && false);
 
       if (!user || !valid) {
         await recordRateLimitHit(failKey, LOGIN_FAIL_WINDOW_MS);
@@ -191,6 +212,14 @@ module.exports = async function handler(req, res) {
       }
 
       await clearRateLimit(failKey);
+      // Atualiza último acesso e geolocalização silenciosamente para telemetria interna
+      try {
+        const loginGeo = extractReqGeo(req);
+        user.lastSeenAt = new Date().toISOString();
+        if (loginGeo.country) user.lastCountry = loginGeo.country;
+        if (loginGeo.region) user.lastRegion = loginGeo.region;
+        await writeJsonBlob(`db/users/${user.usernameLower}.json`, user);
+      } catch {}
       const token = await createSession(user);
       setSessionCookie(res, token);
       return sendJson(res, 200, { ok: true, user: sanitizeUser(user) });
@@ -204,7 +233,7 @@ module.exports = async function handler(req, res) {
 
     // POST /api/auth?action=change-password
     if (req.method === 'POST' && action === 'change-password') {
-      const auth = await getAuthenticatedUser(req, res, false);
+      const auth = await getAuthenticatedUser(req, res, false, { useCache: false });
       if (!auth) return sendJson(res, 401, { error: 'Sua sessão expirou. Faça login novamente.' });
 
       const body = await readRequestBody(req, 32 * 1024);
@@ -212,9 +241,17 @@ module.exports = async function handler(req, res) {
       const newPassword = String(body.newPassword || '');
       const confirmPassword = String(body.confirmPassword || '');
 
+      const pwdRlKey = `pwd_check:${auth.user.id}`;
+      const pwdRl = await checkRateLimit(pwdRlKey, 10, 10 * 60 * 1000);
+      if (pwdRl.blocked) {
+        const mins = Math.ceil(pwdRl.retryAfterMs / 60000);
+        return sendJson(res, 429, { error: `Muitas tentativas inválidas. Aguarde ${mins} minuto(s).` });
+      }
       if (!verifyPassword(currentPassword, auth.user.passwordHash)) {
+        await recordRateLimitHit(pwdRlKey, 10 * 60 * 1000);
         return sendJson(res, 401, { error: 'Senha atual incorreta.' });
       }
+      await clearRateLimit(pwdRlKey);
       const pErr = validatePassword(newPassword);
       if (pErr) return sendJson(res, 400, { error: pErr });
       if (newPassword !== confirmPassword) {
@@ -232,7 +269,7 @@ module.exports = async function handler(req, res) {
 
     // POST /api/auth?action=preferences (Salvar tema e favoritos/recentes da Biblioteca na conta)
     if (req.method === 'POST' && action === 'preferences') {
-      const auth = await getAuthenticatedUser(req, res, false);
+      const auth = await getAuthenticatedUser(req, res, false, { useCache: false });
       if (!auth) return sendJson(res, 401, { error: 'Sua sessão expirou. Faça login novamente.' });
 
       const body = await readRequestBody(req, 32 * 1024);
@@ -301,15 +338,25 @@ module.exports = async function handler(req, res) {
         current.calcHistory = body.calcHistory
           .filter((x) => x && typeof x === 'object' && typeof x.summary === 'string')
           .slice(0, 20)
-          .map((x) => ({
-            id: String(x.id || '').slice(0, 40),
-            tool: String(x.tool || '').slice(0, 30),
-            label: String(x.label || '').slice(0, 80),
-            summary: String(x.summary || '').slice(0, 140),
-            state: (x.state && typeof x.state === 'object') ? x.state : {},
-            pinned: Boolean(x.pinned),
-            at: String(x.at || '').slice(0, 40)
-          }));
+          .map((x) => {
+            let safeState = {};
+            if (x.state && typeof x.state === 'object' && !Array.isArray(x.state)) {
+              try {
+                if (Buffer.byteLength(JSON.stringify(x.state), 'utf8') <= 4096) {
+                  safeState = x.state;
+                }
+              } catch {}
+            }
+            return {
+              id: String(x.id || '').slice(0, 40),
+              tool: String(x.tool || '').slice(0, 30),
+              label: String(x.label || '').slice(0, 80),
+              summary: String(x.summary || '').slice(0, 140),
+              state: safeState,
+              pinned: Boolean(x.pinned),
+              at: String(x.at || '').slice(0, 40)
+            };
+          });
       }
 
       auth.user.preferences = current;
@@ -319,7 +366,7 @@ module.exports = async function handler(req, res) {
 
     // POST /api/auth?action=set-security-question (Criar ou alterar pergunta e resposta secreta)
     if (req.method === 'POST' && action === 'set-security-question') {
-      const auth = await getAuthenticatedUser(req, res, false);
+      const auth = await getAuthenticatedUser(req, res, false, { useCache: false });
       if (!auth) return sendJson(res, 401, { error: 'Sua sessão expirou. Faça login novamente.' });
 
       const body = await readRequestBody(req, 32 * 1024);
@@ -327,9 +374,17 @@ module.exports = async function handler(req, res) {
       const securityQuestion = String(body.securityQuestion || '').trim().slice(0, 140);
       const normAnswer = normalizeSecurityAnswer(body.securityAnswer || '');
 
+      const pwdRlKey = `pwd_check:${auth.user.id}`;
+      const pwdRl = await checkRateLimit(pwdRlKey, 10, 10 * 60 * 1000);
+      if (pwdRl.blocked) {
+        const mins = Math.ceil(pwdRl.retryAfterMs / 60000);
+        return sendJson(res, 429, { error: `Muitas tentativas inválidas. Aguarde ${mins} minuto(s).` });
+      }
       if (!verifyPassword(currentPassword, auth.user.passwordHash)) {
+        await recordRateLimitHit(pwdRlKey, 10 * 60 * 1000);
         return sendJson(res, 401, { error: 'Senha atual incorreta.' });
       }
+      await clearRateLimit(pwdRlKey);
       if (!securityQuestion || securityQuestion.length < 5) {
         return sendJson(res, 400, { error: 'Escolha ou escreva uma pergunta de segurança válida.' });
       }
@@ -355,17 +410,21 @@ module.exports = async function handler(req, res) {
       const lower = normalizeUsername(username);
       const ip = getClientIp(req);
       const rlKey = `recovery_attempt:${ip}:${lower || 'empty'}`;
-      const rl = await checkRateLimit(rlKey, 5, 60 * 60 * 1000); // 5 tentativas por hora
-      if (rl.blocked) {
-        const mins = Math.ceil(rl.retryAfterMs / 60000);
-        return sendJson(res, 429, { error: `Limite de 5 tentativas por hora atingido. Aguarde ${mins} minuto(s).` });
+      const rlUserKey = `recovery_user:${lower || 'empty'}`;
+      const rl = await checkRateLimit(rlKey, 5, 60 * 60 * 1000); // 5 tentativas por hora por IP
+      const rlUser = lower ? await checkRateLimit(rlUserKey, 8, 60 * 60 * 1000) : { blocked: false, retryAfterMs: 0 };
+      if (rl.blocked || rlUser.blocked) {
+        const retryMs = Math.max(rl.retryAfterMs || 0, rlUser.retryAfterMs || 0);
+        const mins = Math.ceil(retryMs / 60000);
+        return sendJson(res, 429, { error: `Limite de tentativas por hora atingido. Aguarde ${mins} minuto(s).` });
       }
       if (!lower) {
         return sendJson(res, 400, { error: 'Informe o nome de usuário.' });
       }
-      const user = await getUserByUsername(lower);
+      const user = await getUserByUsername(lower, false);
       if (!user || !user.securityQuestion || !user.securityAnswerHash) {
         await recordRateLimitHit(rlKey, 60 * 60 * 1000);
+        if (lower) await recordRateLimitHit(rlUserKey, 60 * 60 * 1000);
         // Mensagem genérica que não confirma se o usuário existe sem pergunta ou não existe
         return sendJson(res, 404, { error: 'Não foi possível iniciar a recuperação para este usuário (usuário inexistente ou sem pergunta de segurança configurada).' });
       }
@@ -387,10 +446,13 @@ module.exports = async function handler(req, res) {
       const ip = getClientIp(req);
 
       const rlKey = `recovery_attempt:${ip}:${lower || 'empty'}`;
+      const rlUserKey = `recovery_user:${lower || 'empty'}`;
       const rl = await checkRateLimit(rlKey, 5, 60 * 60 * 1000); // 5 tentativas por hora
-      if (rl.blocked) {
-        const mins = Math.ceil(rl.retryAfterMs / 60000);
-        return sendJson(res, 429, { error: `Limite de 5 tentativas por hora atingido. Aguarde ${mins} minuto(s).` });
+      const rlUser = lower ? await checkRateLimit(rlUserKey, 8, 60 * 60 * 1000) : { blocked: false, retryAfterMs: 0 };
+      if (rl.blocked || rlUser.blocked) {
+        const retryMs = Math.max(rl.retryAfterMs || 0, rlUser.retryAfterMs || 0);
+        const mins = Math.ceil(retryMs / 60000);
+        return sendJson(res, 429, { error: `Limite de tentativas por hora atingido. Aguarde ${mins} minuto(s).` });
       }
 
       if (!lower || !normAnswer) {
@@ -402,17 +464,19 @@ module.exports = async function handler(req, res) {
         return sendJson(res, 400, { error: 'A confirmação da nova senha não confere.' });
       }
 
-      const user = await getUserByUsername(lower);
+      const user = await getUserByUsername(lower, false);
       const validAnswer = (user && user.securityAnswerHash)
         ? verifyPassword(normAnswer, user.securityAnswerHash)
-        : false;
+        : (verifyPassword(normAnswer, DUMMY_PASSWORD_HASH) && false);
 
       if (!user || !validAnswer) {
         await recordRateLimitHit(rlKey, 60 * 60 * 1000);
+        if (lower) await recordRateLimitHit(rlUserKey, 60 * 60 * 1000);
         return sendJson(res, 401, { error: 'Usuário ou resposta de segurança incorretos.' });
       }
 
       await clearRateLimit(rlKey);
+      if (lower) await clearRateLimit(rlUserKey);
       user.passwordHash = hashPassword(newPassword);
       user.passwordUpdatedAt = new Date().toISOString();
       user.sessionVersion = (Number(user.sessionVersion) || 1) + 1;
@@ -427,20 +491,28 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // POST /api/auth?action=delete-account (Exclusão permanente da conta, projetos e sessões)
+    // POST /api/auth?action=delete-account (Exclusão permanente da conta, projetos, reports e sessões)
     if (req.method === 'POST' && action === 'delete-account') {
-      const auth = await getAuthenticatedUser(req, res, false);
+      const auth = await getAuthenticatedUser(req, res, false, { useCache: false });
       if (!auth) return sendJson(res, 401, { error: 'Sua sessão expirou. Faça login novamente.' });
 
-      if (auth.user.usernameLower === getReservedAdminUsernameLower()) {
-        return sendJson(res, 403, { error: 'A conta de administrador principal não pode ser excluída por aqui.' });
+      if (isReservedAdminUsernameLower(auth.user.usernameLower)) {
+        return sendJson(res, 403, { error: 'Contas de administrador não podem ser excluídas por aqui.' });
       }
 
       const body = await readRequestBody(req, 16 * 1024);
       const password = String(body.password || '');
+      const delRlKey = `del_acct:${auth.user.id}`;
+      const delRl = await checkRateLimit(delRlKey, 10, 10 * 60 * 1000);
+      if (delRl.blocked) {
+        const mins = Math.ceil(delRl.retryAfterMs / 60000);
+        return sendJson(res, 429, { error: `Muitas tentativas inválidas. Aguarde ${mins} minuto(s).` });
+      }
       if (!verifyPassword(password, auth.user.passwordHash)) {
+        await recordRateLimitHit(delRlKey, 10 * 60 * 1000);
         return sendJson(res, 401, { error: 'Senha atual incorreta. Exclusão cancelada.' });
       }
+      await clearRateLimit(delRlKey);
 
       // 1) Remove todos os projetos salvos da conta
       try {
@@ -452,15 +524,27 @@ module.exports = async function handler(req, res) {
         }
       } catch {}
 
-      // 2) Remove registro da conta e revoga sessão ativa
+      // 2) Remove reports e imagens vinculadas ao usuário (LGPD)
+      try {
+        const repBlobs = await listJsonBlobs('db/reports/');
+        for (const b of repBlobs) {
+          if (!b || !b.pathname || !b.pathname.endsWith('.json')) continue;
+          const rep = await fetchJsonFromBlobUrl(b.url).catch(() => null);
+          if (rep && rep.userId === auth.user.id) {
+            for (const img of (rep.images || [])) {
+              if (img.blobUrl) await del(img.blobUrl, { token: getToken() }).catch(() => {});
+              else if (img.pathname) await deleteBlobByPathname(img.pathname).catch(() => {});
+            }
+            await deleteBlobByPathname(b.pathname).catch(() => {});
+          }
+        }
+      } catch {}
+
+      // 3) Remove registro da conta e revoga sessão ativa
       await deleteBlobByPathname(`db/users/${auth.user.usernameLower}.json`);
-      if (auth.token) {
-        await invalidateSession(auth.token).catch(() => {});
-      }
+      await invalidateSession(req, res).catch(() => {});
       if (typeof clearSessionCookie === 'function') {
         clearSessionCookie(res);
-      } else {
-        setSessionCookie(res, '', 0);
       }
 
       return sendJson(res, 200, {

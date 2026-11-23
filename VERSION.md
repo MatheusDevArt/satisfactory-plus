@@ -3,13 +3,19 @@
 > **Regra de versionamento**: A versão oficial exibida na barra lateral (`#app-version-label`) **só deve ser incrementada quando houver publicação/push oficial autorizado para o repositório**. Ao realizar cada push oficial, atualizar este arquivo com a nova versão, data e resumo das alterações.
 
 ## Versão Atual em Produção (Último Push Oficial)
-- **Versão**: `v2.5`
+- **Versão**: `v2.6`
 - **Data**: 2026-11-23
-- **Próxima versão alvo**: `v2.6` (somente quando autorizado novo push)
+- **Próxima versão alvo**: `v2.7` (somente quando autorizado novo push)
 
 ---
 
 ## Histórico de Versões Publicadas
+
+### `v2.6` — 2026-11-23
+- **Blindagem de Segurança Full-Stack**: autenticação e checagem de propriedade no proxy de anexos (`/api/media`), eliminação de XSS em ações de cards de Projetos, parser aritmético seguro sem `Function()`/`eval()` na Calculadora, cabeçalhos HTTP de segurança em `vercel.json` (HSTS, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`), proteção CSRF reforçada, rate-limit distribuído via Redis e atualização de `@vercel/blob` para `2.4.0` (0 vulnerabilidades no `npm audit`).
+- **Performance & Estabilidade**: substituição de `KEYS` por `SCAN` iterativo no adaptador Redis, validação estrita de sessões/cookies e script de checagem pré-deploy (`npm run check`).
+- **UX & Correções**: arraste do canvas com o **botão do meio do mouse (scroll click)** em Produção, Energia e Oficina, correção das imagens do *Carrinho de Fábrica™* e *Carrinho Dourado de Fábrica™* em Receitas/Biblioteca, padronização final de `#EA580C` e acessibilidade.
+- **Painel Executivo Privado (CEO)**: painel interno exclusivo da conta fundadora com métricas em tempo real, origem por país/estado (UF) e gestão de usuários.
 
 ### `v2.5` — 2026-11-23
 - **Nova Barra Lateral de Navegação (`#main-nav-rail`)**: abas verticais com ícones SVG limpos, logo/título/versão centralizados, modo recolhido e arte industrial ao pôr do sol no rodapé acima de Configurações.

@@ -102,16 +102,36 @@ function fmtBytes(bytes) {
 }
 
 async function apiFetch(url, options = {}) {
+  const { silent401 = false, timeoutMs = 20000, ...fetchOpts } = options;
   const headers = {
     'X-Requested-With': 'SatisfactoryPlus',
-    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-    ...(options.headers || {})
+    ...(fetchOpts.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(fetchOpts.headers || {})
   };
-  const res = await fetch(url, {
-    credentials: 'same-origin',
-    ...options,
-    headers
-  });
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  let res;
+  try {
+    res = await fetch(url, {
+      credentials: 'same-origin',
+      ...fetchOpts,
+      headers,
+      ...(controller ? { signal: controller.signal } : {})
+    });
+  } catch (err) {
+    if (timer) clearTimeout(timer);
+    const isTimeout = err && err.name === 'AbortError';
+    return {
+      ok: false,
+      status: 0,
+      data: {
+        error: isTimeout
+          ? 'O servidor demorou para responder. Tente novamente em instantes.'
+          : 'Sem conexão com o servidor. Verifique sua internet e tente novamente.'
+      }
+    };
+  }
+  if (timer) clearTimeout(timer);
   let data = {};
   try {
     data = await res.json();
@@ -121,11 +141,12 @@ async function apiFetch(url, options = {}) {
   if (res.status === 401 && AccountState.user) {
     // Sessão expirou no servidor sem perder o estado atual do usuário na tela
     AccountState.user = null;
-  try { localStorage.removeItem('splus_user_cache'); } catch {}
     try { localStorage.removeItem('splus_user_cache'); } catch {}
     updateAuthHeaderUI();
     updateRoleBasedTabs();
-    openAuthModal('login', 'Sua sessão expirou. Entre novamente para continuar — seu trabalho atual não foi perdido.');
+    if (!silent401) {
+      openAuthModal('login', 'Sua sessão expirou. Entre novamente para continuar — seu trabalho atual não foi perdido.');
+    }
   }
   return { ok: res.ok, status: res.status, data };
 }
@@ -176,6 +197,7 @@ async function saveAccountPreferences(partial) {
   try {
     const res = await apiFetch('/api/auth?action=preferences', {
       method: 'POST',
+      silent401: true,
       body: JSON.stringify(partial || {})
     });
     if (res.ok && res.data && res.data.preferences && AccountState.user) {
@@ -293,7 +315,6 @@ async function restoreSessionOnLoad(attempt = 0) {
       try { localStorage.setItem('splus_user_cache', JSON.stringify(res.data.user)); } catch {}
     } else if (res.ok && res.data.authenticated === false) {
       AccountState.user = null;
-  try { localStorage.removeItem('splus_user_cache'); } catch {}
       try { localStorage.removeItem('splus_user_cache'); } catch {}
     }
   } catch {
@@ -319,16 +340,18 @@ async function restoreSessionOnLoad(attempt = 0) {
 function updateRoleBasedTabs() {
   const projTab = document.getElementById('tab-projects');
   const repTab = document.getElementById('tab-reports');
+  const ceoTab = document.getElementById('tab-ceo');
   const isLogged = Boolean(AccountState.user);
-  const isAdmin = Boolean(AccountState.user && AccountState.user.role === 'admin');
+  const isCeo = Boolean(AccountState.user && AccountState.user.role === 'admin');
 
   if (projTab) projTab.classList.toggle('hidden', !isLogged);
-  if (repTab) repTab.classList.toggle('hidden', !isAdmin);
+  if (repTab) repTab.classList.toggle('hidden', !isCeo);
+  if (ceoTab) ceoTab.classList.toggle('hidden', !isCeo);
 
   if (!isLogged && AppState.mode === 'projects') {
     switchMode('production');
   }
-  if (!isAdmin && AppState.mode === 'reports') {
+  if (!isCeo && (AppState.mode === 'reports' || AppState.mode === 'ceo')) {
     switchMode('production');
   }
 }
@@ -340,28 +363,31 @@ function updateAuthHeaderUI() {
   if (!AccountState.user) {
     slot.innerHTML = `
       <button id="btn-auth-login" class="btn-top-action" onclick="openAuthModal('login')" title="Entrar ou criar uma conta">
-        👤 Entrar
+        <svg class="ui-ico" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        <span>Entrar</span>
       </button>
     `;
     return;
   }
 
   const uName = escText(AccountState.user.username);
-  const adminBadge = AccountState.user.role === 'admin' ? '<span class="user-role-tag">ADMIN</span>' : '';
+  const ceoBadge = AccountState.user.role === 'admin' ? '<span class="user-role-tag ceo-role-tag">CEO</span>' : '';
   slot.innerHTML = `
     <div class="user-menu-wrap">
       <button type="button" class="btn-top-action btn-user-pill" onclick="toggleUserDropdown(event)">
-        <span>👤 ${uName}</span>
-        ${adminBadge}
+        <svg class="ui-ico" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        <span>${uName}</span>
+        ${ceoBadge}
         <span class="caret">▾</span>
       </button>
       ${AccountState.menuOpen ? `
         <div class="user-dropdown-menu">
-          <div class="user-dropdown-head">Conectado como <strong>${uName}</strong></div>
-          <button type="button" class="context-menu-item" onclick="if(typeof openSettingsModal==='function'){AccountState.menuOpen=false;updateAuthHeaderUI();openSettingsModal();}">⚙️ Configurações & Conta</button>
-          <button type="button" class="context-menu-item" onclick="openChangePasswordModal()">🔑 Alterar senha</button>
+          <div class="user-dropdown-head">Conectado como <strong>${uName}</strong> ${ceoBadge}</div>
+          ${AccountState.user.role === 'admin' ? `<button type="button" class="context-menu-item" onclick="AccountState.menuOpen=false;updateAuthHeaderUI();switchMode('ceo');">Painel CEO</button>` : ''}
+          <button type="button" class="context-menu-item" onclick="if(typeof openSettingsModal==='function'){AccountState.menuOpen=false;updateAuthHeaderUI();openSettingsModal();}">Configurações &amp; Conta</button>
+          <button type="button" class="context-menu-item" onclick="openChangePasswordModal()">Alterar senha</button>
           <div class="context-menu-divider"></div>
-          <button type="button" class="context-menu-item danger" onclick="performLogout()">🚪 Sair</button>
+          <button type="button" class="context-menu-item danger" onclick="performLogout()">Sair</button>
         </div>
       ` : ''}
     </div>
@@ -1937,13 +1963,19 @@ function handleSaveProjectClick(sourceMode, forceNew = false) {
   renderSaveProjectModalBody();
 }
 
+function getSavedProjectNameById(projectId) {
+  const found = (AccountState.projects.list || []).find((p) => p && p.id === projectId);
+  return found ? String(found.name || 'Projeto') : 'Projeto';
+}
+
 function openRenameProjectModal(projectId, currentName) {
+  const safeName = (typeof currentName === 'string' && currentName) ? currentName : getSavedProjectNameById(projectId);
   AccountState.projects.saveModal = {
     isOpen: true,
     mode: 'rename',
     sourceMode: 'production',
     renameProjectId: projectId,
-    name: currentName || '',
+    name: safeName,
     error: '',
     duplicatePrompt: false,
     loading: false
@@ -2164,7 +2196,8 @@ async function openSavedProjectInSpaces(projectId) {
 }
 
 async function deleteSavedProject(projectId, projectName) {
-  if (!(await openCustomConfirmModal(`Tem certeza que deseja remover o projeto "${projectName}"? Essa ação não pode ser desfeita.`, 'Remover'))) return;
+  const safeName = (typeof projectName === 'string' && projectName) ? projectName : getSavedProjectNameById(projectId);
+  if (!(await openCustomConfirmModal(`Tem certeza que deseja remover o projeto "${safeName}"? Essa ação não pode ser desfeita.`, 'Remover'))) return;
   const res = await apiFetch(`/api/projects?id=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
   if (!res.ok) {
     showAccountToast(res.data.error || 'Erro ao remover o projeto.', 'error');
@@ -2268,16 +2301,16 @@ function renderProjectsWorkspace() {
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                       Abrir
                     </button>
-                    <button type="button" class="proj-ico-btn" onclick="shareSavedProject('${escText(p.id)}', '${escText(p.name)}')" title="Compartilhar projeto entre contas" aria-label="Compartilhar projeto">
+                    <button type="button" class="proj-ico-btn" onclick="shareSavedProject('${escText(p.id)}')" title="Compartilhar projeto entre contas" aria-label="Compartilhar projeto">
                       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
                     </button>
-                    <button type="button" class="proj-ico-btn" onclick="exportSavedProjectCompactPng('${escText(p.id)}', '${escText(p.name)}')" title="Baixar imagem compactada (PNG) com resumo" aria-label="Baixar imagem do projeto">
+                    <button type="button" class="proj-ico-btn" onclick="exportSavedProjectCompactPng('${escText(p.id)}')" title="Baixar imagem compactada (PNG) com resumo" aria-label="Baixar imagem do projeto">
                       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     </button>
-                    <button type="button" class="proj-ico-btn" onclick="openRenameProjectModal('${escText(p.id)}', '${escText(p.name)}')" title="Renomear projeto" aria-label="Renomear projeto">
+                    <button type="button" class="proj-ico-btn" onclick="openRenameProjectModal('${escText(p.id)}')" title="Renomear projeto" aria-label="Renomear projeto">
                       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                     </button>
-                    <button type="button" class="proj-ico-btn is-danger" onclick="deleteSavedProject('${escText(p.id)}', '${escText(p.name)}')" title="Remover projeto" aria-label="Remover projeto">
+                    <button type="button" class="proj-ico-btn is-danger" onclick="deleteSavedProject('${escText(p.id)}')" title="Remover projeto" aria-label="Remover projeto">
                       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                     </button>
                   </div>
@@ -2334,6 +2367,7 @@ function renderProjectsWorkspace() {
  * ========================================================================== */
 
 async function shareSavedProject(projectId, projectName) {
+  const safeName = (typeof projectName === 'string' && projectName) ? projectName : getSavedProjectNameById(projectId);
   if (!AccountState.user) {
     showAccountToast('Entre na sua conta para compartilhar projetos.', 'error');
     return;
@@ -2355,7 +2389,7 @@ async function shareSavedProject(projectId, projectName) {
     bodyEl.innerHTML = `
       <div style="display:flex;flex-direction:column;gap:12px;">
         <p style="margin:0;font-size:13px;color:var(--text-secondary);line-height:1.5;">
-          Envie este código para outro jogador do <strong>Satisfactory+</strong> importar uma cópia de <strong>${escText(projectName)}</strong> na conta dele (em <em>Projetos → Importar código</em>):
+          Envie este código para outro jogador do <strong>Satisfactory+</strong> importar uma cópia de <strong>${escText(safeName)}</strong> na conta dele (em <em>Projetos → Importar código</em>):
         </p>
         <div style="display:flex;gap:8px;align-items:center;">
           <input id="shared-code-output" type="text" readonly class="sidebar-input" value="${escText(code)}" style="font-family:var(--font-mono);font-size:16px;font-weight:800;text-align:center;letter-spacing:0.06em;" />
@@ -2425,6 +2459,8 @@ async function submitImportSharedProject(e) {
  * - Painel lateral direito com resumo completo: máquinas por tipo, logística/conexões, energia, recursos e saídas.
  */
 async function exportSavedProjectCompactPng(projectId, projectName) {
+  const safeName = (typeof projectName === 'string' && projectName) ? projectName : getSavedProjectNameById(projectId);
+  projectName = safeName;
   showAccountToast('Gerando imagem compactada do projeto...', 'info');
   let proj = null;
   try {
@@ -2556,7 +2592,7 @@ async function exportSavedProjectCompactPng(projectId, projectName) {
     const x2 = b.x;
     const y2 = b.y + b.h / 2;
     const midX = x1 + (x2 - x1) / 2;
-    ctx.strokeStyle = e.isPipe ? '#3b82f6' : '#f97316';
+    ctx.strokeStyle = e.isPipe ? '#3b82f6' : '#EA580C';
     ctx.lineWidth = 2.2;
     ctx.beginPath();
     ctx.moveTo(x1, y1);
@@ -2695,4 +2731,451 @@ async function exportSavedProjectCompactPng(projectId, projectName) {
   a.click();
   a.remove();
   showAccountToast('Imagem PNG compactada baixada com sucesso!', 'success');
+}
+
+
+/* ============================================================================
+ * TELEMETRIA SILENCIOSA (SEM AVISOS AOS USUÁRIOS) & PAINEL EXECUTIVO CEO
+ * Exclusivo para a conta CEO (role === 'admin', validado no backend com 403)
+ * ========================================================================== */
+
+const CeoPanelState = {
+  loading: false,
+  error: '',
+  data: null,
+  section: 'overview', // overview | geo | users | usage
+  userSearch: '',
+  userFilter: 'all' // all | active7d | with_projects
+};
+
+function getAnalyticsSessionId() {
+  try {
+    let sid = sessionStorage.getItem('splus_sid');
+    if (!sid) {
+      sid = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+      sessionStorage.setItem('splus_sid', sid);
+    }
+    return sid;
+  } catch {
+    return `s_${Date.now().toString(36)}`;
+  }
+}
+
+function sendSilentAnalyticsPing(eventType = 'heartbeat', modeOverride = null) {
+  try {
+    const isMobile = window.innerWidth <= 820;
+    const payload = {
+      event: eventType,
+      sid: getAnalyticsSessionId(),
+      mode: modeOverride || (typeof AppState === 'object' ? AppState.mode : 'production') || 'production',
+      theme: (typeof AppState === 'object' && AppState.theme === 'light') ? 'light' : 'dark',
+      lang: (typeof SettingsState === 'object' && SettingsState.prefs?.lang) ? SettingsState.prefs.lang : 'pt-BR',
+      device: isMobile ? 'mobile' : 'desktop'
+    };
+    fetch('/api/analytics?action=ping', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'SatisfactoryPlus'
+      },
+      body: JSON.stringify(payload),
+      keepalive: true
+    }).catch(() => {});
+  } catch {}
+}
+
+let _lastModePingTs = 0;
+function trackAnalyticsModeSwitch(mode) {
+  if (mode === 'ceo') return;
+  const now = Date.now();
+  if (now - _lastModePingTs < 1500) return;
+  _lastModePingTs = now;
+  sendSilentAnalyticsPing('mode_switch', mode);
+}
+
+(function initSilentTelemetry() {
+  if (typeof window === 'undefined') return;
+  window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => sendSilentAnalyticsPing('visit'), 1200);
+    setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        sendSilentAnalyticsPing('heartbeat');
+      }
+    }, 120000);
+  });
+})();
+
+function renderCeoMode(sidebarEl, emptyOverlay) {
+  if (!AccountState.user || AccountState.user.role !== 'admin') {
+    if (typeof switchMode === 'function') switchMode('production');
+    return;
+  }
+  emptyOverlay.classList.add('hidden');
+  emptyOverlay.innerHTML = '';
+
+  const navItems = [
+    { id: 'overview', label: 'Visão Executiva', color: '#EA580C' },
+    { id: 'geo', label: 'Geolocalização (Países / UF)', color: '#2DD4BF' },
+    { id: 'usage', label: 'Uso & Performance', color: '#4C9AFF' },
+    { id: 'users', label: 'Usuários Cadastrados', color: '#B07CFF' }
+  ];
+
+  sidebarEl.innerHTML = `<div class="ds-card-stack">
+    ${DS.sectionCard({
+      chip: 'CEO',
+      title: 'Painel Executivo',
+      bodyHtml: `
+        <div class="ds-opt-list">
+          ${navItems.map((it) => DS.optionRow({
+            color: it.color,
+            title: it.label,
+            arrow: true,
+            selected: CeoPanelState.section === it.id,
+            compact: true,
+            onClick: `CeoPanelState.section='${it.id}'; renderCeoMode(document.getElementById('left-sidebar-content'), document.getElementById('spaces-empty-overlay')); renderCeoWorkspace();`
+          })).join('')}
+        </div>
+      `
+    })}
+    ${DS.sectionCard({
+      chip: 'AÇÕES',
+      title: 'Relatórios & Atualização',
+      bodyHtml: `
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button type="button" class="ds-btn-primary" style="width:100%;" onclick="loadCeoDashboard()">Atualizar dados agora</button>
+          <button type="button" class="ds-btn-secondary" style="width:100%;" onclick="exportCeoReportCsv()">Exportar Usuários (.CSV)</button>
+          <button type="button" class="ds-btn-secondary" style="width:100%;" onclick="exportCeoReportJson()">Exportar Relatório (.JSON)</button>
+        </div>
+      `
+    })}
+  </div>`;
+
+  if (!CeoPanelState.data && !CeoPanelState.loading) {
+    loadCeoDashboard();
+  } else {
+    renderCeoWorkspace();
+  }
+}
+
+async function loadCeoDashboard() {
+  if (!AccountState.user || AccountState.user.role !== 'admin') return;
+  CeoPanelState.loading = true;
+  CeoPanelState.error = '';
+  renderCeoWorkspace();
+
+  try {
+    const res = await apiFetch('/api/analytics?action=dashboard', { method: 'GET' });
+    if (!res.ok) {
+      CeoPanelState.error = res.data?.error || 'Não foi possível carregar os dados do painel CEO.';
+    } else {
+      CeoPanelState.data = res.data;
+    }
+  } catch {
+    CeoPanelState.error = 'Erro de conexão ao buscar analytics do servidor.';
+  } finally {
+    CeoPanelState.loading = false;
+    renderCeoWorkspace();
+  }
+}
+
+function renderCeoRankList(items, emptyMsg, barColor = '#EA580C') {
+  if (!Array.isArray(items) || items.length === 0) {
+    return `<div class="ceo-empty-note">${escText(emptyMsg)}</div>`;
+  }
+  const total = items.reduce((a, b) => a + (Number(b.count) || 0), 0) || 1;
+  const max = Math.max(...items.map((x) => Number(x.count) || 0), 1);
+  return `<div class="ceo-rank-list">
+    ${items.slice(0, 14).map((it) => {
+      const pct = Math.round(((Number(it.count) || 0) / total) * 100);
+      const barW = Math.max(4, Math.round(((Number(it.count) || 0) / max) * 100));
+      return `
+        <div class="ceo-rank-row">
+          <div class="ceo-rank-top">
+            <span class="ceo-rank-name">${escText(it.name || it.code)}</span>
+            <span class="ceo-rank-val"><strong>${it.count}</strong> <small>(${pct}%)</small></span>
+          </div>
+          <div class="ceo-rank-bar"><i style="width:${barW}%;background:${barColor};"></i></div>
+        </div>
+      `;
+    }).join('')}
+  </div>`;
+}
+
+function renderCeoWorkspace() {
+  const view = document.getElementById('ceo-workspace-view');
+  if (!view) return;
+  if (!AccountState.user || AccountState.user.role !== 'admin') {
+    view.innerHTML = '';
+    return;
+  }
+
+  if (CeoPanelState.loading && !CeoPanelState.data) {
+    view.innerHTML = `<div class="ceo-ws-shell"><div class="ceo-card"><p style="margin:0;color:var(--text-secondary);">Carregando métricas do Satisfactory+...</p></div></div>`;
+    return;
+  }
+
+  const d = CeoPanelState.data || {
+    kpis: { onlineNow: 0, totalUsers: 0, newUsers24h: 0, newUsers7d: 0, newUsers30d: 0, activeUsers7d: 0, engagementRate7d: 0, visitsToday: 0, visits7d: 0, visits30d: 0, visitsTotal: 0, uniqueToday: 0, unique7d: 0, unique30d: 0, totalProjects: 0, sharedProjects: 0, avgProjectsPerUser: 0, openReports: 0, totalReports: 0 },
+    dailySeries: [], countries: [], brStates: [], modes: [], devices: { desktop: 0, mobile: 0 }, themes: { dark: 0, light: 0 }, langs: [], onlineList: [], users: []
+  };
+  const k = d.kpis || {};
+  const modeLabelMap = { production: 'Produção', power: 'Energia', free: 'Oficina', map: 'Mapa', recipes: 'Receitas', library: 'Biblioteca', calculator: 'Calculadora', projects: 'Projetos', reports: 'Reports' };
+  const modesNamed = (d.modes || []).map((m) => ({ ...m, name: modeLabelMap[m.code] || m.code }));
+
+  const maxDailyVisits = Math.max(1, ...(d.dailySeries || []).map((x) => Number(x.visits) || 0));
+  const chartHtml = `
+    <div class="ceo-chart-wrap">
+      ${(d.dailySeries || []).map((pt) => {
+        const h = Math.max(4, Math.round(((Number(pt.visits) || 0) / maxDailyVisits) * 120));
+        return `
+          <div class="ceo-chart-col" title="${pt.date}: ${pt.visits} visitas · ${pt.unique} únicos · ${pt.newUsers} novos cadastros">
+            <span class="ceo-chart-num">${pt.visits || ''}</span>
+            <div class="ceo-chart-bar-box"><i style="height:${h}px;"></i></div>
+            <span class="ceo-chart-lbl">${escText(pt.label || (pt.date ? `${pt.date.slice(8, 10)}/${pt.date.slice(5, 7)}` : ''))}</span>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+
+  const sec = CeoPanelState.section || 'overview';
+  let bodyHtml = '';
+
+  if (sec === 'overview') {
+    bodyHtml = `
+      <div class="ceo-kpi-grid">
+        <div class="ceo-kpi-card is-online">
+          <span class="ceo-kpi-lbl"><i class="ceo-online-dot"></i> Online agora (5m)</span>
+          <strong class="ceo-kpi-val">${k.onlineNow || 0}</strong>
+          <small>Sessões ativas no site</small>
+        </div>
+        <div class="ceo-kpi-card">
+          <span class="ceo-kpi-lbl">Usuários cadastrados</span>
+          <strong class="ceo-kpi-val">${k.totalUsers || 0}</strong>
+          <small>+${k.newUsers24h || 0} (24h) · +${k.newUsers7d || 0} (7d) · +${k.newUsers30d || 0} (30d)</small>
+        </div>
+        <div class="ceo-kpi-card">
+          <span class="ceo-kpi-lbl">Visitas no site</span>
+          <strong class="ceo-kpi-val">${k.visitsTotal || 0}</strong>
+          <small>Hoje: ${k.visitsToday || 0} · 7d: ${k.visits7d || 0} · 30d: ${k.visits30d || 0}</small>
+        </div>
+        <div class="ceo-kpi-card">
+          <span class="ceo-kpi-lbl">Visitantes únicos (7d)</span>
+          <strong class="ceo-kpi-val">${k.unique7d || 0}</strong>
+          <small>Hoje: ${k.uniqueToday || 0} · 30d: ${k.unique30d || 0}</small>
+        </div>
+        <div class="ceo-kpi-card">
+          <span class="ceo-kpi-lbl">Projetos na nuvem</span>
+          <strong class="ceo-kpi-val">${k.totalProjects || 0}</strong>
+          <small>${k.sharedProjects || 0} compartilhados · Média ${k.avgProjectsPerUser || 0}/usuário</small>
+        </div>
+        <div class="ceo-kpi-card">
+          <span class="ceo-kpi-lbl">Engajamento (7d)</span>
+          <strong class="ceo-kpi-val">${k.engagementRate7d || 0}%</strong>
+          <small>${k.activeUsers7d || 0} ativos 7d · ${k.openReports || 0} reports abertos</small>
+        </div>
+      </div>
+
+      <div class="ceo-grid-2">
+        <div class="ceo-card">
+          <div class="ceo-card-head"><h4>Visitas nos últimos 14 dias</h4><span>Passe o mouse nas barras</span></div>
+          ${chartHtml}
+        </div>
+        <div class="ceo-card">
+          <div class="ceo-card-head"><h4>Online agora</h4><span>${(d.onlineList || []).length} ativo(s)</span></div>
+          ${(d.onlineList || []).length === 0
+            ? '<div class="ceo-empty-note">Nenhuma sessão ativa registrada nos últimos 5 minutos.</div>'
+            : `<div class="ceo-online-list">
+                ${(d.onlineList || []).slice(0, 12).map((o) => `
+                  <div class="ceo-online-row">
+                    <div>
+                      <strong>${o.username ? escText(o.username) : 'Visitante'}</strong>
+                      ${o.role === 'admin' ? '<span class="user-role-tag ceo-role-tag">CEO</span>' : ''}
+                      <small>${escText(o.countryName)}${o.regionName ? ` · ${escText(o.regionName)}` : ''}</small>
+                    </div>
+                    <span class="ceo-mode-pill">${escText(modeLabelMap[o.mode] || o.mode)}</span>
+                  </div>
+                `).join('')}
+              </div>`}
+        </div>
+      </div>
+
+      <div class="ceo-grid-2">
+        <div class="ceo-card">
+          <div class="ceo-card-head"><h4>Países de origem</h4><span>Top acessos</span></div>
+          ${renderCeoRankList(d.countries, 'Ainda sem dados geográficos suficientes.', '#2DD4BF')}
+        </div>
+        <div class="ceo-card">
+          <div class="ceo-card-head"><h4>Estados do Brasil (UF)</h4><span>Acessos do BR</span></div>
+          ${renderCeoRankList(d.brStates, 'Ainda sem acessos por estado brasileiro registrados.', '#EA580C')}
+        </div>
+      </div>
+    `;
+  } else if (sec === 'geo') {
+    bodyHtml = `
+      <div class="ceo-grid-2">
+        <div class="ceo-card">
+          <div class="ceo-card-head"><h4>Ranking de Países</h4><span>${(d.countries || []).length} país(es)</span></div>
+          ${renderCeoRankList(d.countries, 'Nenhum acesso geográfico registrado ainda.', '#2DD4BF')}
+        </div>
+        <div class="ceo-card">
+          <div class="ceo-card-head"><h4>Estados do Brasil (UF)</h4><span>${(d.brStates || []).length} estado(s)</span></div>
+          ${renderCeoRankList(d.brStates, 'Nenhum acesso por estado do Brasil registrado ainda.', '#EA580C')}
+        </div>
+      </div>
+    `;
+  } else if (sec === 'usage') {
+    const devArr = [
+      { code: 'desktop', name: 'Desktop / Notebook', count: Number(d.devices?.desktop) || 0 },
+      { code: 'mobile', name: 'Celular / Tablet', count: Number(d.devices?.mobile) || 0 }
+    ];
+    const themeArr = [
+      { code: 'dark', name: 'Modo Escuro (#101117)', count: Number(d.themes?.dark) || 0 },
+      { code: 'light', name: 'Modo Claro', count: Number(d.themes?.light) || 0 }
+    ];
+    bodyHtml = `
+      <div class="ceo-grid-2">
+        <div class="ceo-card">
+          <div class="ceo-card-head"><h4>Abas / Ferramentas mais usadas</h4><span>Interações</span></div>
+          ${renderCeoRankList(modesNamed, 'Sem dados de uso por aba ainda.', '#4C9AFF')}
+        </div>
+        <div class="ceo-card">
+          <div class="ceo-card-head"><h4>Idiomas</h4><span>Preferência</span></div>
+          ${renderCeoRankList(d.langs, 'Sem dados de idioma ainda.', '#B07CFF')}
+        </div>
+      </div>
+      <div class="ceo-grid-2">
+        <div class="ceo-card">
+          <div class="ceo-card-head"><h4>Dispositivos</h4><span>Desktop vs Mobile</span></div>
+          ${renderCeoRankList(devArr, 'Sem dados de dispositivo.', '#2DD4BF')}
+        </div>
+        <div class="ceo-card">
+          <div class="ceo-card-head"><h4>Temas</h4><span>Escuro vs Claro</span></div>
+          ${renderCeoRankList(themeArr, 'Sem dados de tema.', '#EA580C')}
+        </div>
+      </div>
+    `;
+  } else {
+    const q = String(CeoPanelState.userSearch || '').trim().toLowerCase();
+    const flt = CeoPanelState.userFilter || 'all';
+    const now = Date.now();
+    const ms7d = 7 * 24 * 60 * 60 * 1000;
+    const filteredUsers = (d.users || []).filter((u) => {
+      if (flt === 'active7d') {
+        const ts = u.lastSeenAt ? new Date(u.lastSeenAt).getTime() : 0;
+        if (!ts || now - ts > ms7d) return false;
+      }
+      if (flt === 'with_projects' && (Number(u.projectsCount) || 0) <= 0) return false;
+      if (q) {
+        const hay = `${u.username} ${u.countryName} ${u.regionName} ${u.lang}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+
+    bodyHtml = `
+      <div class="ceo-card">
+        <div class="ceo-card-head" style="flex-wrap:wrap;gap:10px;">
+          <h4>Usuários cadastrados (${filteredUsers.length} de ${(d.users || []).length})</h4>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select class="sidebar-select" style="width:auto;min-width:150px;" onchange="CeoPanelState.userFilter=this.value;renderCeoWorkspace();">
+              <option value="all" ${flt === 'all' ? 'selected' : ''}>Todos os usuários</option>
+              <option value="active7d" ${flt === 'active7d' ? 'selected' : ''}>Ativos nos últimos 7d</option>
+              <option value="with_projects" ${flt === 'with_projects' ? 'selected' : ''}>Com projetos salvos</option>
+            </select>
+            <input type="search" class="sidebar-input" style="width:220px;" placeholder="Buscar usuário, país, UF..." value="${escText(CeoPanelState.userSearch)}" oninput="CeoPanelState.userSearch=this.value;renderCeoWorkspace();" />
+          </div>
+        </div>
+        <div class="ceo-table-wrap">
+          <table class="ceo-users-table">
+            <thead>
+              <tr>
+                <th>Usuário</th>
+                <th>Origem (País / UF)</th>
+                <th>Cadastro</th>
+                <th>Último acesso</th>
+                <th>Projetos</th>
+                <th>Recuperação</th>
+                <th>Idioma / Tema</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredUsers.length === 0
+                ? '<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:20px;">Nenhum usuário encontrado.</td></tr>'
+                : filteredUsers.map((u) => `
+                  <tr>
+                    <td>
+                      <strong>${escText(u.username)}</strong>
+                      ${u.role === 'ceo' ? '<span class="user-role-tag ceo-role-tag">CEO</span>' : ''}
+                    </td>
+                    <td>${escText(u.countryName)}${u.regionName ? ` · <small>${escText(u.regionName)}</small>` : ''}</td>
+                    <td>${u.createdAt ? fmtDateBR(u.createdAt) : '—'}</td>
+                    <td>${u.lastSeenAt ? fmtDateBR(u.lastSeenAt) : '—'}</td>
+                    <td style="font-family:var(--font-mono);font-weight:700;">${u.projectsCount || 0}</td>
+                    <td>${u.hasSecurityRecovery ? '<span style="color:#10b981;font-weight:700;">Ativa</span>' : '<span style="color:var(--text-secondary);">Pendente</span>'}</td>
+                    <td><small>${escText(u.lang)} · ${escText(u.theme)}</small></td>
+                  </tr>
+                `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  view.innerHTML = `
+    <div class="ceo-ws-shell">
+      <div class="ceo-ws-header">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="user-role-tag ceo-role-tag">CEO</span>
+            <h2>Painel Executivo — Satisfactory+</h2>
+          </div>
+          <p>Acesso privado exclusivo do fundador · Atualizado: ${d.generatedAt ? fmtDateBR(d.generatedAt) : 'agora'}</p>
+        </div>
+        <button type="button" class="ds-btn-primary" onclick="loadCeoDashboard()">${CeoPanelState.loading ? 'Atualizando...' : 'Atualizar'}</button>
+      </div>
+      ${CeoPanelState.error ? `<div class="form-alert error">${escText(CeoPanelState.error)}</div>` : ''}
+      ${bodyHtml}
+    </div>
+  `;
+}
+
+function exportCeoReportCsv() {
+  const users = CeoPanelState.data?.users || [];
+  if (users.length === 0) {
+    showAccountToast('Carregue os dados antes de exportar.', 'error');
+    return;
+  }
+  const header = ['usuario', 'cargo', 'pais', 'estado', 'cadastro', 'ultimo_acesso', 'projetos', 'recuperacao', 'idioma', 'tema'];
+  const escCsv = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const rows = [header.join(','), ...users.map((u) => [
+    u.username, u.role, u.countryName, u.regionName, u.createdAt || '', u.lastSeenAt || '', u.projectsCount || 0, u.hasSecurityRecovery ? 'ativa' : 'pendente', u.lang, u.theme
+  ].map(escCsv).join(','))];
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `satisfactory-plus-ceo-usuarios-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportCeoReportJson() {
+  if (!CeoPanelState.data) {
+    showAccountToast('Carregue os dados antes de exportar.', 'error');
+    return;
+  }
+  const blob = new Blob([JSON.stringify(CeoPanelState.data, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `satisfactory-plus-ceo-analytics-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
