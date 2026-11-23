@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./styles.css?v=33" />
+  <link rel="stylesheet" href="./styles.css?v=45" />
   <script>
     (function () {
       try {
@@ -59,70 +59,128 @@
   </section>
 
   <div id="app-layout-root" class="app-layout-lr">
-    <!-- PAINEL LATERAL À ESQUERDA -->
-    <aside id="left-sidebar" class="left-sidebar">
-      <!-- CABEÇALHO COM LOGO S+, TEMA CLARO/ESCURO E MINIMIZAR -->
-      <div class="sidebar-brand">
-        <button type="button" class="brand-home-trigger" onclick="openHomeScreen()" title="Voltar para a tela Home">
+    <!-- BARRA LATERAL DE NAVEGAÇÃO VERTICAL À ESQUERDA (ABAS VERTICAIS + ARTE INDUSTRIAL) -->
+    <nav id="main-nav-rail" class="main-nav-rail" aria-label="Navegação Principal">
+      <div class="nav-rail-top">
+        <button type="button" class="brand-home-trigger nav-rail-brand" onclick="openHomeScreen()" title="Voltar para a tela Home">
           <img src="./assets/logo-splus.jpg" alt="Satisfactory+" class="brand-logo-img" />
           <div class="brand-text">
             <h1>Satisfactory+</h1>
-            <span class="brand-subtitle">Planejador &amp; Mapa 1.0+</span>
+            <span id="app-version-label" class="brand-subtitle">v2.5</span>
           </div>
         </button>
-        <div class="brand-header-actions">
+        <div class="nav-rail-quick-actions">
           <button
+            type="button"
             id="btn-theme-toggle"
-            class="btn-header-icon"
+            class="btn-header-icon nav-rail-util-btn"
             onclick="toggleTheme()"
             title="Alternar entre Modo Claro e Modo Escuro"
           >
-            🌙 Escuro
+            <svg class="ui-ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            <span class="nav-rail-util-lbl" data-i18n="nav.dark">Escuro</span>
           </button>
           <button
+            type="button"
+            id="btn-collapse-nav-rail"
+            class="btn-header-icon nav-rail-util-btn"
+            onclick="toggleNavRailCollapse()"
+            title="Minimizar / Expandir barra de navegação"
+          >
+            ⇤
+          </button>
+          <button
+            type="button"
             id="btn-collapse-sidebar"
-            class="btn-header-icon"
+            class="btn-header-icon nav-rail-util-btn"
             onclick="toggleSidebarCollapse()"
-            title="Minimizar barra lateral para ver apenas a Área de Trabalho"
+            title="Ocultar / Mostrar painel de controle da ferramenta"
           >
             ◀
           </button>
         </div>
       </div>
 
-      <!-- BARRA DE ABAS REAL (SEPARADAS E LIMPAS, APENAS COM O TÍTULO) -->
-      <div class="tabs-bar-container">
-        <nav class="real-tabs-bar" role="tablist" aria-label="Abas principais">
-          <button id="tab-production" class="real-tab active" role="tab" onclick="switchMode('production')">
-            🏭 Produção
-          </button>
-          <button id="tab-power" class="real-tab" role="tab" onclick="switchMode('power')">
-            <svg class="tab-power-bolt" viewBox="0 0 24 24" width="14" height="14" fill="#111827" aria-hidden="true" style="vertical-align:-2px;margin-right:3px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>Energia
-          </button>
-          <button id="tab-free" class="real-tab" role="tab" onclick="switchMode('free')">
-            🛠️ Oficina
-          </button>
-          <button id="tab-map" class="real-tab" role="tab" onclick="switchMode('map')">
-            🗺️ Mapa
-          </button>
-          <button id="tab-recipes" class="real-tab" role="tab" onclick="switchMode('recipes')">
-            📜 Receitas
-          </button>
-          <button id="tab-library" class="real-tab" role="tab" onclick="switchMode('library')">
-            📚 Biblioteca
-          </button>
-          <button id="tab-calculator" class="real-tab" role="tab" onclick="switchMode('calculator')">
-            🧮 Calculadora
-          </button>
-          <button id="tab-projects" class="real-tab hidden" role="tab" onclick="switchMode('projects')">
-            📁 Projetos
-          </button>
-          <button id="tab-reports" class="real-tab hidden" role="tab" onclick="switchMode('reports')">
-            🛡️ Reports
-          </button>
-        </nav>
+      <!-- GRUPO 1: Produção, Energia, Oficina, Mapa -->
+      <div class="nav-rail-group" role="tablist" aria-label="Planejamento e Mapa">
+        <button id="tab-production" class="real-tab nav-rail-item active" role="tab" onclick="switchMode('production')" title="Produção">
+          <span class="nav-rail-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+          </span>
+          <span class="nav-rail-label" data-i18n="nav.production">Produção</span>
+        </button>
+        <button id="tab-power" class="real-tab nav-rail-item" role="tab" onclick="switchMode('power')" title="Energia">
+          <span class="nav-rail-ico" aria-hidden="true">
+            <svg class="tab-power-bolt" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          </span>
+          <span class="nav-rail-label" data-i18n="nav.power">Energia</span>
+        </button>
+        <button id="tab-free" class="real-tab nav-rail-item" role="tab" onclick="switchMode('free')" title="Oficina">
+          <span class="nav-rail-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+          </span>
+          <span class="nav-rail-label" data-i18n="nav.workshop">Oficina</span>
+        </button>
+        <button id="tab-map" class="real-tab nav-rail-item" role="tab" onclick="switchMode('map')" title="Mapa">
+          <span class="nav-rail-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
+          </span>
+          <span class="nav-rail-label" data-i18n="nav.map">Mapa</span>
+        </button>
       </div>
 
+      <div class="nav-rail-sep" aria-hidden="true"></div>
+
+      <!-- GRUPO 2: Receitas, Biblioteca, Calculadora, Projetos, Reports -->
+      <div class="nav-rail-group" role="tablist" aria-label="Consulta e Ferramentas">
+        <button id="tab-recipes" class="real-tab nav-rail-item" role="tab" onclick="switchMode('recipes')" title="Receitas">
+          <span class="nav-rail-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          </span>
+          <span class="nav-rail-label" data-i18n="nav.recipes">Receitas</span>
+        </button>
+        <button id="tab-library" class="real-tab nav-rail-item" role="tab" onclick="switchMode('library')" title="Biblioteca">
+          <span class="nav-rail-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          </span>
+          <span class="nav-rail-label" data-i18n="nav.library">Biblioteca</span>
+        </button>
+        <button id="tab-calculator" class="real-tab nav-rail-item" role="tab" onclick="switchMode('calculator')" title="Calculadora">
+          <span class="nav-rail-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"></rect><line x1="8" y1="6" x2="16" y2="6"></line><line x1="16" y1="14" x2="16" y2="18"></line><path d="M16 10h.01"></path><path d="M12 10h.01"></path><path d="M8 10h.01"></path><path d="M12 14h.01"></path><path d="M8 14h.01"></path><path d="M12 18h.01"></path><path d="M8 18h.01"></path></svg>
+          </span>
+          <span class="nav-rail-label" data-i18n="nav.calculator">Calculadora</span>
+        </button>
+        <button id="tab-projects" class="real-tab nav-rail-item hidden" role="tab" onclick="switchMode('projects')" title="Projetos">
+          <span class="nav-rail-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+          </span>
+          <span class="nav-rail-label" data-i18n="nav.projects">Projetos</span>
+        </button>
+        <button id="tab-reports" class="real-tab nav-rail-item hidden" role="tab" onclick="switchMode('reports')" title="Reports">
+          <span class="nav-rail-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          </span>
+          <span class="nav-rail-label" data-i18n="nav.reports">Reports</span>
+        </button>
+      </div>
+
+      <!-- RODAPÉ COM ARTE INDUSTRIAL AO PÔR DO SOL + BOTÃO CONFIGURAÇÕES -->
+      <div class="nav-rail-art-footer">
+        <span class="nav-rail-edge-accent" aria-hidden="true"></span>
+        <img src="./assets/nav-rail-factory.jpg" alt="" class="nav-rail-art-img" aria-hidden="true" loading="lazy" />
+        <div class="nav-rail-art-scrim" aria-hidden="true"></div>
+        <button type="button" id="btn-open-settings" class="nav-rail-item nav-rail-settings-btn" onclick="openSettingsModal()" title="Configurações">
+          <span class="nav-rail-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          </span>
+          <span class="nav-rail-label" data-i18n="nav.settings">Configurações</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- PAINEL DE CONTROLE DA FERRAMENTA (À DIREITA DA BARRA DE NAVEGAÇÃO) -->
+    <aside id="left-sidebar" class="left-sidebar">
       <!-- AÇÃO PRINCIPAL NO PAINEL (MONTAR LINHA DE PRODUÇÃO / DIAGNÓSTICO) -->
       <div id="sidebar-action-section" class="sidebar-section hidden"></div>
 
@@ -191,19 +249,23 @@
           </button>
         </div>
         <button id="btn-open-tutorial" class="btn-tutorial-pill" onclick="openTutorialModal()" title="Abrir Tutorial Interativo da Ferramenta">
-          📖 Tutorial
+          <svg class="ui-ico" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+          <span>Tutorial</span>
         </button>
         <button id="btn-open-patch-notes" class="btn-top-action btn-patch-pill" onclick="openPatchNotesModal()" title="Ver últimas atualizações e melhorias">
-          📋 Patch notes
+          <svg class="ui-ico" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+          <span>Patch notes</span>
           <span id="patch-notes-unread-dot" class="pn-unread-dot hidden" aria-hidden="true"></span>
         </button>
         <button id="btn-open-report" class="btn-top-action btn-report-pill" onclick="handleReportButtonClick()" title="Reportar bug, enviar sugestão ou avaliação">
-          📣 Reportar
+          <svg class="ui-ico" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>
+          <span>Reportar</span>
           <span id="report-unread-dot" class="pn-unread-dot hidden" aria-hidden="true"></span>
         </button>
         <div id="auth-header-slot" class="auth-header-slot">
           <button id="btn-auth-login" class="btn-top-action" onclick="openAuthModal('login')" title="Entrar ou criar uma conta">
-            👤 Entrar
+            <svg class="ui-ico" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            <span>Entrar</span>
           </button>
         </div>
       </div>
@@ -294,21 +356,22 @@
 
   <!-- MODAL VISUAL DE ESCOLHA DE ITEM (COM IMAGENS GRANDES) -->
   <div id="picker-modal" class="modal-backdrop hidden" onclick="handleBackdropClick(event)">
-    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+    <div class="modal-dialog ds-modal-picker" role="dialog" aria-modal="true" aria-labelledby="picker-title">
       <div class="modal-header">
         <h3 id="picker-title">Selecionar Item</h3>
-        <button class="icon-close" onclick="closePickerModal()" aria-label="Fechar">✕</button>
+        <button class="ds-modal-close" onclick="closePickerModal()" aria-label="Fechar">✕</button>
       </div>
-      <div class="modal-search-bar">
+      <div class="ds-modal-toolbar">
         <input
           type="text"
           id="picker-search"
-          placeholder="🔍 Buscar pelo nome em português..."
+          class="ds-modal-search"
+          placeholder="Buscar pelo nome em português..."
           autocomplete="off"
         />
-        <div id="picker-categories" class="category-chips"></div>
+        <div id="picker-categories"></div>
       </div>
-      <div id="picker-grid" class="picker-grid"></div>
+      <div id="picker-grid" class="ds-modal-scroll"></div>
     </div>
   </div>
 
@@ -370,10 +433,10 @@
 
   <!-- MODAL COMPLETO ADICIONAR MÁQUINA / LOGÍSTICA (MODO LIVRE) -->
   <div id="add-machine-modal" class="modal-backdrop hidden" onclick="if(event.target===this) closeAddMachineModal()">
-    <div class="modal-dialog add-machine-dialog" role="dialog" aria-modal="true" aria-labelledby="add-machine-title">
+    <div class="modal-dialog ds-modal-picker add-machine-dialog" role="dialog" aria-modal="true" aria-labelledby="add-machine-title">
       <div class="modal-header">
-        <h3 id="add-machine-title">➕ Adicionar Máquina</h3>
-        <button class="icon-close" onclick="closeAddMachineModal()" aria-label="Fechar">✕</button>
+        <h3 id="add-machine-title">Adicionar à Oficina</h3>
+        <button class="ds-modal-close" onclick="closeAddMachineModal()" aria-label="Fechar">✕</button>
       </div>
       <div id="add-machine-body" class="add-machine-body"></div>
     </div>
@@ -401,6 +464,20 @@
     </div>
   </div>
 
+  <!-- ITEM 17: MODAL DE CONFIGURAÇÕES (REDESIGN VERTICAL COM NAVEGAÇÃO LATERAL) -->
+  <div id="settings-modal" class="modal-backdrop hidden" onclick="if(event.target===this) closeSettingsModal()">
+    <div class="modal-dialog ds-modal-picker settings-modal-dialog sp-set-modal" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+      <div class="sp-set-head">
+        <div class="sp-set-head-l">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          <h3 id="settings-modal-title" data-i18n="settings.title">Configurações</h3>
+        </div>
+        <button type="button" class="sp-set-x" onclick="closeSettingsModal()" aria-label="Fechar">✕</button>
+      </div>
+      <div id="settings-modal-body" class="sp-set-body-wrap"></div>
+    </div>
+  </div>
+
   <!-- LIGHTBOX DE AMPLIAÇÃO DE IMAGEM -->
   <div id="image-lightbox-modal" class="modal-backdrop hidden" onclick="closeImageLightbox()">
     <div class="lightbox-wrap" onclick="event.stopPropagation()">
@@ -411,15 +488,17 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="./js/elk.bundled.js?v=13"></script>
-  <script src="./data/satisfactory-data.js?v=33"></script>
+  <script src="./data/satisfactory-data.js?v=38"></script>
   <script src="./js/map-data.js?v=33"></script>
   <script src="./js/library-data.js?v=33"></script>
   <script src="./js/icons.js?v=33"></script>
-  <script src="./js/solver.js?v=33"></script>
-  <script src="./js/app.js?v=33"></script>
-  <script src="./js/factory-enhancements.js?v=33"></script>
-  <script src="./js/tutorial.js?v=33"></script>
-  <script src="./js/patch-notes.js?v=33"></script>
-  <script src="./js/account-features.js?v=33"></script>
+  <script src="./js/solver.js?v=42"></script>
+  <script src="./js/design-system.js?v=41"></script>
+  <script src="./js/app.js?v=44"></script>
+  <script src="./js/factory-enhancements.js?v=41"></script>
+  <script src="./js/tutorial.js?v=45"></script>
+  <script src="./js/patch-notes.js?v=41"></script>
+  <script src="./js/account-features.js?v=44"></script>
+  <script src="./js/settings-i18n.js?v=44"></script>
 </body>
 </html>

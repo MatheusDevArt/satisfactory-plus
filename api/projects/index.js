@@ -72,6 +72,67 @@ module.exports = async function handler(req, res) {
     const userId = auth.user.id;
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const projectId = String(url.searchParams.get('id') || '').trim();
+    const action = String(url.searchParams.get('action') || '').trim().toLowerCase();
+
+    // POST /api/projects?action=share (Gerar código de compartilhamento entre contas)
+    if (req.method === 'POST' && action === 'share') {
+      const body = await readRequestBody(req, 16 * 1024);
+      const pid = String(body.id || projectId || '').trim();
+      if (!/^prj_[a-z0-9_]+$/i.test(pid)) {
+        return sendJson(res, 400, { error: 'ID de projeto inválido.' });
+      }
+      const proj = await readJsonBlob(`db/projects/${userId}/${pid}.json`);
+      if (!proj || proj.userId !== userId) {
+        return sendJson(res, 404, { error: 'Projeto não encontrado.' });
+      }
+      const shareCode = proj.shareCode || `SP-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+      const sharedDoc = {
+        shareCode,
+        name: proj.name,
+        sourceMode: proj.sourceMode || 'production',
+        summary: proj.summary || '',
+        payload: proj.payload || {},
+        sharedBy: auth.user.username || 'Pioneiro',
+        sharedAt: new Date().toISOString()
+      };
+      await writeJsonBlob(`db/shared_projects/${shareCode}.json`, sharedDoc);
+      if (!proj.shareCode) {
+        proj.shareCode = shareCode;
+        await writeJsonBlob(`db/projects/${userId}/${pid}.json`, proj);
+      }
+      return sendJson(res, 200, { ok: true, shareCode, name: proj.name });
+    }
+
+    // POST /api/projects?action=import-shared (Importar projeto compartilhado para a própria conta)
+    if (req.method === 'POST' && action === 'import-shared') {
+      const body = await readRequestBody(req, 16 * 1024);
+      const rawCode = String(body.shareCode || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+      if (!/^SP-[A-F0-9]{8}$/.test(rawCode)) {
+        return sendJson(res, 400, { error: 'Código de compartilhamento inválido. Use o formato SP-XXXXXXXX.' });
+      }
+      const shared = await readJsonBlob(`db/shared_projects/${rawCode}.json`);
+      if (!shared || !shared.payload) {
+        return sendJson(res, 404, { error: 'Projeto compartilhado não encontrado ou expirado.' });
+      }
+      const existing = await listUserProjects(userId);
+      if (existing.length >= MAX_PROJECTS_PER_USER) {
+        return sendJson(res, 400, { error: `Limite máximo de ${MAX_PROJECTS_PER_USER} projetos atingido.` });
+      }
+      const now = new Date().toISOString();
+      const newId = `prj_${Date.now().toString(36)}_${crypto.randomBytes(4).toString('hex')}`;
+      const importedProj = {
+        id: newId,
+        userId,
+        name: String(`${shared.name || 'Projeto'} (Compartilhado)`).slice(0, 60),
+        sourceMode: shared.sourceMode || 'production',
+        summary: String(shared.summary || `Compartilhado por ${shared.sharedBy || 'Pioneiro'}`).slice(0, 180),
+        payload: shared.payload,
+        createdAt: now,
+        updatedAt: now
+      };
+      await writeJsonBlob(`db/projects/${userId}/${newId}.json`, importedProj);
+      return sendJson(res, 201, { ok: true, project: summarizeProject(importedProj) });
+    }
 
     // GET /api/projects (lista) ou GET /api/projects?id=prj_xxx (detalhe completo)
     if (req.method === 'GET') {

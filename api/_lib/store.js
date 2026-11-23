@@ -509,16 +509,44 @@ function isAdminUser(user) {
   return user.role === 'admin' || EXTRA_ADMIN_USERNAMES.has(lower);
 }
 
+function normalizeSecurityAnswer(answer) {
+  return String(answer || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
 function sanitizeUser(user) {
   if (!user) return null;
   const prefs = (user.preferences && typeof user.preferences === 'object') ? user.preferences : {};
+  const profile = (user.profile && typeof user.profile === 'object') ? user.profile : {};
   return {
     id: user.id,
     username: user.username,
     role: isAdminUser(user) ? 'admin' : 'user',
     createdAt: user.createdAt,
+    securityQuestion: user.securityQuestion ? String(user.securityQuestion).slice(0, 140) : '',
+    hasSecurityRecovery: Boolean(user.securityQuestion && user.securityAnswerHash),
+    profile: {
+      gender: typeof profile.gender === 'string' ? profile.gender.slice(0, 40) : 'prefer_not_to_say',
+      age: (profile.age !== null && profile.age !== undefined && profile.age !== '') ? Number(profile.age) : null,
+      country: typeof profile.country === 'string' ? profile.country.slice(0, 60) : ''
+    },
     preferences: {
-      theme: prefs.theme === 'dark' ? 'dark' : (prefs.theme === 'light' ? 'light' : null),
+      theme: prefs.theme === 'dark' ? 'dark' : (prefs.theme === 'light' ? 'light' : (prefs.theme === 'system' ? 'system' : null)),
+      lang: ['pt-BR', 'en-US', 'es-ES'].includes(prefs.lang) ? prefs.lang : 'pt-BR',
+      flowDirection: ['LR', 'TB', 'RL', 'BT'].includes(prefs.flowDirection) ? prefs.flowDirection : 'LR',
+      maxBeltTier: Number(prefs.maxBeltTier) || 6,
+      maxPipeTier: Number(prefs.maxPipeTier) || 2,
+      expandAllMachinesDefault: prefs.expandAllMachinesDefault !== undefined ? Boolean(prefs.expandAllMachinesDefault) : true,
+      navRailCollapsed: Boolean(prefs.navRailCollapsed),
+      showCanvasGrid: prefs.showCanvasGrid !== undefined ? Boolean(prefs.showCanvasGrid) : true,
+      snapToGrid: prefs.snapToGrid !== undefined ? Boolean(prefs.snapToGrid) : true,
+      reduceMotion: Boolean(prefs.reduceMotion),
+      energyAutoUnit: prefs.energyAutoUnit !== undefined ? Boolean(prefs.energyAutoUnit) : true,
+      autoPatchNotes: prefs.autoPatchNotes !== undefined ? Boolean(prefs.autoPatchNotes) : true,
       libraryFavorites: Array.isArray(prefs.libraryFavorites) ? prefs.libraryFavorites.slice(0, 250) : [],
       libraryRecents: Array.isArray(prefs.libraryRecents) ? prefs.libraryRecents.slice(0, 30) : [],
       calcHistory: Array.isArray(prefs.calcHistory) ? prefs.calcHistory.slice(0, 20) : []
@@ -804,6 +832,7 @@ module.exports = {
   sendJson,
   readRequestBody,
   normalizeUsername,
+  normalizeSecurityAnswer,
   validateUsername,
   validatePassword,
   getReservedAdminUsernameLower,

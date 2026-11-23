@@ -17259,6 +17259,84 @@
         }
       ],
       "wikiImage": "https://satisfactory.wiki.gg/images/3/34/Space_Elevator.png"
+    },
+    "Build_ConveyorLiftMk1_C": {
+      "id": "Build_ConveyorLiftMk1_C",
+      "name": "Elevador de Esteira v.1",
+      "nameEn": "Conveyor Lift Mk.1",
+      "kind": "conveyor_lift",
+      "category": "Esteiras",
+      "isFluid": false,
+      "inPorts": 1,
+      "outPorts": 1,
+      "ratePerMin": 60,
+      "description": "Transporta recursos verticalmente entre andares a até 60 itens por minuto.",
+      "wikiImage": "https://satisfactory.wiki.gg/images/2/2e/Conveyor_Lift_Mk.1.png"
+    },
+    "Build_ConveyorLiftMk2_C": {
+      "id": "Build_ConveyorLiftMk2_C",
+      "name": "Elevador de Esteira v.2",
+      "nameEn": "Conveyor Lift Mk.2",
+      "kind": "conveyor_lift",
+      "category": "Esteiras",
+      "isFluid": false,
+      "inPorts": 1,
+      "outPorts": 1,
+      "ratePerMin": 120,
+      "description": "Transporta recursos verticalmente entre andares a até 120 itens por minuto.",
+      "wikiImage": "https://satisfactory.wiki.gg/images/7/73/Conveyor_Lift_Mk.2.png"
+    },
+    "Build_ConveyorLiftMk3_C": {
+      "id": "Build_ConveyorLiftMk3_C",
+      "name": "Elevador de Esteira v.3",
+      "nameEn": "Conveyor Lift Mk.3",
+      "kind": "conveyor_lift",
+      "category": "Esteiras",
+      "isFluid": false,
+      "inPorts": 1,
+      "outPorts": 1,
+      "ratePerMin": 270,
+      "description": "Transporta recursos verticalmente entre andares a até 270 itens por minuto.",
+      "wikiImage": "https://satisfactory.wiki.gg/images/6/60/Conveyor_Lift_Mk.3.png"
+    },
+    "Build_ConveyorLiftMk4_C": {
+      "id": "Build_ConveyorLiftMk4_C",
+      "name": "Elevador de Esteira v.4",
+      "nameEn": "Conveyor Lift Mk.4",
+      "kind": "conveyor_lift",
+      "category": "Esteiras",
+      "isFluid": false,
+      "inPorts": 1,
+      "outPorts": 1,
+      "ratePerMin": 480,
+      "description": "Transporta recursos verticalmente entre andares a até 480 itens por minuto.",
+      "wikiImage": "https://satisfactory.wiki.gg/images/c/c0/Conveyor_Lift_Mk.4.png"
+    },
+    "Build_ConveyorLiftMk5_C": {
+      "id": "Build_ConveyorLiftMk5_C",
+      "name": "Elevador de Esteira v.5",
+      "nameEn": "Conveyor Lift Mk.5",
+      "kind": "conveyor_lift",
+      "category": "Esteiras",
+      "isFluid": false,
+      "inPorts": 1,
+      "outPorts": 1,
+      "ratePerMin": 780,
+      "description": "Transporta recursos verticalmente entre andares a até 780 itens por minuto.",
+      "wikiImage": "https://satisfactory.wiki.gg/images/8/87/Conveyor_Lift_Mk.5.png"
+    },
+    "Build_ConveyorLiftMk6_C": {
+      "id": "Build_ConveyorLiftMk6_C",
+      "name": "Elevador de Esteira v.6",
+      "nameEn": "Conveyor Lift Mk.6",
+      "kind": "conveyor_lift",
+      "category": "Esteiras",
+      "isFluid": false,
+      "inPorts": 1,
+      "outPorts": 1,
+      "ratePerMin": 1200,
+      "description": "Transporta recursos verticalmente entre andares a até 1200 itens por minuto.",
+      "wikiImage": "https://satisfactory.wiki.gg/images/2/22/Conveyor_Lift_Mk.6.png"
     }
   }
 }

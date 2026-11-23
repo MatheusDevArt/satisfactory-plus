@@ -10,6 +10,9 @@ const {
   hashPassword,
   verifyPassword,
   writeJsonBlob,
+  deleteBlobByPathname,
+  listJsonBlobs,
+  clearSessionCookie,
   getClientIp,
   applySecurityHeaders,
   verifyCsrf,
@@ -17,6 +20,7 @@ const {
   sendJson,
   readRequestBody,
   normalizeUsername,
+  normalizeSecurityAnswer,
   validateUsername,
   validatePassword,
   getReservedAdminUsernameLower,
@@ -80,6 +84,9 @@ module.exports = async function handler(req, res) {
       const username = String(body.username || '').trim();
       const password = String(body.password || '');
       const confirmPassword = String(body.confirmPassword || '');
+      const securityQuestion = String(body.securityQuestion || '').trim().slice(0, 140);
+      const securityAnswerRaw = String(body.securityAnswer || '');
+      const normAnswer = normalizeSecurityAnswer(securityAnswerRaw);
 
       const uErr = validateUsername(username);
       if (uErr) return sendJson(res, 400, { error: uErr });
@@ -87,6 +94,9 @@ module.exports = async function handler(req, res) {
       if (pErr) return sendJson(res, 400, { error: pErr });
       if (password !== confirmPassword) {
         return sendJson(res, 400, { error: 'As senhas não conferem.' });
+      }
+      if ((securityQuestion && normAnswer.length < 2) || (!securityQuestion && normAnswer.length > 0)) {
+        return sendJson(res, 400, { error: 'Para ativar a recuperação de conta, informe a pergunta e uma resposta com pelo menos 2 caracteres.' });
       }
 
       const lower = normalizeUsername(username);
@@ -105,6 +115,9 @@ module.exports = async function handler(req, res) {
         usernameLower: lower,
         role: 'user',
         passwordHash: hashPassword(password),
+        securityQuestion: (securityQuestion && normAnswer.length >= 2) ? securityQuestion : '',
+        securityAnswerHash: (securityQuestion && normAnswer.length >= 2) ? hashPassword(normAnswer) : '',
+        profile: { gender: 'prefer_not_to_say', age: null, country: '' },
         createdAt: new Date().toISOString()
       };
 
@@ -227,8 +240,50 @@ module.exports = async function handler(req, res) {
         ? { ...auth.user.preferences }
         : {};
 
-      if (body.theme === 'light' || body.theme === 'dark') {
+      if (body.theme === 'light' || body.theme === 'dark' || body.theme === 'system') {
         current.theme = body.theme;
+      }
+      if (['pt-BR', 'en-US', 'es-ES'].includes(body.lang)) {
+        current.lang = body.lang;
+      }
+      if (['LR', 'TB', 'RL', 'BT'].includes(body.flowDirection)) {
+        current.flowDirection = body.flowDirection;
+      }
+      if (body.maxBeltTier !== undefined) {
+        current.maxBeltTier = Math.max(1, Math.min(6, Number(body.maxBeltTier) || 6));
+      }
+      if (body.maxPipeTier !== undefined) {
+        current.maxPipeTier = Math.max(1, Math.min(2, Number(body.maxPipeTier) || 2));
+      }
+      if (body.expandAllMachinesDefault !== undefined) {
+        current.expandAllMachinesDefault = Boolean(body.expandAllMachinesDefault);
+      }
+      if (body.navRailCollapsed !== undefined) {
+        current.navRailCollapsed = Boolean(body.navRailCollapsed);
+      }
+      if (body.showCanvasGrid !== undefined) {
+        current.showCanvasGrid = Boolean(body.showCanvasGrid);
+      }
+      if (body.snapToGrid !== undefined) {
+        current.snapToGrid = Boolean(body.snapToGrid);
+      }
+      if (body.reduceMotion !== undefined) {
+        current.reduceMotion = Boolean(body.reduceMotion);
+      }
+      if (body.energyAutoUnit !== undefined) {
+        current.energyAutoUnit = Boolean(body.energyAutoUnit);
+      }
+      if (body.autoPatchNotes !== undefined) {
+        current.autoPatchNotes = Boolean(body.autoPatchNotes);
+      }
+      if (body.profile && typeof body.profile === 'object') {
+        auth.user.profile = {
+          gender: typeof body.profile.gender === 'string' ? body.profile.gender.slice(0, 40) : 'prefer_not_to_say',
+          age: (body.profile.age !== null && body.profile.age !== undefined && body.profile.age !== '')
+            ? Math.max(5, Math.min(120, Number(body.profile.age) || 0))
+            : null,
+          country: typeof body.profile.country === 'string' ? body.profile.country.slice(0, 60) : ''
+        };
       }
       if (Array.isArray(body.libraryFavorites)) {
         current.libraryFavorites = [...new Set(
@@ -259,7 +314,159 @@ module.exports = async function handler(req, res) {
 
       auth.user.preferences = current;
       await writeJsonBlob(`db/users/${auth.user.usernameLower}.json`, auth.user);
-      return sendJson(res, 200, { ok: true, preferences: sanitizeUser(auth.user).preferences });
+      return sendJson(res, 200, { ok: true, preferences: sanitizeUser(auth.user).preferences, profile: sanitizeUser(auth.user).profile });
+    }
+
+    // POST /api/auth?action=set-security-question (Criar ou alterar pergunta e resposta secreta)
+    if (req.method === 'POST' && action === 'set-security-question') {
+      const auth = await getAuthenticatedUser(req, res, false);
+      if (!auth) return sendJson(res, 401, { error: 'Sua sessão expirou. Faça login novamente.' });
+
+      const body = await readRequestBody(req, 32 * 1024);
+      const currentPassword = String(body.currentPassword || '');
+      const securityQuestion = String(body.securityQuestion || '').trim().slice(0, 140);
+      const normAnswer = normalizeSecurityAnswer(body.securityAnswer || '');
+
+      if (!verifyPassword(currentPassword, auth.user.passwordHash)) {
+        return sendJson(res, 401, { error: 'Senha atual incorreta.' });
+      }
+      if (!securityQuestion || securityQuestion.length < 5) {
+        return sendJson(res, 400, { error: 'Escolha ou escreva uma pergunta de segurança válida.' });
+      }
+      if (normAnswer.length < 2) {
+        return sendJson(res, 400, { error: 'A resposta deve ter pelo menos 2 caracteres.' });
+      }
+
+      auth.user.securityQuestion = securityQuestion;
+      auth.user.securityAnswerHash = hashPassword(normAnswer);
+      auth.user.securityUpdatedAt = new Date().toISOString();
+      await writeJsonBlob(`db/users/${auth.user.usernameLower}.json`, auth.user);
+      return sendJson(res, 200, {
+        ok: true,
+        message: 'Pergunta de segurança salva com sucesso.',
+        user: sanitizeUser(auth.user)
+      });
+    }
+
+    // POST /api/auth?action=recovery-question (Buscar pergunta de segurança pelo username com rate-limit)
+    if (req.method === 'POST' && action === 'recovery-question') {
+      const body = await readRequestBody(req, 16 * 1024);
+      const username = String(body.username || '').trim();
+      const lower = normalizeUsername(username);
+      const ip = getClientIp(req);
+      const rlKey = `recovery_attempt:${ip}:${lower || 'empty'}`;
+      const rl = await checkRateLimit(rlKey, 5, 60 * 60 * 1000); // 5 tentativas por hora
+      if (rl.blocked) {
+        const mins = Math.ceil(rl.retryAfterMs / 60000);
+        return sendJson(res, 429, { error: `Limite de 5 tentativas por hora atingido. Aguarde ${mins} minuto(s).` });
+      }
+      if (!lower) {
+        return sendJson(res, 400, { error: 'Informe o nome de usuário.' });
+      }
+      const user = await getUserByUsername(lower);
+      if (!user || !user.securityQuestion || !user.securityAnswerHash) {
+        await recordRateLimitHit(rlKey, 60 * 60 * 1000);
+        // Mensagem genérica que não confirma se o usuário existe sem pergunta ou não existe
+        return sendJson(res, 404, { error: 'Não foi possível iniciar a recuperação para este usuário (usuário inexistente ou sem pergunta de segurança configurada).' });
+      }
+      return sendJson(res, 200, {
+        ok: true,
+        username: user.username,
+        securityQuestion: user.securityQuestion
+      });
+    }
+
+    // POST /api/auth?action=recover-password (Validar resposta secreta normalizada e redefinir senha)
+    if (req.method === 'POST' && action === 'recover-password') {
+      const body = await readRequestBody(req, 32 * 1024);
+      const username = String(body.username || '').trim();
+      const lower = normalizeUsername(username);
+      const normAnswer = normalizeSecurityAnswer(body.securityAnswer || '');
+      const newPassword = String(body.newPassword || '');
+      const confirmPassword = String(body.confirmPassword || '');
+      const ip = getClientIp(req);
+
+      const rlKey = `recovery_attempt:${ip}:${lower || 'empty'}`;
+      const rl = await checkRateLimit(rlKey, 5, 60 * 60 * 1000); // 5 tentativas por hora
+      if (rl.blocked) {
+        const mins = Math.ceil(rl.retryAfterMs / 60000);
+        return sendJson(res, 429, { error: `Limite de 5 tentativas por hora atingido. Aguarde ${mins} minuto(s).` });
+      }
+
+      if (!lower || !normAnswer) {
+        return sendJson(res, 400, { error: 'Informe o usuário e a resposta da pergunta de segurança.' });
+      }
+      const pErr = validatePassword(newPassword);
+      if (pErr) return sendJson(res, 400, { error: pErr });
+      if (newPassword !== confirmPassword) {
+        return sendJson(res, 400, { error: 'A confirmação da nova senha não confere.' });
+      }
+
+      const user = await getUserByUsername(lower);
+      const validAnswer = (user && user.securityAnswerHash)
+        ? verifyPassword(normAnswer, user.securityAnswerHash)
+        : false;
+
+      if (!user || !validAnswer) {
+        await recordRateLimitHit(rlKey, 60 * 60 * 1000);
+        return sendJson(res, 401, { error: 'Usuário ou resposta de segurança incorretos.' });
+      }
+
+      await clearRateLimit(rlKey);
+      user.passwordHash = hashPassword(newPassword);
+      user.passwordUpdatedAt = new Date().toISOString();
+      user.sessionVersion = (Number(user.sessionVersion) || 1) + 1;
+      await writeJsonBlob(`db/users/${user.usernameLower}.json`, user);
+
+      const token = await createSession(user);
+      setSessionCookie(res, token);
+      return sendJson(res, 200, {
+        ok: true,
+        message: 'Senha redefinida com sucesso!',
+        user: sanitizeUser(user)
+      });
+    }
+
+    // POST /api/auth?action=delete-account (Exclusão permanente da conta, projetos e sessões)
+    if (req.method === 'POST' && action === 'delete-account') {
+      const auth = await getAuthenticatedUser(req, res, false);
+      if (!auth) return sendJson(res, 401, { error: 'Sua sessão expirou. Faça login novamente.' });
+
+      if (auth.user.usernameLower === getReservedAdminUsernameLower()) {
+        return sendJson(res, 403, { error: 'A conta de administrador principal não pode ser excluída por aqui.' });
+      }
+
+      const body = await readRequestBody(req, 16 * 1024);
+      const password = String(body.password || '');
+      if (!verifyPassword(password, auth.user.passwordHash)) {
+        return sendJson(res, 401, { error: 'Senha atual incorreta. Exclusão cancelada.' });
+      }
+
+      // 1) Remove todos os projetos salvos da conta
+      try {
+        const projBlobs = await listJsonBlobs(`db/projects/${auth.user.id}/`);
+        for (const b of projBlobs) {
+          if (b && b.pathname) {
+            await deleteBlobByPathname(b.pathname).catch(() => {});
+          }
+        }
+      } catch {}
+
+      // 2) Remove registro da conta e revoga sessão ativa
+      await deleteBlobByPathname(`db/users/${auth.user.usernameLower}.json`);
+      if (auth.token) {
+        await invalidateSession(auth.token).catch(() => {});
+      }
+      if (typeof clearSessionCookie === 'function') {
+        clearSessionCookie(res);
+      } else {
+        setSessionCookie(res, '', 0);
+      }
+
+      return sendJson(res, 200, {
+        ok: true,
+        message: 'Sua conta e todos os dados vinculados foram excluídos permanentemente.'
+      });
     }
 
     return sendJson(res, 404, { error: 'Ação de autenticação não encontrada.' });

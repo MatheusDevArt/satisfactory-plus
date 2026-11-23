@@ -170,7 +170,7 @@ function checkPendingPatchAutoCard() {
 
 async function initPatchNotes() {
   try {
-    const res = await fetch('./data/patch-notes.json?v=18', { cache: 'no-store' });
+    const res = await fetch('./data/patch-notes.json?v=25', { cache: 'no-store' });
     if (!res.ok) return;
     const data = await res.json();
     if (!Array.isArray(data)) return;
@@ -178,8 +178,11 @@ async function initPatchNotes() {
     PatchNotesState.loaded = true;
     updatePatchNotesBadge();
 
+    const autoEnabled = (typeof SettingsState === 'object' && SettingsState.prefs)
+      ? Boolean(SettingsState.prefs.autoPatchNotes !== false)
+      : true;
     const latest = PatchNotesState.entries[0];
-    if (latest && getSeenPatchId() !== latest.id) {
+    if (autoEnabled && latest && getSeenPatchId() !== latest.id) {
       // Aguarda splash desaparecer e verifica se não há outro overlay aberto
       setTimeout(() => {
         if (getSeenPatchId() !== latest.id) {

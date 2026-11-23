@@ -9,6 +9,8 @@ const FactoryUIState = {
   powerMarginPercent: 10,
   showOtherGenerators: false,
   activeFooterTab: null, // null = recolhido | 'visao' | 'energia' | 'entradas' | 'saidas' | 'faltando' | 'excesso' | 'construcoes' | 'materiais'
+  hoverFooterTab: null,
+  pinnedFooterTab: null,
   collapsedSections: {
     materiais: true
   },
@@ -58,13 +60,65 @@ function toggleSummaryStatsCollapsed() {
   if (typeof updateTopRightFloatingActions === 'function') updateTopRightFloatingActions();
 }
 
+let _footerHoverLeaveTimer = null;
+
 function toggleSummarySection(secId) {
+  if (_footerHoverLeaveTimer) {
+    clearTimeout(_footerHoverLeaveTimer);
+    _footerHoverLeaveTimer = null;
+  }
   if (FactoryUIState.statsCollapsed) FactoryUIState.statsCollapsed = false;
-  FactoryUIState.activeFooterTab = (FactoryUIState.activeFooterTab === secId) ? null : secId;
+  if (FactoryUIState.pinnedFooterTab === secId) {
+    FactoryUIState.pinnedFooterTab = null;
+    FactoryUIState.hoverFooterTab = null;
+    FactoryUIState.activeFooterTab = null;
+  } else {
+    FactoryUIState.pinnedFooterTab = secId;
+    FactoryUIState.hoverFooterTab = secId;
+    FactoryUIState.activeFooterTab = secId;
+  }
   if (typeof updateTopRightFloatingActions === 'function') updateTopRightFloatingActions();
 }
 
+function hoverSummarySection(secId) {
+  if (_footerHoverLeaveTimer) {
+    clearTimeout(_footerHoverLeaveTimer);
+    _footerHoverLeaveTimer = null;
+  }
+  if (FactoryUIState.pinnedFooterTab) return; // se já está fixado por clique, respeita o clique
+  if (FactoryUIState.activeFooterTab === secId) return;
+  FactoryUIState.hoverFooterTab = secId;
+  FactoryUIState.activeFooterTab = secId;
+  if (typeof updateTopRightFloatingActions === 'function') updateTopRightFloatingActions();
+}
+
+function handleFooterMouseEnter() {
+  if (_footerHoverLeaveTimer) {
+    clearTimeout(_footerHoverLeaveTimer);
+    _footerHoverLeaveTimer = null;
+  }
+}
+
+function handleFooterMouseLeave() {
+  if (FactoryUIState.pinnedFooterTab) return; // permanece aberto se o usuário clicou
+  if (_footerHoverLeaveTimer) clearTimeout(_footerHoverLeaveTimer);
+  _footerHoverLeaveTimer = setTimeout(() => {
+    _footerHoverLeaveTimer = null;
+    if (!FactoryUIState.pinnedFooterTab && FactoryUIState.activeFooterTab) {
+      FactoryUIState.hoverFooterTab = null;
+      FactoryUIState.activeFooterTab = null;
+      if (typeof updateTopRightFloatingActions === 'function') updateTopRightFloatingActions();
+    }
+  }, 160);
+}
+
 function closeSummaryFooterDrawer() {
+  if (_footerHoverLeaveTimer) {
+    clearTimeout(_footerHoverLeaveTimer);
+    _footerHoverLeaveTimer = null;
+  }
+  FactoryUIState.pinnedFooterTab = null;
+  FactoryUIState.hoverFooterTab = null;
   FactoryUIState.activeFooterTab = null;
   if (typeof updateTopRightFloatingActions === 'function') updateTopRightFloatingActions();
 }
@@ -216,6 +270,52 @@ function renderFactorySummaryPanel({ mode, plan, freeBlocks, freeEdges, graph })
 
     for (const ex of (plan.allExcessItems || [])) {
       if (ex.item && ex.excessRate > 0.05) excessList.push(ex);
+    }
+  } else if (mode === 'power' && plan) {
+    powerGenerated = plan.totalGrossMw ?? plan.totalMW ?? 0;
+    const chainPlan = plan.fuelChainPlan || null;
+    powerConsumed = (plan.waterPumpPowerMw || 0) + (plan.chainPowerMw || (plan.extractorStats ? (plan.extractorStats.totalPowerMw || 0) : 0));
+
+    const genObj = generatorsDb[plan.generator?.id] || plan.generator;
+    addBuilding(genObj, plan.intGenerators || plan.generatorCount || 1);
+
+    if (plan.intWaterPumps > 0) {
+      addBuilding(extractorsDb['Build_WaterPump_C'], plan.intWaterPumps);
+      inputsMap.set('Desc_Water_C', (inputsMap.get('Desc_Water_C') || 0) + (plan.totalWaterNeeded || 0));
+    }
+
+    if (chainPlan) {
+      for (const st of (chainPlan.stages || [])) {
+        const mObj = machinesDb[st.machine?.id || st.recipe?.machine] || st.machine;
+        addBuilding(mObj, st.intMachines || 0);
+      }
+      for (const ex of (chainPlan.extractionPlan || [])) {
+        const exId = ex.extractor?.id || (ex.resource?.id === 'Desc_Water_C' ? 'Build_WaterPump_C'
+          : ex.resource?.id === 'Desc_LiquidOil_C' ? 'Build_OilPump_C'
+          : 'Build_MinerMk2_C');
+        const exObj = extractorsDb[exId] || ex.extractor;
+        addBuilding(exObj, ex.intExtractors || 1);
+        if (ex.resource) {
+          inputsMap.set(ex.resource.id, (inputsMap.get(ex.resource.id) || 0) + (ex.totalExtracted || ex.rateNeeded || 0));
+        }
+      }
+      for (const ex of (chainPlan.allExcessItems || [])) {
+        if (ex.item && ex.excessRate > 0.05) excessList.push(ex);
+      }
+    } else {
+      if (plan.extractorStats && plan.extractorStats.extractor) {
+        addBuilding(plan.extractorStats.extractor, plan.extractorStats.count || 1);
+      }
+      if (plan.fuelItem) {
+        const fRate = (plan.calcMode === 'from_fuel' && plan.availableFuelRate > 0) ? plan.availableFuelRate : (plan.totalFuelConsumed || 0);
+        inputsMap.set(plan.fuelItem.id, fRate);
+        if (plan.fuelExcess > 0.05) {
+          excessList.push({ item: plan.fuelItem, excessRate: plan.fuelExcess });
+        }
+      }
+    }
+    if (plan.byprodItem && plan.totalByproductRate > 0.05) {
+      outputsMap.set(plan.byprodItem.id, plan.totalByproductRate);
     }
   } else if (mode === 'free' && Array.isArray(freeBlocks)) {
     const producedMap = new Map();
@@ -408,9 +508,102 @@ function renderFactorySummaryPanel({ mode, plan, freeBlocks, freeEdges, graph })
         }).join('')
     : '<div class="fs-row"><span>Sem custo de construção</span></div>';
 
+  // Item 13 + Elevadores/Bombas 3D automáticos
+  const beltsTierMap = new Map();
+  const liftsTierMap = new Map();
+  const pipesTierMap = new Map();
+  let pipePumpsCount = 0;
+  let splittersCount = 0;
+  let mergersCount = 0;
+  let junctionsCount = 0;
+  const graphEdges = (graph && Array.isArray(graph.edges)) ? graph.edges : [];
+  const graphNodes = (graph && Array.isArray(graph.nodes))
+    ? graph.nodes
+    : (graph && Array.isArray(graph.columns) ? graph.columns.flatMap((c) => c.nodes || []) : []);
+  const nodeFloorMap = new Map();
+  graphNodes.forEach((n) => {
+    nodeFloorMap.set(n.id, Number(n._effectiveFloor || n.floor || 1));
+  });
+
+  const pickLiftTierForRate = (rate) => {
+    const r = Number(rate) || 0;
+    if (r <= 60) return 'Elevador de Esteira v.1';
+    if (r <= 120) return 'Elevador de Esteira v.2';
+    if (r <= 270) return 'Elevador de Esteira v.3';
+    if (r <= 480) return 'Elevador de Esteira v.4';
+    if (r <= 780) return 'Elevador de Esteira v.5';
+    return 'Elevador de Esteira v.6';
+  };
+
+  graphEdges.forEach((e) => {
+    const isPipe = Boolean(e.isPipe || e.isFluid || e.transport?.isFluid);
+    const fFloor = nodeFloorMap.get(e.from) || 1;
+    const tFloor = nodeFloorMap.get(e.to) || 1;
+    const floorDiff = Math.abs(tFloor - fFloor);
+    let tierName = e.transport?.name || e.transport?.shortName || '';
+    if (!tierName && e.label) {
+      const m = String(e.label).match(/v\.\d/i);
+      tierName = m ? `${isPipe ? 'Tubulação' : 'Esteira'} ${m[0]}` : (isPipe ? 'Tubulação' : 'Esteira');
+    }
+    if (!tierName) tierName = isPipe ? 'Tubulação' : 'Esteira';
+    const targetMap = isPipe ? pipesTierMap : beltsTierMap;
+    targetMap.set(tierName, (targetMap.get(tierName) || 0) + 1);
+
+    if (floorDiff > 0) {
+      if (isPipe && tFloor > fFloor) {
+        // Cada andar ~12m; Bomba de Tubulação v.1 (20m) / v.2 (50m)
+        const heightM = floorDiff * 12;
+        pipePumpsCount += Math.max(1, Math.ceil(heightM / 20));
+      } else if (!isPipe) {
+        const liftName = pickLiftTierForRate(e.rate || e.flowRate || 60);
+        liftsTierMap.set(liftName, (liftsTierMap.get(liftName) || 0) + 1);
+      }
+    }
+  });
+
+  graphNodes.forEach((n) => {
+    const k = String(n.kind || '').toLowerCase();
+    const t = String(n.topLabel || n.title || '').toLowerCase();
+    const mult = n.badgeText ? Math.max(1, parseInt(String(n.badgeText).replace(/[^\d]/g, ''), 10) || 1) : 1;
+    if (k.includes('junction') || t.includes('junção') || t.includes('juncao')) junctionsCount += mult;
+    else if (k.includes('splitter') || t.includes('divisor')) splittersCount += mult;
+    else if (k.includes('merger') || t.includes('unificador')) mergersCount += mult;
+  });
+
+  const totalBelts = [...beltsTierMap.values()].reduce((a, v) => a + v, 0);
+  const totalLifts = [...liftsTierMap.values()].reduce((a, v) => a + v, 0);
+  const totalPipes = [...pipesTierMap.values()].reduce((a, v) => a + v, 0);
+  const totalLogisticsCount = totalBelts + totalLifts + totalPipes + pipePumpsCount + splittersCount + mergersCount + junctionsCount;
+  const logisticsRows = [];
+  beltsTierMap.forEach((cnt, name) => {
+    logisticsRows.push(`<div class="fs-row"><span class="fs-row-item"><span>📦 ${escSummary(name)}</span></span><strong>${cnt} trecho(s)</strong></div>`);
+  });
+  liftsTierMap.forEach((cnt, name) => {
+    logisticsRows.push(`<div class="fs-row"><span class="fs-row-item"><span>🛗 ${escSummary(name)}</span></span><strong>×${cnt}</strong></div>`);
+  });
+  pipesTierMap.forEach((cnt, name) => {
+    logisticsRows.push(`<div class="fs-row"><span class="fs-row-item"><span>💧 ${escSummary(name)}</span></span><strong>${cnt} trecho(s)</strong></div>`);
+  });
+  if (pipePumpsCount > 0) {
+    logisticsRows.push(`<div class="fs-row"><span class="fs-row-item"><span>🔧 Bombas de Tubulação (andares)</span></span><strong>×${pipePumpsCount}</strong></div>`);
+  }
+  if (splittersCount > 0) {
+    logisticsRows.push(`<div class="fs-row"><span class="fs-row-item"><span>🔀 Divisores de Esteira</span></span><strong>×${splittersCount}</strong></div>`);
+  }
+  if (mergersCount > 0) {
+    logisticsRows.push(`<div class="fs-row"><span class="fs-row-item"><span>🔁 Unificadores de Esteira</span></span><strong>×${mergersCount}</strong></div>`);
+  }
+  if (junctionsCount > 0) {
+    logisticsRows.push(`<div class="fs-row"><span class="fs-row-item"><span>💧 Junções de Tubulação</span></span><strong>×${junctionsCount}</strong></div>`);
+  }
+  const logisticsBody = logisticsRows.length > 0
+    ? logisticsRows.join('')
+    : '<div class="fs-row"><span>Nenhuma conexão logística na linha</span></div>';
+
   const tabs = [
     { id: 'visao', label: `Visão geral (${totalBuildings})`, body: overviewBody },
     { id: 'energia', label: powerGenerated > 0 && powerConsumed === 0 ? `Energia gerada (${fmt(powerGenerated, 0)} MW)` : `Energia (${fmt(powerConsumed, 0)} MW)`, body: energyBody },
+    { id: 'logistica', label: `Logística (${totalLogisticsCount})`, body: logisticsBody },
     { id: 'entradas', label: `Entradas (${inputsMap.size})`, body: inputsBody },
     { id: 'saidas', label: `Saídas (${outputsMap.size})`, body: outputsBody },
     ...(missingMap.size > 0 ? [{ id: 'faltando', label: `Não produzido (${missingMap.size})`, body: missingBody, tone: 'neg' }] : []),
@@ -421,27 +614,37 @@ function renderFactorySummaryPanel({ mode, plan, freeBlocks, freeEdges, graph })
 
   const activeTabObj = tabs.find((t) => t.id === FactoryUIState.activeFooterTab) || null;
 
+  const powerNeutralPillsHtml = (mode === 'power' && plan) ? `
+    <span class="fs-footer-stat-neutral">⚡ Bruta: +${fmt(powerGenerated, 0)} MW (${plan.intGenerators || plan.generatorCount || 1}×)</span>
+    <span class="fs-footer-stat-neutral">🔋 Líquida: +${fmt(plan.netPowerMw ?? (powerGenerated - powerConsumed), 0)} MW</span>
+    ${plan.fuelItem ? `<span class="fs-footer-stat-neutral">🔥 ${escSummary(plan.fuelItem.name)}: ${fmt((plan.calcMode === 'from_fuel' && plan.availableFuelRate > 0) ? plan.availableFuelRate : (plan.totalFuelConsumed || 0), 1)}/min</span>` : ''}
+  ` : '';
+
   return `
-    ${activeTabObj ? `
-      <div class="fs-footer-drawer">
-        <div class="fs-footer-drawer-head">
-          <strong>${activeTabObj.label}</strong>
-          <button type="button" class="fs-drawer-close" onclick="closeSummaryFooterDrawer()" title="Fechar">✕</button>
+    <div class="fs-footer-hover-zone" onmouseenter="handleFooterMouseEnter()" onmouseleave="handleFooterMouseLeave()">
+      ${activeTabObj ? `
+        <div class="fs-footer-drawer" onmouseenter="handleFooterMouseEnter()">
+          <div class="fs-footer-drawer-head">
+            <strong>${activeTabObj.label} ${FactoryUIState.pinnedFooterTab === activeTabObj.id ? '<span class="fs-pin-tag">Fixado</span>' : ''}</strong>
+            <button type="button" class="fs-drawer-close" onclick="closeSummaryFooterDrawer()" title="Fechar">✕</button>
+          </div>
+          <div class="fs-footer-drawer-body">${activeTabObj.body}</div>
         </div>
-        <div class="fs-footer-drawer-body">${activeTabObj.body}</div>
+      ` : ''}
+      <div class="fs-footer-bar" role="tablist" aria-label="Resumo da linha">
+        ${tabs.map((t) => `
+          <button
+            type="button"
+            class="fs-footer-tab ${FactoryUIState.activeFooterTab === t.id ? 'active' : ''} ${FactoryUIState.pinnedFooterTab === t.id ? 'is-pinned' : ''} ${t.tone ? 'tone-' + t.tone : ''}"
+            onmouseenter="hoverSummarySection('${t.id}')"
+            onclick="toggleSummarySection('${t.id}')"
+          >
+            <span>${t.label}</span>
+            <span class="fs-tab-caret">${FactoryUIState.activeFooterTab === t.id ? '▾' : '▴'}</span>
+          </button>
+        `).join('')}
+        ${powerNeutralPillsHtml}
       </div>
-    ` : ''}
-    <div class="fs-footer-bar" role="tablist" aria-label="Resumo da linha">
-      ${tabs.map((t) => `
-        <button
-          type="button"
-          class="fs-footer-tab ${FactoryUIState.activeFooterTab === t.id ? 'active' : ''} ${t.tone ? 'tone-' + t.tone : ''}"
-          onclick="toggleSummarySection('${t.id}')"
-        >
-          <span>${t.label}</span>
-          <span class="fs-tab-caret">${FactoryUIState.activeFooterTab === t.id ? '▾' : '▴'}</span>
-        </button>
-      `).join('')}
     </div>
   `;
 }
@@ -458,7 +661,12 @@ function openAddMachineModal(options = {}) {
   st.filterItemId = options.filterItemId || null;
   st.fromNodeId = options.fromNodeId || null;
   st.worldPos = options.worldPos || null;
-  st.activeIndex = 0;
+  st.activeIndex = -1;
+
+  const titleEl = document.getElementById('add-machine-title');
+  if (titleEl) {
+    titleEl.textContent = 'Adicionar Máquina';
+  }
 
   const modal = document.getElementById('add-machine-modal');
   if (modal) modal.classList.remove('hidden');
@@ -471,7 +679,7 @@ function openAddMachineModal(options = {}) {
 
 function setAddMachineQuickFilter(filterKey) {
   FactoryUIState.addMachineModal.quickFilter = filterKey;
-  FactoryUIState.addMachineModal.activeIndex = 0;
+  FactoryUIState.addMachineModal.activeIndex = -1;
   renderAddMachineModalResultsOnly();
 }
 
@@ -522,12 +730,24 @@ function getFilteredAddMachineOptions() {
     }
     if (!q) return true;
     return normAmText(`${m.name || ''} ${m.nameEn || ''}`).includes(q);
-  }).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR')) : [];
+  }).sort((a, b) => {
+    if (window.DS?.getMachineProgressionRank) {
+      const diff = DS.getMachineProgressionRank(a) - DS.getMachineProgressionRank(b);
+      if (diff !== 0) return diff;
+    }
+    return (a.name || '').localeCompare(b.name || '', 'pt-BR');
+  }) : [];
 
   const showExtractors = !filterItem && (qf === 'all' || qf === 'maquinas');
   const extractors = showExtractors ? Object.values(extractorsDb).filter((ex) => {
     if (!q) return true;
     return normAmText(`${ex.name || ''} ${ex.nameEn || ''}`).includes(q);
+  }).sort((a, b) => {
+    if (window.DS?.getMachineProgressionRank) {
+      const diff = DS.getMachineProgressionRank(a) - DS.getMachineProgressionRank(b);
+      if (diff !== 0) return diff;
+    }
+    return (a.name || '').localeCompare(b.name || '', 'pt-BR');
   }) : [];
 
   const showGenerators = qf === 'all' || qf === 'energia';
@@ -543,6 +763,12 @@ function getFilteredAddMachineOptions() {
       return it ? `${it.name || ''} ${it.nameEn || ''}` : '';
     }).join(' ');
     return normAmText(`${g.name || ''} ${g.nameEn || ''} ${fuelsText}`).includes(q);
+  }).sort((a, b) => {
+    if (window.DS?.getMachineProgressionRank) {
+      const diff = DS.getMachineProgressionRank(a) - DS.getMachineProgressionRank(b);
+      if (diff !== 0) return diff;
+    }
+    return (a.name || '').localeCompare(b.name || '', 'pt-BR');
   }) : [];
 
   // Receitas (padrão + alternativas ALT unificadas) — exclusivas em 'receitas' ou quando buscando em 'all'
@@ -673,7 +899,7 @@ function pickRecipeFromModal(recipeId) {
 
 function handleAddMachineSearchInput(val) {
   FactoryUIState.addMachineModal.search = val;
-  FactoryUIState.addMachineModal.activeIndex = 0;
+  FactoryUIState.addMachineModal.activeIndex = -1;
   renderAddMachineModalResultsOnly();
 }
 
@@ -685,22 +911,31 @@ function renderAddMachineModalBody() {
   // Cria o esqueleto com o input uma única vez para NUNCA perder o foco ao digitar
   if (!document.getElementById('am-search-input')) {
     body.innerHTML = `
-      <input
-        id="am-search-input"
-        type="text"
-        class="am-search-input"
-        value="${escSummary(st.search)}"
-        placeholder="Buscar receita, produto, máquina ou construção..."
-        oninput="handleAddMachineSearchInput(this.value)"
-      />
-      <div id="am-filters-slot"></div>
-      <div id="am-results-slot"></div>
+      <div class="ds-modal-toolbar">
+        <input
+          id="am-search-input"
+          type="text"
+          class="ds-modal-search"
+          value="${escSummary(st.search)}"
+          placeholder="Buscar receita, item, máquina ou construção..."
+          autocomplete="off"
+          oninput="handleAddMachineSearchInput(this.value)"
+        />
+        <div id="am-filters-slot"></div>
+      </div>
+      <div id="am-results-slot" class="ds-modal-scroll"></div>
     `;
   } else {
     const inp = document.getElementById('am-search-input');
     if (inp && inp.value !== st.search) inp.value = st.search;
   }
 
+  renderAddMachineModalResultsOnly();
+}
+
+function setAddMachineRecipeSubFilter(key) {
+  FactoryUIState.addMachineModal.recipeSubFilter = key || 'all';
+  FactoryUIState.addMachineModal.activeIndex = -1;
   renderAddMachineModalResultsOnly();
 }
 
@@ -712,10 +947,28 @@ function renderAddMachineModalResultsOnly() {
   const st = FactoryUIState.addMachineModal;
   const itemsDb = (window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.items) || {};
   const machinesDb = (window.SATISFACTORY_DATA && window.SATISFACTORY_DATA.machines) || {};
-  const { logistics, machines, extractors, generators, recipes, filterItem } = getFilteredAddMachineOptions();
+  const { logistics, machines, extractors, generators, recipes: allFilteredRecipes, filterItem } = getFilteredAddMachineOptions();
 
-  const totalActions = machines.length + extractors.length + logistics.length + generators.length + Math.min(80, recipes.length);
-  if (st.activeIndex >= totalActions) st.activeIndex = Math.max(0, totalActions - 1);
+  // Subfiltro para Receitas (Todas / Padrão / Alternativas / Categorias)
+  const rSub = st.recipeSubFilter || 'all';
+  const showRecipeSubFilters = (st.quickFilter === 'receitas' || (st.quickFilter === 'all' && allFilteredRecipes.length > 12));
+  const recipes = showRecipeSubFilters && rSub !== 'all'
+    ? allFilteredRecipes.filter((r) => {
+        if (rSub === 'standard') return !r.isAlternate;
+        if (rSub === 'alternate') return Boolean(r.isAlternate);
+        const mainProd = r.products?.[0] ? itemsDb[r.products[0].item] : null;
+        return (mainProd?.category || 'Outros') === rSub;
+      })
+    : allFilteredRecipes;
+
+  const totalActions = machines.length + extractors.length + logistics.length + generators.length + Math.min(120, recipes.length);
+  if (st.activeIndex >= totalActions) st.activeIndex = -1;
+
+  const titleEl = document.getElementById('add-machine-title');
+  if (titleEl) {
+    const shownCount = machines.length + extractors.length + logistics.length + generators.length + recipes.length;
+    titleEl.textContent = `Adicionar Máquina (${shownCount})`;
+  }
 
   const quickFilters = [
     { key: 'all', label: 'Todos' },
@@ -725,156 +978,269 @@ function renderAddMachineModalResultsOnly() {
     { key: 'energia', label: 'Energia' }
   ];
 
-  const quickFiltersHtml = `
-    <div class="am-quick-filters" role="tablist" aria-label="Filtros por categoria">
-      ${quickFilters.map((f) => `
-        <button
-          type="button"
-          class="am-qf-chip ${st.quickFilter === f.key ? 'active' : ''}"
-          onclick="setAddMachineQuickFilter('${f.key}')"
-        >${f.label}</button>
-      `).join('')}
-    </div>
-  `;
+  const quickFiltersHtml = window.DS ? DS.filterChips({
+    chips: quickFilters,
+    activeKey: st.quickFilter || 'all',
+    onSelectExpr: 'setAddMachineQuickFilter(__KEY__)',
+    ariaLabel: 'Filtros por categoria'
+  }) : '';
+
+  let recipeSubHtml = '';
+  if (st.quickFilter === 'receitas' && window.DS) {
+    const recCatSet = new Set();
+    allFilteredRecipes.forEach(r => {
+      const mp = r.products?.[0] ? itemsDb[r.products[0].item] : null;
+      if (mp?.category) recCatSet.add(mp.category);
+    });
+    const orderMap = (typeof LIB_PROGRESSION_ORDER !== 'undefined') ? LIB_PROGRESSION_ORDER : {};
+    const orderedCats = Array.from(recCatSet).sort((a, b) => (orderMap[a] || 50) - (orderMap[b] || 50) || a.localeCompare(b, 'pt-BR'));
+    const subChips = [
+      { key: 'all', label: 'Todas', count: allFilteredRecipes.length },
+      { key: 'standard', label: 'Padrão', count: allFilteredRecipes.filter(r => !r.isAlternate).length },
+      { key: 'alternate', label: 'ALT', count: allFilteredRecipes.filter(r => r.isAlternate).length },
+      ...orderedCats.map(c => ({ key: c, label: c === 'Quântico & Alienígena' ? 'Material Alienígena' : c }))
+    ];
+    const subFn = window.DS.recipeFilterBox || window.DS.filterChips;
+    recipeSubHtml = subFn({
+      chips: subChips,
+      activeKey: rSub,
+      onSelectExpr: 'setAddMachineRecipeSubFilter(__KEY__)',
+      ariaLabel: 'Filtrar receitas por categoria'
+    });
+  }
 
   const filterChipHtml = filterItem ? `
-    <div class="am-filter-chip">
+    <div class="am-filter-chip" style="margin-top:8px;">
       ${typeof renderEntityIcon === 'function' ? renderEntityIcon(filterItem, 18) : ''}
       <span>Conectando: ${escSummary(filterItem.name)}</span>
     </div>
   ` : '';
 
-  filtersSlot.innerHTML = quickFiltersHtml + filterChipHtml;
+  filtersSlot.innerHTML = quickFiltersHtml + recipeSubHtml + filterChipHtml;
 
   let cursor = 0;
+  const renderIcon44 = (entity, fallback) => {
+    if (typeof renderEntityIcon === 'function') return renderEntityIcon(entity, 44);
+    if (entity && entity.wikiImage) return `<img src="${entity.wikiImage}" alt="${escSummary(entity.name)}" width="44" height="44" loading="lazy" />`;
+    return `<span>${fallback}</span>`;
+  };
+
   const machinesHtml = machines.length > 0 ? `
-    <div class="am-section-title">Máquinas de Produção (${machines.length})</div>
-    <div class="am-std-grid">
-      ${machines.map((m) => {
-        const idx = cursor++;
-        return `
-          <button
-            type="button"
-            class="am-std-card ${idx === st.activeIndex ? 'is-selected' : ''}"
-            onclick="pickMachineFromModal('${m.id}')"
-          >
-            ${m.wikiImage ? `<img src="${m.wikiImage}" alt="${escSummary(m.name)}" loading="lazy" />` : '<span>🏭</span>'}
-            <span>${escSummary(m.name)}</span>
-          </button>
-        `;
-      }).join('')}
+    <div class="ds-modal-group" style="--grp-color:#6366F1;">
+      ${DS.modalGroupHeader({ title: 'Máquinas de Produção', count: machines.length })}
+      <div class="ds-modal-list">
+        ${machines.map((m) => {
+          const idx = cursor++;
+          const mw = m.basePowerMw ?? m.powerConsumption ?? m.powerMw ?? 0;
+          const sub = mw ? `⚡ ${mw} MW` : '';
+          const prodsStrip = window.DS?.renderMachineProducedItemsHtml ? DS.renderMachineProducedItemsHtml(m, 10) : '';
+          return `
+            <button
+              type="button"
+              class="ds-refb-card ${idx === st.activeIndex ? 'is-selected' : ''}"
+              onclick="pickMachineFromModal('${m.id}')"
+            >
+              <span class="ds-refb-icon">${renderIcon44(m, '🏭')}</span>
+              <span class="ds-refb-body">
+                <span class="ds-refb-top">
+                  <span class="ds-refb-title">${escSummary(m.name)}</span>
+                  <span class="ds-refb-meta">${sub}</span>
+                </span>
+                ${prodsStrip}
+              </span>
+            </button>
+          `;
+        }).join('')}
+      </div>
     </div>
   ` : '';
 
   const extractorsHtml = extractors.length > 0 ? `
-    <div class="am-section-title">Extratores e Mineradoras (${extractors.length})</div>
-    <div class="am-std-grid">
-      ${extractors.map((ex) => {
-        const idx = cursor++;
-        return `
-          <button
-            type="button"
-            class="am-std-card ${idx === st.activeIndex ? 'is-selected' : ''}"
-            onclick="pickExtractorFromModal('${ex.id}')"
-          >
-            ${ex.wikiImage ? `<img src="${ex.wikiImage}" alt="${escSummary(ex.name)}" loading="lazy" />` : '<span>⛏️</span>'}
-            <span>${escSummary(ex.name)}</span>
-          </button>
-        `;
-      }).join('')}
-    </div>
-  ` : '';
-
-  const logisticsHtml = logistics.length > 0 ? `
-    <div class="am-section-title">Logística e Armazenamento (${logistics.length})</div>
-    <div class="am-std-grid">
-      ${logistics.map((l) => {
-        const idx = cursor++;
-        return `
-          <button
-            type="button"
-            class="am-std-card ${idx === st.activeIndex ? 'is-selected' : ''}"
-            onclick="pickLogisticsFromModal('${l.id}')"
-          >
-            ${l.wikiImage ? `<img src="${l.wikiImage}" alt="${escSummary(l.name)}" loading="lazy" />` : '<span>📦</span>'}
-            <span>${escSummary(l.name)}</span>
-          </button>
-        `;
-      }).join('')}
-    </div>
-  ` : '';
-
-  const generatorsHtml = generators.length > 0 ? `
-    <div class="am-section-title">Geradores de Energia (${generators.length})</div>
-    <div class="am-std-grid">
-      ${generators.map((g) => {
-        const idx = cursor++;
-        return `
-          <button
-            type="button"
-            class="am-std-card ${idx === st.activeIndex ? 'is-selected' : ''}"
-            onclick="pickGeneratorFromModal('${g.id}')"
-          >
-            ${g.wikiImage ? `<img src="${g.wikiImage}" alt="${escSummary(g.name)}" loading="lazy" />` : '<span>⚡</span>'}
-            <span>${escSummary(g.name)}</span>
-          </button>
-        `;
-      }).join('')}
-    </div>
-  ` : '';
-
-  const recipesHtml = recipes.length > 0 ? `
-    <div class="am-section-title">Receitas (${recipes.length})</div>
-    <div class="am-recipes-list">
-      ${recipes.slice(0, 80).map((r) => {
-        const idx = cursor++;
-        const mObj = machinesDb[r.machine];
-        const mainProd = r.products?.[0] ? itemsDb[r.products[0].item] : null;
-        const ingIcons = (r.ingredients || []).map((i) => {
-          const it = itemsDb[i.item];
-          return it && typeof renderEntityIcon === 'function' ? renderEntityIcon(it, 18) : '';
-        }).join('');
-        const prodIcons = (r.products || []).map((p) => {
-          const it = itemsDb[p.item];
-          return it && typeof renderEntityIcon === 'function' ? renderEntityIcon(it, 18) : '';
-        }).join('');
-        return `
-          <button
-            type="button"
-            class="am-recipe-row ${idx === st.activeIndex ? 'is-active' : ''}"
-            onclick="pickRecipeFromModal('${r.id}')"
-          >
-            <div class="am-recipe-left">
-              ${mainProd && typeof renderEntityIcon === 'function' ? renderEntityIcon(mainProd, 28) : ''}
-              <div class="am-recipe-meta">
-                <span class="am-recipe-name">
-                  ${escSummary(r.cleanName || r.name)}
-                  ${r.isAlternate ? '<span class="am-alt-badge">ALT</span>' : ''}
+    <div class="ds-modal-group" style="--grp-color:#14B8A6;">
+      ${DS.modalGroupHeader({ title: 'Extratores e Mineradoras', count: extractors.length })}
+      <div class="ds-modal-list">
+        ${extractors.map((ex) => {
+          const idx = cursor++;
+          const mw = ex.basePowerMw ?? ex.powerConsumption ?? ex.powerMw ?? 0;
+          const rateTxt = ex.baseRatePerMin ? `${ex.baseRatePerMin}${ex.isFluid ? ' m³' : ''}/min · ` : '';
+          const sub = `${rateTxt}${mw ? `⚡ ${mw} MW` : ''}`;
+          const prodsStrip = window.DS?.renderMachineProducedItemsHtml ? DS.renderMachineProducedItemsHtml(ex, 10) : '';
+          return `
+            <button
+              type="button"
+              class="ds-refb-card ${idx === st.activeIndex ? 'is-selected' : ''}"
+              onclick="pickExtractorFromModal('${ex.id}')"
+            >
+              <span class="ds-refb-icon">${renderIcon44(ex, '⛏️')}</span>
+              <span class="ds-refb-body">
+                <span class="ds-refb-top">
+                  <span class="ds-refb-title">${escSummary(ex.name)}</span>
+                  <span class="ds-refb-meta">${sub}</span>
                 </span>
-                <span class="am-recipe-sub">${escSummary(mObj?.name || '')}</span>
-              </div>
-            </div>
-            <div class="am-recipe-io">${ingIcons} <span>→</span> ${prodIcons}</div>
-          </button>
-        `;
-      }).join('')}
+                ${prodsStrip}
+              </span>
+            </button>
+          `;
+        }).join('')}
+      </div>
     </div>
-  ` : (machines.length === 0 && logistics.length === 0 && extractors.length === 0 && generators.length === 0
-    ? '<div class="picker-empty">Nenhum item encontrado para este filtro.</div>'
+  ` : '';
+
+  // Agrupa logística por subcategoria (Esteiras & Elevadores, Tubulações, Armazenamento, Destinos Finais)
+  const logGroupsMap = new Map();
+  logistics.forEach(l => {
+    const cat = l.kind === 'conveyor_lift' ? 'Elevadores de Esteira' : (l.category || 'Logística');
+    if (!logGroupsMap.has(cat)) logGroupsMap.set(cat, []);
+    logGroupsMap.get(cat).push(l);
+  });
+  const logCatColors = { 'Logística': '#0EA5E9', 'Elevadores de Esteira': '#14B8A6', 'Tubulações': '#0284C7', 'Armazenamento': '#CA8A04', 'Destinos Finais': '#E11D48' };
+  const logisticsHtml = Array.from(logGroupsMap.entries()).map(([cat, list]) => `
+    <div class="ds-modal-group" style="--grp-color:${logCatColors[cat] || '#0EA5E9'};">
+      ${DS.modalGroupHeader({ title: cat, count: list.length })}
+      <div class="ds-modal-list">
+        ${list.map((l) => {
+          const idx = cursor++;
+          let metaTxt = '';
+          if (l.ratePerMin) metaTxt = `${l.ratePerMin} ${l.isFluid ? 'm³' : 'itens'}/min`;
+          else if (l.kind === 'storage_mk1') metaTxt = '24 espaços';
+          else if (l.kind === 'storage_mk2') metaTxt = '48 espaços';
+          else if (l.kind === 'fluid_buffer_mk1') metaTxt = '400 m³';
+          else if (l.kind === 'fluid_buffer_mk2') metaTxt = '2.400 m³';
+          else if (l.kind === 'pipe_pump_mk1') metaTxt = '20 m · ⚡ 4 MW';
+          else if (l.kind === 'pipe_pump_mk2') metaTxt = '50 m · ⚡ 8 MW';
+          else if (l.powerMw) metaTxt = `⚡ ${l.powerMw} MW`;
+          else metaTxt = `${l.inPorts || 0} ent. → ${l.outPorts || 0} saí.`;
+          return `
+            <button
+              type="button"
+              class="ds-refb-card ${idx === st.activeIndex ? 'is-selected' : ''}"
+              onclick="pickLogisticsFromModal('${l.id}')"
+            >
+              <span class="ds-refb-icon">${renderIcon44(l, '📦')}</span>
+              <span class="ds-refb-body">
+                <span class="ds-refb-top">
+                  <span class="ds-refb-title">${escSummary(l.name)}</span>
+                  <span class="ds-refb-meta">${metaTxt}</span>
+                </span>
+              </span>
+            </button>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  // Geradores de Energia: mostra potência base REAL + combustíveis/água que consome!
+  const generatorsHtml = generators.length > 0 ? `
+    <div class="ds-modal-group" style="--grp-color:#10B981;">
+      ${DS.modalGroupHeader({ title: 'Geradores de Energia', count: generators.length })}
+      <div class="ds-modal-list">
+        ${generators.map((g) => {
+          const idx = cursor++;
+          const mw = g.powerProductionMw ?? g.powerProduction ?? g.basePowerMw ?? 0;
+          const sub = mw > 0 ? `⚡ ${mw} MW base` : 'Energia';
+          const fuelPills = (g.fuels || []).slice(0, 6).map((f) => {
+            const fItem = itemsDb[f.item || f.itemId];
+            if (!fItem) return '';
+            const ico = typeof renderEntityIcon === 'function' ? renderEntityIcon(fItem, 16) : '';
+            return `<span class="ds-mach-prod-ico" title="${escSummary(fItem.name)}">${ico}</span>`;
+          }).join('');
+          const waterObj = itemsDb['Desc_Water_C'];
+          const waterPill = (g.waterPerMin > 0 && waterObj)
+            ? `<span class="ds-mach-prod-ico" title="Água (${g.waterPerMin} m³/min)">${typeof renderEntityIcon === 'function' ? renderEntityIcon(waterObj, 16) : ''}</span>`
+            : '';
+          const fuelsStrip = (fuelPills || waterPill)
+            ? `<span class="ds-mach-prods-strip"><span class="ds-mach-prods-lbl">Consome:</span>${fuelPills}${waterPill}</span>`
+            : '';
+          return `
+            <button
+              type="button"
+              class="ds-refb-card ${idx === st.activeIndex ? 'is-selected' : ''}"
+              onclick="pickGeneratorFromModal('${g.id}')"
+            >
+              <span class="ds-refb-icon">${renderIcon44(g, '⚡')}</span>
+              <span class="ds-refb-body">
+                <span class="ds-refb-top">
+                  <span class="ds-refb-title">${escSummary(g.name)}</span>
+                  <span class="ds-refb-meta">${sub}</span>
+                </span>
+                ${fuelsStrip}
+              </span>
+            </button>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  ` : '';
+
+  // Agrupa Receitas por categoria do item produzido, sem MW e com a máquina no canto inferior direito!
+  const recGroupsMap = new Map();
+  recipes.slice(0, 120).forEach((r) => {
+    const mainProd = r.products?.[0] ? itemsDb[r.products[0].item] : null;
+    const rawCat = mainProd?.category || 'Outros';
+    const catLabel = rawCat === 'Quântico & Alienígena' ? 'Material Alienígena' : rawCat;
+    if (!recGroupsMap.has(catLabel)) recGroupsMap.set(catLabel, { rawCat, list: [] });
+    recGroupsMap.get(catLabel).list.push(r);
+  });
+  const catOrder = (typeof LIB_PROGRESSION_ORDER !== 'undefined') ? LIB_PROGRESSION_ORDER : {};
+  const catColors = (typeof LIB_CATEGORY_COLORS !== 'undefined') ? LIB_CATEGORY_COLORS : {};
+  const orderedRecGroups = Array.from(recGroupsMap.entries()).sort((a, b) =>
+    (catOrder[a[1].rawCat] || 50) - (catOrder[b[1].rawCat] || 50) || a[0].localeCompare(b[0], 'pt-BR')
+  );
+
+  const recipesHtml = orderedRecGroups.length > 0 ? orderedRecGroups.map(([catLabel, { rawCat, list }]) => `
+    <div class="ds-modal-group" style="--grp-color:${catColors[rawCat] || '#2563EB'};">
+      ${DS.modalGroupHeader({ title: `Receitas · ${catLabel}`, count: list.length })}
+      <div class="ds-modal-list">
+        ${list.map((r) => {
+          const idx = cursor++;
+          const mObj = machinesDb[r.machine];
+          const mainProd = r.products?.[0] ? itemsDb[r.products[0].item] : null;
+          const ingsHtml = (r.ingredients || []).map((i) => {
+            const it = itemsDb[i.item];
+            const ico = it && typeof renderEntityIcon === 'function' ? renderEntityIcon(it, 17) : '';
+            const rate = typeof fmt === 'function' ? fmt(i.ratePerMin, 1) : i.ratePerMin;
+            return `<span class="rp-io-pill">${ico} ${rate}/min</span>`;
+          }).join('');
+          const prodsHtml = (r.products || []).map((p) => {
+            const it = itemsDb[p.item];
+            const ico = it && typeof renderEntityIcon === 'function' ? renderEntityIcon(it, 17) : '';
+            const rate = typeof fmt === 'function' ? fmt(p.ratePerMin, 1) : p.ratePerMin;
+            return `<span class="rp-io-pill out">${ico} ${rate}/min</span>`;
+          }).join('');
+          return `
+            <button
+              type="button"
+              class="ds-refb-card ds-refb-recipe-card ${idx === st.activeIndex ? 'is-selected' : ''}"
+              onclick="pickRecipeFromModal('${r.id}')"
+            >
+              <span class="ds-refb-icon">${renderIcon44(mainProd || mObj, '📜')}</span>
+              <span class="ds-refb-body">
+                <span class="ds-refb-top">
+                  <span class="ds-refb-title">${r.isAlternate ? '<span class="ds-refb-alt">ALT</span>' : ''}${escSummary(r.cleanName || r.name)}</span>
+                </span>
+                <span class="ds-refb-flow">
+                  <span class="rp-opt-side">${ingsHtml}</span>
+                  <span class="rp-arrow">→</span>
+                  <span class="rp-opt-side">${prodsHtml}</span>
+                </span>
+                ${mObj ? `<span class="ds-refb-foot">${typeof renderEntityIcon === 'function' ? renderEntityIcon(mObj, 15) : ''}<span>${escSummary(mObj.name)}</span></span>` : ''}
+              </span>
+            </button>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `).join('') : (machines.length === 0 && logistics.length === 0 && extractors.length === 0 && generators.length === 0
+    ? DS.emptyState('Nenhum item encontrado para este filtro.')
     : '');
 
   resultsSlot.innerHTML = `
-    <div class="am-results-scroll">
-      ${machinesHtml}
-      ${extractorsHtml}
-      ${logisticsHtml}
-      ${generatorsHtml}
-      ${recipesHtml}
-    </div>
-    <div class="am-footer">
-      <span>${machines.length + extractors.length + logistics.length + generators.length} construções · ${recipes.length} receita(s)</span>
-      <button type="button" class="btn-tutorial-nav" onclick="closeAddMachineModal()">Cancelar</button>
-    </div>
+    ${machinesHtml}
+    ${extractorsHtml}
+    ${logisticsHtml}
+    ${generatorsHtml}
+    ${recipesHtml}
   `;
 }
 
@@ -893,13 +1259,14 @@ document.addEventListener('keydown', (e) => {
 
   if (e.key === 'ArrowDown') {
     e.preventDefault();
-    st.activeIndex = (st.activeIndex + 1) % total;
+    st.activeIndex = st.activeIndex < 0 ? 0 : (st.activeIndex + 1) % total;
     renderAddMachineModalResultsOnly();
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
-    st.activeIndex = (st.activeIndex - 1 + total) % total;
+    st.activeIndex = st.activeIndex <= 0 ? total - 1 : st.activeIndex - 1;
     renderAddMachineModalResultsOnly();
   } else if (e.key === 'Enter') {
+    if (st.activeIndex < 0) return;
     e.preventDefault();
     let idx = st.activeIndex;
     if (idx < machines.length) { pickMachineFromModal(machines[idx].id); return; }

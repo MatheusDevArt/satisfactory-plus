@@ -1,7 +1,5 @@
 /**
- * Script reproduzível para gerar prints reais (2x retina, WebP otimizado)
- * usados no Tutorial Interativo do Satisfactory+.
- *
+ * Script reproduzível para gerar todos os 42 prints reais (WebP) do Tutorial Interativo.
  * Uso: npm run tutorial:prints (ou: node scripts/generate-tutorial-prints.js)
  */
 
@@ -26,6 +24,50 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon'
 };
 
+const DEMO_PROJECTS = [
+  {
+    id: 'proj_demo_1',
+    name: 'Armação Modular Pesada 10/min',
+    sourceMode: 'production',
+    summary: 'Produção · Armação modular pesada (10/min) · 341 máquinas',
+    createdAt: '2026-10-12T14:20:00.000Z',
+    updatedAt: '2026-11-18T19:45:00.000Z'
+  },
+  {
+    id: 'proj_demo_2',
+    name: 'Usina de Carvão 1.200 MW',
+    sourceMode: 'free',
+    summary: 'Oficina · 16× Gerador a Carvão + 6× Bomba d’água',
+    createdAt: '2026-10-25T10:15:00.000Z',
+    updatedAt: '2026-11-19T11:30:00.000Z'
+  }
+];
+
+const DEMO_REPORTS = [
+  {
+    id: 'rep_demo_1',
+    type: 'suggestion',
+    title: 'Atalho rápido para duplicar blocos na Oficina',
+    message: 'Seria ótimo poder usar Ctrl+C e Ctrl+V diretamente nos blocos selecionados.',
+    status: 'resolvido',
+    adminReply: 'Implementado! Agora você pode usar Ctrl+C, Ctrl+V e Shift+arrastar na Oficina.',
+    createdAt: '2026-11-10T16:00:00.000Z',
+    updatedAt: '2026-11-12T09:15:00.000Z',
+    images: []
+  },
+  {
+    id: 'rep_demo_2',
+    type: 'bug',
+    title: 'Filtro de receitas alternativas no seletor',
+    message: 'Faltava um chip para filtrar somente receitas ALT ao trocar a receita.',
+    status: 'lido',
+    adminReply: 'Recebido! Estamos aplicando o novo seletor unificado com filtros Padrão e ALT.',
+    createdAt: '2026-11-17T18:40:00.000Z',
+    updatedAt: '2026-11-18T10:00:00.000Z',
+    images: []
+  }
+];
+
 function findChrome() {
   const candidates = [
     process.env.CHROME_PATH,
@@ -34,8 +76,7 @@ function findChrome() {
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
     'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
     '/usr/bin/google-chrome',
-    '/usr/bin/chromium',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+    '/usr/bin/chromium'
   ].filter(Boolean);
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
@@ -46,7 +87,20 @@ function findChrome() {
 function startStaticServer() {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
-      const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+      const urlObj = new URL(req.url || '/', 'http://127.0.0.1');
+      const urlPath = decodeURIComponent(urlObj.pathname);
+      if (urlPath.startsWith('/api/projects')) {
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ projects: DEMO_PROJECTS, maxProjects: 20 }));
+        return;
+      }
+      if (urlPath.startsWith('/api/reports')) {
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ reports: DEMO_REPORTS, unreadCount: 1 }));
+        return;
+      }
       if (urlPath.startsWith('/api/')) {
         res.statusCode = 200;
         res.setHeader('Content-Type', 'application/json');
@@ -71,9 +125,7 @@ function startStaticServer() {
   });
 }
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 class CDPClient {
   constructor(wsUrl) {
@@ -111,363 +163,455 @@ class CDPClient {
       returnByValue: true
     });
     if (r.exceptionDetails) {
-      throw new Error(`Eval error: ${r.exceptionDetails.text}`);
+      throw new Error(`Eval error: ${r.exceptionDetails.text} ${r.exceptionDetails.exception?.description || ''}`);
     }
     return r.result ? r.result.value : undefined;
   }
-  async captureWebp(filename, clip = null, quality = 84) {
-    const params = {
+  async highlight(selectors) {
+    const arr = Array.isArray(selectors) ? selectors : [selectors];
+    await this.eval(`
+      (() => {
+        document.querySelectorAll('.tut-cap-hl').forEach(el => {
+          el.classList.remove('tut-cap-hl');
+          el.style.outline = '';
+          el.style.outlineOffset = '';
+        });
+        const sels = ${JSON.stringify(arr)};
+        sels.forEach(s => {
+          const el = document.querySelector(s);
+          if (el) {
+            el.classList.add('tut-cap-hl');
+            el.style.outline = '3px solid #EA580C';
+            el.style.outlineOffset = '3px';
+          }
+        });
+      })();
+    `);
+  }
+  async clearHighlights() {
+    await this.eval(`
+      document.querySelectorAll('.tut-cap-hl').forEach(el => {
+        el.classList.remove('tut-cap-hl');
+        el.style.outline = '';
+        el.style.outlineOffset = '';
+      });
+    `);
+  }
+  async captureWebp(filename, quality = 85) {
+    const { data } = await this.send('Page.captureScreenshot', {
       format: 'webp',
-      quality,
-      fromSurface: true
-    };
-    if (clip) {
-      params.clip = {
-        x: Math.max(0, Math.round(clip.x)),
-        y: Math.max(0, Math.round(clip.y)),
-        width: Math.max(100, Math.round(clip.width)),
-        height: Math.max(100, Math.round(clip.height)),
-        scale: 1
-      };
-    }
-    const { data } = await this.send('Page.captureScreenshot', params);
-    const buf = Buffer.from(data, 'base64');
+      quality
+    });
     const outPath = path.join(OUT_DIR, filename);
-    fs.writeFileSync(outPath, buf);
-    const kb = (buf.length / 1024).toFixed(1);
-    console.log(`  [OK] ${filename} (${kb} KB)`);
-    return { filename, kb: Number(kb) };
-  }
-  close() {
-    try { this.ws.close(); } catch {}
+    fs.writeFileSync(outPath, Buffer.from(data, 'base64'));
+    console.log(`  ✓ ${filename}`);
   }
 }
 
-async function waitForDevTools(port) {
-  for (let i = 0; i < 40; i++) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/json/list`);
-      if (res.ok) {
-        const list = await res.json();
-        const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl);
-        if (page) return page.webSocketDebuggerUrl;
-      }
-    } catch {}
-    await sleep(250);
-  }
-  throw new Error('Timeout aguardando Chrome DevTools.');
-}
-
-async function run() {
+async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  const chromePath = findChrome();
   const { server, url } = await startStaticServer();
-  const debugPort = 9244;
-  const userDataDir = path.join(ROOT, '.tmp-chrome-prints');
+  const port = 9244;
+  const userDataDir = path.join(ROOT, '.tmp-tut-chrome');
+  fs.rmSync(userDataDir, { recursive: true, force: true });
 
-  const chrome = spawn(chromePath, [
+  const proc = spawn(findChrome(), [
     '--headless=new',
-    `--remote-debugging-port=${debugPort}`,
-    `--user-data-dir=${userDataDir}`,
-    '--window-size=1440,900',
-    '--force-device-scale-factor=2',
     '--disable-gpu',
-    '--no-first-run',
-    '--no-default-browser-check',
+    '--no-sandbox',
+    '--window-size=1440,900',
+    `--remote-debugging-port=${port}`,
+    `--user-data-dir=${userDataDir}`,
     'about:blank'
   ], { stdio: 'ignore' });
 
-  let cdp;
-  try {
-    const wsUrl = await waitForDevTools(debugPort);
-    cdp = new CDPClient(wsUrl);
-    await cdp.connect();
-    await cdp.send('Page.enable');
-    await cdp.send('Runtime.enable');
-    await cdp.send('Emulation.setDeviceMetricsOverride', {
-      width: 1440,
-      height: 900,
-      deviceScaleFactor: 2,
-      mobile: false
-    });
-
-    console.log(`Abrindo ${url} ...`);
-    await cdp.send('Page.navigate', { url });
-    await sleep(2600);
-
-    // Remove splash, body.home-active e QUALQUER modal de patch notes antes de qualquer captura
-    await cdp.eval(`(() => {
-      try {
-        const pn = ${JSON.stringify(JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'patch-notes.json'), 'utf8'))[0]?.id || 'latest')};
-        localStorage.setItem('splus_last_seen_patch_id', pn);
-      } catch {}
-      if (typeof dismissIntroSplash === 'function') dismissIntroSplash();
-      document.getElementById('intro-splash')?.remove();
-      document.getElementById('patch-auto-modal')?.remove();
-      document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.add('hidden'));
-      document.body.classList.remove('home-active');
-      document.documentElement.classList.remove('home-active');
-      const root = document.getElementById('app-layout-root');
-      if (root) { root.style.opacity = '1'; root.style.visibility = 'visible'; }
-      document.body.classList.remove('theme-dark');
-      document.body.classList.add('theme-light');
-    })()`);
-    await sleep(600);
-
-    // 1. Tela inicial limpa
-    await cdp.captureWebp('tutorial-01-inicio.webp', { x: 0, y: 0, width: 1440, height: 900 }, 82);
-
-    // 2. Barra de abas (painel esquerdo superior)
-    await cdp.captureWebp('tutorial-02-abas.webp', { x: 0, y: 0, width: 460, height: 340 }, 86);
-
-    // 3. Gerando sua primeira linha (Chapa de Ferro na taxa base real de 1 Construtor = 20/min)
-    await cdp.eval(`(() => {
-      AppState.mode = 'production';
-      AppState.production.driver = 'product';
-      AppState.production.mounted = false;
-      const baseRate = typeof getBaseRecipeRateForItem === 'function' ? getBaseRecipeRateForItem('Desc_IronPlate_C') : 20;
-      AppState.pull.targets = [{ id: uid(), itemId: 'Desc_IronPlate_C', rate: baseRate }];
-      renderAll();
-    })()`);
-    await sleep(600);
-    await cdp.captureWebp('tutorial-03-primeira-linha.webp', { x: 0, y: 0, width: 460, height: 640 }, 84);
-
-    // Monta linha de Chapa de Ferro 20/min na orientação padrão Esquerda -> Direita (LR)
-    await cdp.eval(`(() => {
-      AppState.production.mounted = true;
-      AppState.showAllMachines = true;
-      AppState.orientation = 'LR';
-      renderAll(true);
-    })()`);
-    await sleep(1100);
-    await cdp.eval(`(() => { fitCanvasToScreen(); })()`);
-    await sleep(600);
-
-    // 4. Fluxo completo (área de trabalho à direita)
-    await cdp.captureWebp('tutorial-04-fluxo.webp', { x: 420, y: 0, width: 1020, height: 900 }, 82);
-
-    // Captura posições das cartas para recortes precisos de 5, 6a, 7, 8 + coords relativas em %
-    const rects = await cdp.eval(`(() => {
-      const cards = Array.from(document.querySelectorAll('.magnific-card')).map((el) => {
-        const r = el.getBoundingClientRect();
-        return {
-          id: el.id,
-          title: el.querySelector('.mcard-title')?.textContent?.trim() || '',
-          isFinal: el.classList.contains('final-product-card'),
-          isResource: el.classList.contains('resource-node-card'),
-          x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height),
-          pctInCanvas: {
-            x: Math.round(((r.left + r.width * 0.5 - 420) / 1020) * 100),
-            y: Math.round(((r.top + r.height * 0.5) / 900) * 100)
-          }
-        };
-      });
-      const pills = Array.from(document.querySelectorAll('.wire-belt-pill')).map((el) => {
-        const r = el.getBoundingClientRect();
-        return {
-          text: el.textContent.trim(),
-          x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height),
-          pctInCanvas: {
-            x: Math.round(((r.left + r.width * 0.5 - 420) / 1020) * 100),
-            y: Math.round(((r.top + r.height * 0.5) / 900) * 100)
-          }
-        };
-      });
-      return { cards, pills };
-    })()`);
-    console.log('Cards detectados:', JSON.stringify(rects.cards.map(c => ({ title: c.title, isFinal: c.isFinal, isResource: c.isResource, pct: c.pctInCanvas }))));
-    console.log('Pills detectadas:', JSON.stringify(rects.pills.map(p => ({ text: p.text, pct: p.pctInCanvas }))));
-
-    // 5. Etiquetas das esteiras (recorte em volta da primeira pílula + máquinas vizinhas)
-    if (rects.pills.length > 0) {
-      const p = rects.pills[0];
-      await cdp.captureWebp('tutorial-05-etiquetas.webp', {
-        x: Math.max(420, p.x - 240),
-        y: Math.max(20, p.y - 160),
-        width: 560,
-        height: 360
-      }, 86);
-    } else {
-      await cdp.captureWebp('tutorial-05-etiquetas.webp', { x: 560, y: 180, width: 620, height: 420 }, 84);
-    }
-
-    // 6a. Card de máquina (FORNALHA #1)
-    const midCard = rects.cards.find((c) => /FORNALHA|CONSTRUTOR/i.test(c.title)) || rects.cards[2] || rects.cards[0];
-    if (midCard) {
-      await cdp.captureWebp('tutorial-06a-card-maquina.webp', {
-        x: Math.max(420, midCard.x - 90),
-        y: Math.max(20, midCard.y - 50),
-        width: midCard.w + 180,
-        height: midCard.h + 100
-      }, 86);
-    }
-
-    // 7. Nó de recurso
-    const resCard = rects.cards.find((c) => /^Nó de/i.test(c.title)) || rects.cards[0];
-    if (resCard) {
-      await cdp.captureWebp('tutorial-07-no-recurso.webp', {
-        x: Math.max(420, resCard.x - 90),
-        y: Math.max(20, resCard.y - 50),
-        width: resCard.w + 180,
-        height: resCard.h + 100
-      }, 86);
-    }
-
-    // 8. Produto final em laranja
-    const finalCard = rects.cards.find((c) => /CHAPA DE FERRO|🎯/i.test(c.title)) || rects.cards[rects.cards.length - 1];
-    if (finalCard) {
-      await cdp.captureWebp('tutorial-08-produto-final.webp', {
-        x: Math.max(420, finalCard.x - 110),
-        y: Math.max(20, finalCard.y - 50),
-        width: finalCard.w + 220,
-        height: finalCard.h + 100
-      }, 86);
-    }
-
-    // 11a. Navegação (barra inferior + topo direito + fluxo)
-    await cdp.captureWebp('tutorial-11a-navegacao.webp', { x: 420, y: 0, width: 1020, height: 900 }, 80);
-
-    // 11b. Modo Foco (destacando a máquina intermediária)
-    if (midCard) {
-      await cdp.eval(`(() => {
-        if (typeof highlightConnectedNodes === 'function') {
-          highlightConnectedNodes('${midCard.id}', true);
-        }
-      })()`);
-      await sleep(350);
-      await cdp.captureWebp('tutorial-11b-foco.webp', { x: 420, y: 0, width: 1020, height: 900 }, 80);
-      await cdp.eval(`(() => {
-        if (typeof highlightConnectedNodes === 'function') {
-          highlightConnectedNodes('${midCard.id}', false);
-        }
-      })()`);
-    }
-
-    // 6b. Máquinas agrupadas (Todas Máquinas: NÃO com 90/min de Chapa de Ferro para mostrar agrupamento)
-    await cdp.eval(`(() => {
-      AppState.pull.targets = [{ id: uid(), itemId: 'Desc_IronPlate_C', rate: 90 }];
-      AppState.showAllMachines = false;
-      renderAll(true);
-    })()`);
-    await sleep(1000);
-    await cdp.eval(`(() => { fitCanvasToScreen(); })()`);
-    await sleep(450);
-    await cdp.captureWebp('tutorial-06b-agrupado.webp', { x: 420, y: 0, width: 1020, height: 900 }, 80);
-
-    // 9. Quadro de Status e Excesso (Combustível 40/min -> gera excesso de Resina Polimérica!)
-    await cdp.eval(`(() => {
-      AppState.showAllMachines = false;
-      AppState.pull.targets = [{ id: uid(), itemId: 'Desc_LiquidFuel_C', rate: 40 }];
-      AppState.production.mounted = true;
-      renderAll(true);
-    })()`);
-    await sleep(1000);
-    await cdp.captureWebp('tutorial-09-excesso.webp', { x: 0, y: 120, width: 450, height: 680 }, 84);
-
-    // 10. Modo Livre (2 máquinas conectadas + barra de Divisor/Unificador/Junção)
-    await cdp.eval(`(() => {
-      switchMode('free');
-      AppState.free.blocks = [];
-      AppState.free.customEdges = [];
-      addFreeBlock('extractor', { itemId: 'Desc_OreIron_C', x: 180, y: 100 });
-      addFreeBlock('machine', { recipeId: 'Recipe_IngotIron_C', x: 180, y: 460 });
-      if (AppState.free.blocks.length >= 2) {
-        const b1 = AppState.free.blocks[0];
-        const b2 = AppState.free.blocks[1];
-        AppState.free.customEdges.push({
-          id: uid(),
-          fromNodeId: 'free_' + b1.id + '_0',
-          toNodeId: 'free_' + b2.id + '_0',
-          itemId: 'Desc_OreIron_C',
-          beltTier: 1
-        });
-      }
-      renderAll(true);
-    })()`);
-    await sleep(800);
-    await cdp.eval(`(() => { fitCanvasToScreen(); })()`);
-    await sleep(450);
-    await cdp.captureWebp('tutorial-10-modo-livre.webp', { x: 0, y: 0, width: 1440, height: 900 }, 80);
-
-    // 13. Aba Energia (Usina a Carvão montada + painel de status na base)
-    await cdp.eval(`(() => {
-      switchMode('power');
-      AppState.power.calcMode = 'by_generators';
-      AppState.power.generatorId = 'Build_GeneratorCoal_C';
-      AppState.power.fuelItemId = 'Desc_Coal_C';
-      AppState.power.generatorCount = 8;
-      AppState.power.manualGenerators = 8;
-      AppState.power.mounted = true;
-      renderAll(true);
-    })()`);
-    await sleep(900);
-    await cdp.eval(`(() => { fitCanvasToScreen(); })()`);
-    await sleep(450);
-    await cdp.captureWebp('tutorial-13-energia.webp', { x: 0, y: 0, width: 1440, height: 900 }, 80);
-
-    // 14. Aba Mapa
-    await cdp.eval(`(() => { switchMode('map'); })()`);
-    await sleep(1000);
-    await cdp.captureWebp('tutorial-14-mapa.webp', { x: 0, y: 0, width: 1440, height: 900 }, 80);
-
-    // 15. Aba Receitas
-    await cdp.eval(`(() => { switchMode('recipes'); })()`);
-    await sleep(800);
-    await cdp.captureWebp('tutorial-15-receitas.webp', { x: 0, y: 0, width: 1440, height: 900 }, 80);
-
-    // 16. Aba Biblioteca
-    await cdp.eval(`(() => { switchMode('library'); })()`);
-    await sleep(800);
-    await cdp.captureWebp('tutorial-16-biblioteca.webp', { x: 0, y: 0, width: 1440, height: 900 }, 80);
-
-    // 17. Aba Calculadora (Recursos com exemplo real preenchido)
-    await cdp.eval(`(() => {
-      switchMode('calculator');
-      setCalcTool('resources');
-      setCalcField('resItemId', 'Desc_IronPlateReinforced_C', true);
-    })()`);
-    await sleep(700);
-    await cdp.captureWebp('tutorial-17-calculadora.webp', { x: 0, y: 0, width: 1440, height: 900 }, 80);
-
-    // 12. Conta, Projetos e Reportar (volta para produção montada mostrando barra lateral + Salvar + topo direito)
-    await cdp.eval(`(() => {
-      switchMode('production');
-      AppState.pull.targets = [{ id: uid(), itemId: 'Desc_IronPlate_C', rate: 30 }];
-      AppState.production.mounted = true;
-      renderAll(true);
-    })()`);
-    await sleep(800);
-    await cdp.captureWebp('tutorial-12-conta-projetos.webp', { x: 0, y: 0, width: 1440, height: 420 }, 84);
-
-    // 18. Aba Projetos (visão da tela de projetos salvos)
-    await cdp.eval(`(() => {
-      if (typeof AccountState !== 'undefined') {
-        AccountState.user = { id: 'demo', username: 'Engenheiro', role: 'user' };
-        AccountState.projects.list = [
-          { id: 'prj_1', name: 'Fábrica de Chapas 120/min', sourceMode: 'production', summary: 'Chapa de Ferro · 120/min', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-          { id: 'prj_2', name: 'Usina Carvão 600 MW', sourceMode: 'free', summary: '8x Gerador a Carvão', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
-        ];
-        AccountState.projects.loading = false;
-        AccountState.projects.error = '';
-      }
-      switchMode('projects');
-      if (typeof renderProjectsWorkspace === 'function') renderProjectsWorkspace();
-    })()`);
-    await sleep(600);
-    await cdp.captureWebp('tutorial-18-projetos-salvos.webp', { x: 0, y: 0, width: 1440, height: 900 }, 80);
-
-    console.log('ALL_PRINTS_DONE');
-  } finally {
-    if (cdp) cdp.close();
-    chrome.kill();
-    server.close();
-    setTimeout(() => {
-      fs.rmSync(userDataDir, { recursive: true, force: true });
-    }, 500);
+  let wsUrl;
+  for (let i = 0; i < 40; i++) {
+    try {
+      const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+      const page = list.find(t => t.type === 'page');
+      if (page) { wsUrl = page.webSocketDebuggerUrl; break; }
+    } catch {}
+    await sleep(250);
   }
+  if (!wsUrl) throw new Error('CDP websocket não disponível');
+
+  const cdp = new CDPClient(wsUrl);
+  await cdp.connect();
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: 1440,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false
+  });
+
+  await cdp.send('Page.navigate', { url });
+  await sleep(1600);
+
+  // Dark mode + dismiss splash/patch notes
+  await cdp.eval(`
+    localStorage.setItem('splus_theme', 'dark');
+    document.documentElement.dataset.theme = 'dark';
+    document.body.classList.remove('theme-light');
+    document.body.classList.add('theme-dark');
+    if (typeof dismissIntroSplash === 'function') dismissIntroSplash();
+    if (typeof closePatchAutoCard === 'function') closePatchAutoCard(true);
+  `);
+  await sleep(400);
+
+  console.log('Gerando 42 prints reais do Tutorial...');
+
+  /* ================= 1. INTERFACE GERAL ================= */
+  await cdp.eval(`
+    switchMode('production');
+    AppState.pull.targets = [{ id: 't1', itemId: 'Desc_IronPlate_C', rate: 60 }];
+    AppState.production.driver = 'product';
+    AppState.production.mounted = true;
+    renderAll(true);
+  `);
+  await sleep(500);
+  await cdp.captureWebp('tut-iface-01-overview.webp');
+
+  await cdp.highlight(['.sidebar-brand', '.tabs-bar-container']);
+  await sleep(150);
+  await cdp.captureWebp('tut-iface-02-tabs.webp');
+
+  await cdp.highlight(['#top-right-floating-actions']);
+  await sleep(150);
+  await cdp.captureWebp('tut-iface-03-topbar.webp');
+
+  await cdp.highlight(['#spaces-hud-controls', '#factory-status-footer']);
+  await sleep(150);
+  await cdp.captureWebp('tut-iface-04-hud.webp');
+  await cdp.clearHighlights();
+
+  /* ================= 2. PRODUÇÃO ================= */
+  await cdp.eval(`
+    AppState.pull.targets = [];
+    AppState.push.inputs = [];
+    AppState.production.driver = null;
+    AppState.production.mounted = false;
+    switchMode('production');
+  `);
+  await sleep(350);
+  await cdp.captureWebp('tut-prod-01-intro.webp');
+
+  await cdp.eval(`openPullAddTargetModal();`);
+  await sleep(500);
+  await cdp.captureWebp('tut-prod-02-picker.webp');
+  await cdp.eval(`closePickerModal();`);
+
+  await cdp.eval(`
+    AppState.pull.targets = [{ id: 't1', itemId: 'Desc_ModularFrameHeavy_C', rate: 2 }];
+    AppState.production.driver = 'product';
+    AppState.production.mounted = false;
+    renderAll(false);
+  `);
+  await sleep(350);
+  await cdp.highlight(['.sidebar-config-card input[type="number"]']);
+  await sleep(150);
+  await cdp.captureWebp('tut-prod-03-rate.webp');
+  await cdp.clearHighlights();
+
+  await cdp.eval(`document.querySelector('.rp-trigger-btn')?.click();`);
+  await sleep(400);
+  await cdp.captureWebp('tut-prod-04-recipe.webp');
+  await cdp.eval(`document.getElementById('recipe-picker-modal')?.classList.add('hidden');`);
+
+  await cdp.eval(`
+    AppState.production.mounted = true;
+    AppState.production.expandedGroups = { extracao: false, producao: true };
+    AppState.production.expandedRowKey = null;
+    renderAll(true);
+    const cards = document.querySelectorAll('#left-sidebar-content .ds-section-card');
+    if (cards[2]) cards[2].scrollIntoView({ behavior: 'instant' });
+  `);
+  await sleep(450);
+  await cdp.highlight(['#left-sidebar-content .ds-section-card:nth-child(3)']);
+  await sleep(150);
+  await cdp.captureWebp('tut-prod-05-machines.webp');
+  await cdp.clearHighlights();
+
+  await cdp.eval(`
+    const sb = document.getElementById('left-sidebar-content');
+    if (sb) sb.scrollTop = 0;
+  `);
+  await sleep(200);
+  await cdp.highlight(['#sidebar-action-section .btn-mount-flow']);
+  await sleep(150);
+  await cdp.captureWebp('tut-prod-06-mount.webp');
+
+  await cdp.highlight(['#factory-status-footer']);
+  await sleep(150);
+  await cdp.captureWebp('tut-prod-07-status.webp');
+
+  await cdp.highlight(['#sidebar-action-section .btn-clear-flow']);
+  await sleep(150);
+  await cdp.captureWebp('tut-prod-08-clear.webp');
+  await cdp.clearHighlights();
+
+  /* ================= 3. ENERGIA ================= */
+  await cdp.eval(`
+    AppState.power.generatorId = null;
+    AppState.power.mounted = false;
+    switchMode('power');
+  `);
+  await sleep(350);
+  await cdp.captureWebp('tut-pwr-01-intro.webp');
+
+  await cdp.eval(`
+    AppState.power.generatorId = 'Build_GeneratorCoal_C';
+    AppState.power.fuelItemId = 'Desc_Coal_C';
+    AppState.power.calcMode = 'by_mw';
+    AppState.power.targetMW = 1200;
+    AppState.power.mounted = false;
+    renderAll(false);
+  `);
+  await sleep(400);
+  await cdp.highlight(['#left-sidebar-content']);
+  await sleep(150);
+  await cdp.captureWebp('tut-pwr-02-config.webp');
+  await cdp.clearHighlights();
+
+  await cdp.eval(`
+    AppState.power.mounted = true;
+    renderAll(true);
+  `);
+  await sleep(500);
+  await cdp.highlight(['#factory-status-footer']);
+  await sleep(150);
+  await cdp.captureWebp('tut-pwr-03-result.webp');
+  await cdp.clearHighlights();
+
+  /* ================= 4. OFICINA ================= */
+  await cdp.eval(`
+    AppState.free.blocks = [];
+    AppState.free.customEdges = [];
+    switchMode('free');
+  `);
+  await sleep(350);
+  await cdp.captureWebp('tut-ofi-01-intro.webp');
+
+  await cdp.highlight(['#left-sidebar-content .ds-section-card:first-child']);
+  await sleep(150);
+  await cdp.captureWebp('tut-ofi-02-addbar.webp');
+  await cdp.clearHighlights();
+
+  await cdp.eval(`openAddMachineModal({ quickFilter: 'all' });`);
+  await sleep(450);
+  await cdp.captureWebp('tut-ofi-03-modal.webp');
+  await cdp.eval(`closeAddMachineModal();`);
+
+  await cdp.eval(`
+    AppState.free.blocks = [
+      { id: 'b1', blockType: 'extractor', itemId: 'Desc_OreIron_C', minerMark: 'mk2', purity: 'normal', count: 1, clockPercent: 100, floor: 1, x: 80, y: 200 },
+      { id: 'b2', blockType: 'machine', machineId: 'Build_SmelterMk1_C', recipeId: 'Recipe_IngotIron_C', count: 4, clockPercent: 100, floor: 1, x: 420, y: 180 },
+      { id: 'b3', blockType: 'machine', machineId: 'Build_ConstructorMk1_C', recipeId: 'Recipe_IronPlate_C', count: 4, clockPercent: 100, floor: 1, x: 780, y: 180 },
+      { id: 'b4', blockType: 'storage', logisticsId: 'Build_StorageContainerMk1_C', count: 1, clockPercent: 100, floor: 1, x: 1120, y: 200 }
+    ];
+    AppState.free.customEdges = [
+      { id: 'e1', from: 'b1', to: 'b2', itemId: 'Desc_OreIron_C' },
+      { id: 'e2', from: 'b2', to: 'b3', itemId: 'Desc_IronIngot_C' },
+      { id: 'e3', from: 'b3', to: 'b4', itemId: 'Desc_IronPlate_C' }
+    ];
+    AppState.free.groupBy = 'type';
+    AppState.free.expandedGroups = { maquinas: true, armazenamento: true };
+    renderAll(true);
+  `);
+  await sleep(500);
+  await cdp.highlight(['#left-sidebar-content .ds-section-card:nth-child(2)']);
+  await sleep(150);
+  await cdp.captureWebp('tut-ofi-04-blocks.webp');
+  await cdp.clearHighlights();
+
+  /* ================= 5. MAPA ================= */
+  await cdp.eval(`switchMode('map');`);
+  await sleep(800);
+  await cdp.captureWebp('tut-map-01-intro.webp');
+
+  await cdp.highlight(['#left-sidebar-content']);
+  await sleep(150);
+  await cdp.captureWebp('tut-map-02-filters.webp');
+  await cdp.clearHighlights();
+
+  /* ================= 6. RECEITAS ================= */
+  await cdp.eval(`switchMode('recipes');`);
+  await sleep(600);
+  await cdp.captureWebp('tut-rec-01-intro.webp');
+
+  await cdp.highlight(['#left-sidebar-content .ds-section-card:first-child']);
+  await sleep(150);
+  await cdp.captureWebp('tut-rec-02-filters.webp');
+  await cdp.clearHighlights();
+
+  await cdp.eval(`
+    const firstCard = document.querySelector('#recipes-workspace-view .lib-card');
+    if (firstCard) firstCard.click();
+  `);
+  await sleep(450);
+  await cdp.captureWebp('tut-rec-03-detail.webp');
+
+  /* ================= 7. BIBLIOTECA ================= */
+  await cdp.eval(`switchMode('library');`);
+  await sleep(700);
+  await cdp.captureWebp('tut-lib-01-intro.webp');
+
+  await cdp.highlight(['#left-sidebar-content .ds-section-card:nth-child(2)']);
+  await sleep(150);
+  await cdp.captureWebp('tut-lib-02-cats.webp');
+  await cdp.clearHighlights();
+
+  await cdp.eval(`
+    const firstLib = document.querySelector('#library-workspace-view .lib-card');
+    if (firstLib) firstLib.click();
+  `);
+  await sleep(450);
+  await cdp.captureWebp('tut-lib-03-detail.webp');
+
+  /* ================= 8. CALCULADORA ================= */
+  await cdp.eval(`switchMode('calculator'); setCalcTool('numeric');`);
+  await sleep(400);
+  await cdp.captureWebp('tut-calc-01-intro.webp');
+
+  await cdp.eval(`setCalcTool('production');`);
+  await sleep(350);
+  await cdp.highlight(['#left-sidebar-content .ds-section-card']);
+  await sleep(150);
+  await cdp.captureWebp('tut-calc-02-menu.webp');
+  await cdp.clearHighlights();
+
+  await cdp.eval(`
+    AppState.calculator.prodMachineId = 'Build_ConstructorMk1_C';
+    AppState.calculator.prodRecipeId = 'Recipe_IronPlate_C';
+    AppState.calculator.prodMachineCount = 4;
+    AppState.calculator.prodClock = 150;
+    renderCalculatorWorkspace();
+  `);
+  await sleep(400);
+  await cdp.highlight(['#calc-result-panel']);
+  await sleep(150);
+  await cdp.captureWebp('tut-calc-03-result.webp');
+  await cdp.clearHighlights();
+
+  /* ================= 9. PROJETOS (SIMULA USUÁRIO LOGADO) ================= */
+  await cdp.eval(`
+    AccountState.user = { username: 'Engenheiro', isAdmin: false };
+    AccountState.projects.list = ${JSON.stringify(DEMO_PROJECTS)};
+    AccountState.projects.loading = false;
+    AccountState.projects.error = null;
+    if (typeof updateAccountUI === 'function') updateAccountUI();
+    switchMode('production');
+    AppState.pull.targets = [{ id: 't1', itemId: 'Desc_IronPlate_C', rate: 60 }];
+    AppState.production.driver = 'product';
+    AppState.production.mounted = true;
+    renderAll(true);
+  `);
+  await sleep(450);
+  await cdp.highlight(['#tab-projects']);
+  await sleep(150);
+  await cdp.captureWebp('tut-proj-01-tab.webp');
+
+  await cdp.highlight(['#sidebar-action-section button[onclick*="openSaveProjectModal"], #sidebar-action-section .btn-save-project']);
+  await sleep(150);
+  await cdp.captureWebp('tut-proj-02-savebtn.webp');
+  await cdp.clearHighlights();
+
+  await cdp.eval(`handleSaveProjectClick('production', false);`);
+  await sleep(350);
+  await cdp.highlight(['#save-project-body input']);
+  await sleep(150);
+  await cdp.captureWebp('tut-proj-03-modal.webp');
+
+  await cdp.eval(`
+    const inp = document.querySelector('#save-project-body input');
+    if (inp) inp.value = 'Chapa de Ferro 60/min';
+  `);
+  await cdp.highlight(['#save-project-body button[type="submit"], #save-project-body .btn-mount-flow']);
+  await sleep(150);
+  await cdp.captureWebp('tut-proj-04-confirm.webp');
+  await cdp.clearHighlights();
+  await cdp.eval(`closeSaveProjectModal();`);
+
+  await cdp.eval(`
+    switchMode('projects');
+    AccountState.projects.list = ${JSON.stringify(DEMO_PROJECTS)};
+    AccountState.projects.loading = false;
+    renderProjectsWorkspace();
+  `);
+  await sleep(450);
+  await cdp.captureWebp('tut-proj-05-list.webp');
+
+  await cdp.highlight(['.project-saved-card .project-card-actions']);
+  await sleep(150);
+  await cdp.captureWebp('tut-proj-06-actions.webp');
+  await cdp.clearHighlights();
+
+  /* ================= 10. REPORTAR ================= */
+  await cdp.eval(`switchMode('production');`);
+  await sleep(300);
+  await cdp.highlight(['#btn-open-report']);
+  await sleep(150);
+  await cdp.captureWebp('tut-rep-01-btn.webp');
+  await cdp.clearHighlights();
+
+  await cdp.eval(`
+    AccountState.reportModal.myReports = ${JSON.stringify(DEMO_REPORTS)};
+    AccountState.reportModal.myReportsLoaded = true;
+    AccountState.reportModal.tab = 'new';
+    openReportModal();
+  `);
+  await sleep(400);
+  await cdp.highlight(['#report-modal-body form, #report-modal-body .field-group']);
+  await sleep(150);
+  await cdp.captureWebp('tut-rep-02-form.webp');
+  await cdp.clearHighlights();
+
+  await cdp.eval(`
+    const body = document.getElementById('report-modal-body');
+    if (body) body.scrollTop = body.scrollHeight;
+  `);
+  await sleep(200);
+  await cdp.highlight(['#report-modal-body input[type="file"], #report-modal-body button[type="submit"]']);
+  await sleep(150);
+  await cdp.captureWebp('tut-rep-03-images.webp');
+  await cdp.clearHighlights();
+
+  await cdp.eval(`
+    AccountState.reportModal.tab = 'mine';
+    AccountState.reportModal.myReports = ${JSON.stringify(DEMO_REPORTS)};
+    AccountState.reportModal.myReportsLoaded = true;
+    if (typeof renderReportModalBody === 'function') renderReportModalBody();
+  `);
+  await sleep(400);
+  await cdp.captureWebp('tut-rep-04-status.webp');
+  await cdp.eval(`closeReportModal();`);
+
+  /* ================= 11. CONTA E LOGIN ================= */
+  await cdp.eval(`
+    AccountState.user = null;
+    if (typeof updateAccountUI === 'function') updateAccountUI();
+    switchMode('production');
+  `);
+  await sleep(300);
+  await cdp.highlight(['#btn-auth-login']);
+  await sleep(150);
+  await cdp.captureWebp('tut-acc-01-btn.webp');
+  await cdp.clearHighlights();
+
+  await cdp.eval(`openAuthModal('login');`);
+  await sleep(350);
+  await cdp.captureWebp('tut-acc-02-modal.webp');
+  await cdp.eval(`closeAuthModal();`);
+
+  cdp.ws.close();
+  proc.kill();
+  server.close();
+  await sleep(400);
+  try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch {}
+  console.log('Todos os 42 prints do tutorial foram gerados com sucesso!');
 }
 
-run().catch((err) => {
-  console.error('PRINTS_ERROR:', err);
+main().catch((err) => {
+  console.error(err);
   process.exit(1);
 });

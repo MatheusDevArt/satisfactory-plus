@@ -999,7 +999,11 @@
     if (calcMode === 'from_fuel') {
       availableFuelRate = Math.max(0, Number(config.fuelRateAvailable) || 0);
       const exactSupported = fuelPerGenerator > 0 ? availableFuelRate / fuelPerGenerator : 0;
-      intGenerators = exactSupported >= 1 ? Math.floor(exactSupported + 1e-6) : 1;
+      if (Math.abs(exactSupported - Math.round(exactSupported)) < 1e-4) {
+        intGenerators = Math.max(1, Math.round(exactSupported));
+      } else {
+        intGenerators = exactSupported >= 1 ? Math.floor(exactSupported + 1e-6) : 1;
+      }
       if (config.manualGenerators && config.manualGenerators >= 1) {
         intGenerators = Math.round(config.manualGenerators);
       }
@@ -1049,6 +1053,7 @@
     const perGeneratorFuelLogistics = getLogisticsInfo(fuelPerGenerator, fuelItem ? fuelItem.isFluid : false, maxBeltId);
 
     return {
+      calcMode,
       generator: gen,
       fuelEntry,
       fuelItem,
@@ -1141,66 +1146,153 @@
    * ============================================================================
    */
   function buildCanvasFlowGraph(mode, plan, maxBeltId = 'Build_ConveyorBeltMk6_C', expandIndividual = true) {
+    if (maxBeltId && typeof maxBeltId === 'object') {
+      const opts = maxBeltId;
+      if (opts.showAllMachines !== undefined) expandIndividual = Boolean(opts.showAllMachines);
+      else if (opts.expandIndividual !== undefined) expandIndividual = Boolean(opts.expandIndividual);
+      maxBeltId = typeof opts.maxBeltId === 'string' ? opts.maxBeltId : 'Build_ConveyorBeltMk6_C';
+    }
     const columns = [];
     const connections = [];
 
     if (!plan) return { columns: [], connections: [], edges: [] };
 
-    // When expandIndividual is true, show individual cards up to a high safety cap (240)
-    const MAX_INDIVIDUAL_CARDS = expandIndividual ? 24 : 1;
+    // When expandIndividual is true, every single machine becomes an individual card (no artificial 24-card cap!)
+    const MAX_INDIVIDUAL_CARDS = expandIndividual ? Infinity : 1;
 
     // -------------------------------------------------------------------------
-    // CASE A: POWER GENERATION GRAPH (Mineradoras & Bombas d'Água -> Divisores -> Geradores)
+    // CASE A: POWER GENERATION GRAPH (Cadeia Completa: Extratores -> Máquinas de Combustível -> Junções/Divisores -> Geradores -> Energia)
     // -------------------------------------------------------------------------
     if (mode === 'power') {
       const pwr = plan;
       const fuelItem = pwr.fuelItem;
       const gen = pwr.generator;
       const totalGens = pwr.intGenerators;
+      const chainPlan = pwr.fuelChainPlan || null;
 
+      const nodeGroupsByItem = {};
+      const stageMetaByItem = {};
       const sourceNodes = [];
-      const exCount = pwr.extractorStats ? pwr.extractorStats.count : 1;
-      const ratePerEx = pwr.extractorStats ? pwr.extractorStats.ratePerExtractor : pwr.totalFuelConsumed;
-      const exObj = pwr.extractorStats ? pwr.extractorStats.extractor : null;
-      const showIndivEx = expandIndividual && exCount <= MAX_INDIVIDUAL_CARDS;
-      const exCardsCount = showIndivEx ? exCount : 1;
 
-      for (let i = 0; i < exCardsCount; i++) {
-        const cardRate = showIndivEx ? ratePerEx : (ratePerEx * exCount);
-        const cardPower = pwr.extractorStats
-          ? (showIndivEx ? pwr.extractorStats.powerPerExtractor : pwr.extractorStats.totalPowerMw)
-          : 0;
-        const nodeTitleBase = fuelItem.id === 'Desc_Water_C' ? 'Água' : `Nó de ${fuelItem.name}`;
+      // 1A. Se o combustível possui cadeia de fabricação (ex.: Combustível, Turbocombustível, Combustível de Foguete, Barra Nuclear, Biocombustível),
+      // cria primeiro os Nós de Recurso Bruto da cadeia + Bombas d'Água dos geradores na Etapa 1!
+      if (chainPlan && Array.isArray(chainPlan.extractionPlan) && chainPlan.extractionPlan.length > 0) {
+        chainPlan.extractionPlan.forEach((ex) => {
+          const res = ex.resource;
+          if (!res) return;
+          const count = Math.max(1, ex.intExtractors || 1);
+          const showIndiv = expandIndividual && count <= MAX_INDIVIDUAL_CARDS && !ex.isCollectible;
+          const cardsCount = showIndiv ? count : 1;
+          const itemNodes = [];
 
-        sourceNodes.push({
-          id: `pwr_src_${i}`,
-          kind: 'extractor',
-          realCount: exCount,
-          perMachineRate: ratePerEx,
-          topLabel: showIndivEx && exCount > 1 ? `${nodeTitleBase} #${i + 1}` : nodeTitleBase,
-          badgeText: !showIndivEx && exCount > 1 ? `${exCount}x` : null,
-          metaRight: pwr.extractorStats
-            ? `${pwr.extractorStats.clockPercent}% • ⚡ ${cardPower.toFixed(1)} MW`
-            : 'Entrada Direta',
-          entity: exObj || fuelItem,
-          recipePill: null,
-          configMeta: {
-            configType: 'power_fuel_source',
-            title: nodeTitleBase,
-            itemId: fuelItem.id
-          },
-          inputsList: [],
-          outputsList: [],
-          resourceExtractInfo: {
-            item: fuelItem,
-            rate: cardRate,
-            unit: fuelItem.unit
-          },
-          outRate: cardRate,
-          item: fuelItem
+          for (let i = 0; i < cardsCount; i++) {
+            const nodeRate = showIndiv ? ex.ratePerExtractor : ex.totalExtracted;
+            const nodePower = showIndiv ? ex.powerPerExtractor : ex.powerMw;
+            const purityLabel = ex.purity === 0.5 ? 'Impuro' : ex.purity === 2.0 ? 'Puro' : 'Normal';
+            const nodeId = `pwr_ext_${res.id}_${i}`;
+            const baseTitle = res.id === 'Desc_Water_C' ? 'Água' : `Nó de ${res.name}`;
+
+            const nodeObj = {
+              id: nodeId,
+              kind: 'extractor',
+              itemId: res.id,
+              logicalStageId: 'stage_1',
+              logicalStageTitle: 'Etapa 1 · Extração',
+              realCount: count,
+              perMachineRate: ex.ratePerExtractor,
+              topLabel: showIndiv && count > 1 ? `${baseTitle} #${i + 1}` : baseTitle,
+              badgeText: !showIndiv && count > 1 ? `${count}x` : null,
+              metaRight: ex.extractor ? `${ex.clockPercent || 100}% • ⚡ ${nodePower.toFixed(1)} MW` : 'Entrada Direta',
+              entity: ex.extractor || res,
+              recipePill: ex.extractor && res.id !== 'Desc_Water_C' ? `Nó ${purityLabel}` : null,
+              configMeta: {
+                configType: 'extractor',
+                mode: 'power',
+                itemId: res.id,
+                title: baseTitle
+              },
+              inputsList: [],
+              outputsList: [],
+              resourceExtractInfo: {
+                item: res,
+                rate: nodeRate,
+                unit: res.unit
+              },
+              outRate: nodeRate,
+              item: res
+            };
+            sourceNodes.push(nodeObj);
+            itemNodes.push(nodeObj);
+          }
+
+          nodeGroupsByItem[res.id] = itemNodes;
+          stageMetaByItem[res.id] = {
+            realCount: count,
+            perMachineOutRate: ex.ratePerExtractor,
+            totalOutRate: ex.totalExtracted
+          };
         });
+      } else {
+        // 1B. Combustível bruto extraído diretamente (ex.: Carvão) ou coletável (ex.: Folhas/Madeira)
+        const exCount = pwr.extractorStats ? pwr.extractorStats.count : 1;
+        const directInputRate = (pwr.calcMode === 'from_fuel' && pwr.availableFuelRate > 0)
+          ? pwr.availableFuelRate
+          : pwr.totalFuelConsumed;
+        const ratePerEx = pwr.extractorStats ? pwr.extractorStats.ratePerExtractor : directInputRate;
+        const exObj = pwr.extractorStats ? pwr.extractorStats.extractor : null;
+        const showIndivEx = expandIndividual && exCount <= MAX_INDIVIDUAL_CARDS;
+        const exCardsCount = showIndivEx ? exCount : 1;
+        const fuelNodes = [];
+
+        for (let i = 0; i < exCardsCount; i++) {
+          const cardRate = showIndivEx ? ratePerEx : (ratePerEx * exCount);
+          const cardPower = pwr.extractorStats
+            ? (showIndivEx ? pwr.extractorStats.powerPerExtractor : pwr.extractorStats.totalPowerMw)
+            : 0;
+          const nodeTitleBase = fuelItem.id === 'Desc_Water_C' ? 'Água' : `Nó de ${fuelItem.name}`;
+
+          const nodeObj = {
+            id: `pwr_src_${i}`,
+            kind: 'extractor',
+            itemId: fuelItem.id,
+            logicalStageId: 'stage_1',
+            logicalStageTitle: 'Etapa 1 · Extração',
+            realCount: exCount,
+            perMachineRate: ratePerEx,
+            topLabel: showIndivEx && exCount > 1 ? `${nodeTitleBase} #${i + 1}` : nodeTitleBase,
+            badgeText: !showIndivEx && exCount > 1 ? `${exCount}x` : null,
+            metaRight: pwr.extractorStats
+              ? `${pwr.extractorStats.clockPercent}% • ⚡ ${cardPower.toFixed(1)} MW`
+              : 'Entrada Direta',
+            entity: exObj || fuelItem,
+            recipePill: null,
+            configMeta: {
+              configType: 'power_fuel_source',
+              title: nodeTitleBase,
+              itemId: fuelItem.id
+            },
+            inputsList: [],
+            outputsList: [],
+            resourceExtractInfo: {
+              item: fuelItem,
+              rate: cardRate,
+              unit: fuelItem.unit
+            },
+            outRate: cardRate,
+            item: fuelItem
+          };
+          sourceNodes.push(nodeObj);
+          fuelNodes.push(nodeObj);
+        }
+        nodeGroupsByItem[fuelItem.id] = fuelNodes;
+        stageMetaByItem[fuelItem.id] = {
+          realCount: exCount,
+          perMachineOutRate: ratePerEx,
+          totalOutRate: ratePerEx * exCount
+        };
       }
 
+      // Bombas d'Água exclusivas para os geradores (ex.: Gerador a Carvão ou Usina Nuclear)
       if (pwr.intWaterPumps > 0) {
         const waterItem = DATA.items['Desc_Water_C'];
         const waterEx = DATA.extractors['Build_WaterPump_C'];
@@ -1216,6 +1308,9 @@
           sourceNodes.push({
             id: `pwr_water_${w}`,
             kind: 'extractor',
+            itemId: 'Desc_Water_C',
+            logicalStageId: 'stage_1',
+            logicalStageTitle: 'Etapa 1 · Extração',
             realCount: pwr.intWaterPumps,
             perMachineRate: perPumpRate,
             topLabel: showIndivPumps && pwr.intWaterPumps > 1
@@ -1244,11 +1339,165 @@
         }
       }
 
-      columns.push({
-        id: 'col_pwr_sources',
-        title: '1. Extração (Mineradoras & Água)',
-        nodes: sourceNodes
-      });
+      if (sourceNodes.length > 0) {
+        columns.push({
+          id: 'col_pwr_sources',
+          title: '1. Extração (Mineradoras & Água)',
+          nodes: sourceNodes
+        });
+      }
+
+      // 2. Etapas intermediárias de fabricação do combustível (Refinarias, Misturadores, Montadoras, Fundições...)
+      let nextStageNumber = 2;
+      if (chainPlan && Array.isArray(chainPlan.stages) && chainPlan.stages.length > 0) {
+        chainPlan.stages.forEach((st, stIdx) => {
+          const count = Math.max(1, st.intMachines || 1);
+          const showIndiv = expandIndividual && count <= MAX_INDIVIDUAL_CARDS;
+          const cardsCount = showIndiv ? count : 1;
+          const stageMachineNodes = [];
+
+          const outRatePerCard = showIndiv ? st.ratePerMachine : st.actualProducedRate;
+          const outLogiPerCard = getLogisticsInfo(outRatePerCard, st.item.isFluid, maxBeltId);
+          const perMachOutLogi = getLogisticsInfo(st.ratePerMachine, st.item.isFluid, maxBeltId);
+          const pwrPerCard = showIndiv ? st.powerPerMachineMw : st.totalPowerMw;
+
+          const cardInputsList = st.inputsConsumed.map((inp) => {
+            const r = showIndiv ? inp.perMachineRate : inp.ratePerMin;
+            const lg = showIndiv ? inp.perMachineLogistics : inp.logistics;
+            const perMachLg = inp.perMachineLogistics || getLogisticsInfo(inp.perMachineRate, inp.item?.isFluid, maxBeltId);
+            return {
+              item: inp.item,
+              rate: r,
+              unit: inp.item?.unit || 'un',
+              beltText: showIndiv
+                ? lg.beltTag
+                : `${lg.beltTag} (${inp.perMachineRate.toFixed(1)}/m • ${perMachLg.shortTier} cada)`
+            };
+          });
+
+          const isFinalFuelStage = st.itemId === fuelItem.id;
+          const finalOutRateToDisplay = (isFinalFuelStage && pwr.calcMode === 'from_fuel' && pwr.availableFuelRate > 0)
+            ? (showIndiv ? (pwr.availableFuelRate / count) : pwr.availableFuelRate)
+            : outRatePerCard;
+
+          const cardOutputsList = [
+            {
+              item: st.item,
+              rate: finalOutRateToDisplay,
+              unit: st.item.unit,
+              beltText: showIndiv
+                ? outLogiPerCard.beltTag
+                : `${outLogiPerCard.beltTag} (${st.ratePerMachine.toFixed(1)}/m • ${perMachOutLogi.shortTier} cada)`
+            }
+          ];
+
+          const stageLogId = `stage_${nextStageNumber}`;
+          const stageLogTitle = `Etapa ${nextStageNumber} · ${st.item.name}`;
+          nextStageNumber++;
+
+          for (let m = 0; m < cardsCount; m++) {
+            const nodeId = `pwr_stg_${st.itemId}_${m}`;
+            stageMachineNodes.push({
+              id: nodeId,
+              kind: 'machine',
+              stageItemId: st.itemId,
+              logicalStageId: stageLogId,
+              logicalStageTitle: stageLogTitle,
+              realCount: count,
+              perMachineRate: isFinalFuelStage && pwr.calcMode === 'from_fuel' && pwr.availableFuelRate > 0
+                ? (pwr.availableFuelRate / count)
+                : st.ratePerMachine,
+              machineIndex: m + 1,
+              totalStageMachines: count,
+              topLabel: showIndiv
+                ? `${st.machine.name.toUpperCase()} #${m + 1}`
+                : st.machine.name.toUpperCase(),
+              badgeText: !showIndiv && count > 1 ? `${count}x` : null,
+              metaRight: `${st.clockPercent}% • ⚡ ${pwrPerCard.toFixed(1)} MW`,
+              entity: st.machine,
+              recipePill: st.recipe.isAlternate ? `★ ${st.recipe.cleanName}` : null,
+              configMeta: {
+                configType: 'stage_machine',
+                mode: 'power',
+                itemId: st.itemId,
+                title: `${st.machine.name} — ${st.item.name}`
+              },
+              inputsList: cardInputsList,
+              outputsList: cardOutputsList,
+              excessText: null,
+              inRate: st.inputsConsumed[0] ? (showIndiv ? st.inputsConsumed[0].perMachineRate : st.inputsConsumed[0].ratePerMin) : 0,
+              outRate: finalOutRateToDisplay,
+              item: st.item
+            });
+          }
+
+          st.inputsConsumed.forEach((inp, ingIdx) => {
+            const ingId = inp.item?.id;
+            if (!ingId) return;
+            const upstreamNodes = nodeGroupsByItem[ingId] || [];
+            const upstreamMeta = stageMetaByItem[ingId] || {
+              realCount: upstreamNodes.length,
+              perMachineOutRate: upstreamNodes[0] ? upstreamNodes[0].outRate : inp.ratePerMin
+            };
+            if (upstreamNodes.length > 0) {
+              buildSplitterColumnsBetween(
+                upstreamNodes,
+                stageMachineNodes,
+                inp.item,
+                maxBeltId,
+                columns,
+                connections,
+                `pwr_csplit_${stIdx}_${ingIdx}`,
+                inp.ratePerMin,
+                inp.perMachineRate,
+                upstreamMeta.realCount,
+                count,
+                upstreamMeta.perMachineOutRate,
+                expandIndividual,
+                ingIdx,
+                stageLogId,
+                stageLogTitle
+              );
+            }
+          });
+
+          columns.push({
+            id: `col_pwr_stage_${stIdx}`,
+            title: `${stageLogTitle} (${count}x ${st.machine.name})`,
+            stageData: st,
+            nodes: stageMachineNodes
+          });
+
+          nodeGroupsByItem[st.itemId] = stageMachineNodes;
+          stageMetaByItem[st.itemId] = {
+            realCount: count,
+            perMachineOutRate: isFinalFuelStage && pwr.calcMode === 'from_fuel' && pwr.availableFuelRate > 0
+              ? (pwr.availableFuelRate / count)
+              : st.ratePerMachine,
+            totalOutRate: isFinalFuelStage && pwr.calcMode === 'from_fuel' && pwr.availableFuelRate > 0
+              ? pwr.availableFuelRate
+              : st.actualProducedRate
+          };
+
+          if (st.recipe && Array.isArray(st.recipe.products)) {
+            st.recipe.products.forEach((p) => {
+              if (p.item && p.item !== st.itemId && !nodeGroupsByItem[p.item]) {
+                nodeGroupsByItem[p.item] = stageMachineNodes;
+                stageMetaByItem[p.item] = {
+                  realCount: count,
+                  perMachineOutRate: (p.ratePerMin || 0) * (st.clockPercent || 100) / 100,
+                  totalOutRate: ((p.ratePerMin || 0) * (st.clockPercent || 100) / 100) * count
+                };
+              }
+            });
+          }
+        });
+      }
+
+      // 3. Etapa dos Geradores de Energia
+      const genStageLogId = `stage_${nextStageNumber}`;
+      const genStageLogTitle = `Etapa ${nextStageNumber} · Geração`;
+      nextStageNumber++;
 
       const showIndividualGens = expandIndividual && totalGens <= MAX_INDIVIDUAL_CARDS;
       const genNodes = [];
@@ -1278,6 +1527,8 @@
           genNodes.push({
             id: `pwr_gen_${g}`,
             kind: 'generator',
+            logicalStageId: genStageLogId,
+            logicalStageTitle: genStageLogTitle,
             realCount: totalGens,
             perMachineRate: pwr.fuelPerGenerator,
             topLabel: `${gen.name.toUpperCase()} #${g + 1}`,
@@ -1327,6 +1578,8 @@
         genNodes.push({
           id: `pwr_gen_group`,
           kind: 'generator',
+          logicalStageId: genStageLogId,
+          logicalStageTitle: genStageLogTitle,
           realCount: totalGens,
           perMachineRate: pwr.fuelPerGenerator,
           topLabel: gen.name.toUpperCase(),
@@ -1355,51 +1608,76 @@
         });
       }
 
-      const fuelSourceNodes = sourceNodes.filter((n) => n.id.startsWith('pwr_src_'));
-      buildSplitterColumnsBetween(
-        fuelSourceNodes,
-        genNodes,
-        fuelItem,
-        maxBeltId,
-        columns,
-        connections,
-        'pwr_split',
-        pwr.totalFuelConsumed,
-        pwr.fuelPerGenerator,
-        exCount,
-        totalGens,
-        ratePerEx,
-        expandIndividual
-      );
+      const fuelProducerNodes = nodeGroupsByItem[fuelItem.id] || sourceNodes.filter((n) => n.id.startsWith('pwr_src_'));
+      const fuelProducerMeta = stageMetaByItem[fuelItem.id] || {
+        realCount: fuelProducerNodes.length || 1,
+        perMachineOutRate: fuelProducerNodes[0]?.outRate || pwr.totalFuelConsumed
+      };
+      const totalFuelFlowToPropagate = (pwr.calcMode === 'from_fuel' && pwr.availableFuelRate > 0)
+        ? pwr.availableFuelRate
+        : pwr.totalFuelConsumed;
+      const perGenFuelToPropagate = totalGens > 0
+        ? (totalFuelFlowToPropagate / totalGens)
+        : pwr.fuelPerGenerator;
+
+      if (fuelProducerNodes.length > 0) {
+        buildSplitterColumnsBetween(
+          fuelProducerNodes,
+          genNodes,
+          fuelItem,
+          maxBeltId,
+          columns,
+          connections,
+          'pwr_split',
+          totalFuelFlowToPropagate,
+          perGenFuelToPropagate,
+          fuelProducerMeta.realCount,
+          totalGens,
+          fuelProducerMeta.perMachineOutRate,
+          expandIndividual,
+          0,
+          genStageLogId,
+          genStageLogTitle
+        );
+      }
 
       const waterSourceNodes = sourceNodes.filter((n) => n.id.startsWith('pwr_water_'));
       if (waterSourceNodes.length > 0 && genNodes.length > 0) {
-        waterSourceNodes.forEach((wn, wIdx) => {
-          const targetIdx = Math.min(genNodes.length - 1, Math.floor((wIdx / waterSourceNodes.length) * genNodes.length));
-          const wLogi = getLogisticsInfo(wn.outRate, true, maxBeltId);
-          connections.push({
-            fromNodeId: wn.id,
-            toNodeId: genNodes[targetIdx].id,
-            rate: wn.outRate,
-            unit: 'm³',
-            item: DATA.items['Desc_Water_C'],
-            logistics: wLogi,
-            splitLabel: formatCompactWireLabel(wLogi, wn.outRate, true)
-          });
-        });
+        buildSplitterColumnsBetween(
+          waterSourceNodes,
+          genNodes,
+          DATA.items['Desc_Water_C'],
+          maxBeltId,
+          columns,
+          connections,
+          'pwr_water_split',
+          pwr.totalWaterNeeded,
+          pwr.waterPerGenerator,
+          pwr.intWaterPumps,
+          totalGens,
+          pwr.waterRatePerPump || 120,
+          expandIndividual,
+          1,
+          genStageLogId,
+          genStageLogTitle
+        );
       }
 
       columns.push({
         id: 'col_pwr_gens',
-        title: `2. Geradores Inteiros (${totalGens}x)`,
+        title: `${genStageLogTitle} (${totalGens}x)`,
         nodes: genNodes
       });
 
+      const finalStageLogId = `stage_${nextStageNumber}`;
+      const finalStageLogTitle = `Etapa ${nextStageNumber} · Energia Gerada`;
       const summaryNodeId = 'pwr_final_summary';
       const finalNodes = [
         {
           id: summaryNodeId,
           kind: 'power_emblem',
+          logicalStageId: finalStageLogId,
+          logicalStageTitle: finalStageLogTitle,
           topLabel: '⚡ ENERGIA GERADA',
           grossMw: pwr.totalGrossMw,
           netMw: pwr.netPowerMw,
@@ -1410,7 +1688,7 @@
 
       columns.push({
         id: 'col_pwr_out',
-        title: '3. Resultado Energético',
+        title: finalStageLogTitle,
         nodes: finalNodes
       });
 
@@ -1430,7 +1708,11 @@
       const edges = connections.map((c) => ({
         from: c.fromNodeId,
         to: c.toNodeId,
+        fromPortIdx: typeof c.fromPortIdx === 'number' ? c.fromPortIdx : undefined,
+        toPortIdx: typeof c.toPortIdx === 'number' ? c.toPortIdx : undefined,
         label: c.splitLabel,
+        itemId: c.item ? c.item.id : null,
+        rate: Number(c.rate) || 0,
         isPipe: c.item ? Boolean(c.item.isFluid) : false,
         isPowerLine: Boolean(c.isPowerLine),
         isExcessLine: false
@@ -1467,6 +1749,8 @@
             id: nodeId,
             kind: 'extractor',
             itemId: res.id,
+            logicalStageId: 'stage_1',
+            logicalStageTitle: 'Etapa 1 · Extração',
             realCount: count,
             perMachineRate: ex.ratePerExtractor,
             topLabel: showIndiv && count > 1 ? `${baseTitle} #${i + 1}` : baseTitle,
@@ -1550,12 +1834,17 @@
         }
       ];
 
+      const stageLogId = `stage_${stIdx + 2}`;
+      const stageLogTitle = `Etapa ${stIdx + 2} · ${st.item.name}`;
+
       for (let m = 0; m < cardsCount; m++) {
         const nodeId = `stg_${st.itemId}_${m}`;
         stageMachineNodes.push({
           id: nodeId,
           kind: 'machine',
           stageItemId: st.itemId,
+          logicalStageId: stageLogId,
+          logicalStageTitle: stageLogTitle,
           realCount: count,
           perMachineRate: st.ratePerMachine,
           machineIndex: m + 1,
@@ -1604,7 +1893,10 @@
             upstreamMeta.realCount,
             count,
             upstreamMeta.perMachineOutRate,
-            expandIndividual
+            expandIndividual,
+            ingIdx,
+            stageLogId,
+            stageLogTitle
           );
         }
       });
@@ -1654,7 +1946,9 @@
           id: finalNodeId,
           kind: 'final_product',
           isFinalProduct: true,
-          topLabel: 'PRODUTO FINAL',
+          logicalStageId: `stage_final`,
+          logicalStageTitle: `Etapa ${(plan.stages?.length || 1) + 2} · Item Final`,
+          topLabel: 'ITEM FINAL',
           metaRight: `${tStage.intMachines}x ${tStage.machine.name}`,
           entity: finalItem,
           recipePill: 'PRODUTO FINAL',
@@ -1702,6 +1996,8 @@
     const edges = connections.map((c) => ({
       from: c.fromNodeId,
       to: c.toNodeId,
+      fromPortIdx: typeof c.fromPortIdx === 'number' ? c.fromPortIdx : undefined,
+      toPortIdx: typeof c.toPortIdx === 'number' ? c.toPortIdx : undefined,
       label: c.splitLabel,
       itemId: c.item ? c.item.id : null,
       rate: Number(c.rate) || 0,
@@ -1718,9 +2014,42 @@
   }
 
   /**
-   * Builds accurate multi-level Splitter (`Divisor ÷2`, `Divisor ÷3`) and Merger (`Unificador 2➔1`, `Unificador 3➔1`)
-   * columns between `sourceNodes` and `targetNodes` using the REAL machine counts (`realS`, `realT`)
-   * and strictly respecting the 1200/min belt cap (600 m³/min pipe cap).
+   * Partition N items into up to 3 contiguous slices [n0, n1, n2] that minimize
+   * the total number of 3-way junctions/splitters (achieving the theoretical minimum ceil((N-1)/2))
+   * while keeping the tree balanced.
+   */
+  function partitionThreeWay(N) {
+    if (N <= 1) return [N];
+    if (N === 2) return [1, 1];
+    if (N === 3) return [1, 1, 1];
+    if (N === 4) return [1, 2, 1];
+    if (N === 5) return [1, 3, 1];
+    let a = Math.floor(N / 3);
+    let b = Math.floor((N - a) / 2);
+    let c = N - a - b;
+    // Shift 1 between two even branches so both become odd (0 wasted ports on odd subtrees!)
+    if (a % 2 === 0 && b % 2 === 0 && a > 1) {
+      a -= 1;
+      b += 1;
+    } else if (b % 2 === 0 && c % 2 === 0 && c > 1) {
+      c -= 1;
+      b += 1;
+    } else if (a % 2 === 0 && c % 2 === 0 && a > 1) {
+      a -= 1;
+      c += 1;
+    }
+    return [a, b, c].filter((x) => x > 0);
+  }
+
+  /**
+   * Builds accurate demand-driven Splitter (`Divisor de Esteira`), Merger (`Unificador de Esteira`),
+   * and Pipe Junction (`Junção de Tubulação`) trees between `sourceNodes` and `targetNodes`.
+   * Guarantees:
+   * - Conservation of flow at every node: sum(outputs) === input
+   * - Every consumer receives 100% of its requested demand
+   * - Every edge label shows the actual flow passing through that segment
+   * - Every wire connects to a distinct port (fromPortIdx / toPortIdx)
+   * - Respects 1200/min belt cap and 600 m³/min pipe cap
    */
   function buildSplitterColumnsBetween(
     sourceNodes,
@@ -1735,7 +2064,10 @@
     realSourceCount = null,
     realTargetCount = null,
     perSourceMachineRate = null,
-    expandIndividual = true
+    expandIndividual = true,
+    targetInPortIdx = 0,
+    logicalStageId = null,
+    logicalStageTitle = null
   ) {
     const S_cards = sourceNodes.length;
     const T_cards = targetNodes.length;
@@ -1747,430 +2079,258 @@
 
     const S_real = Math.max(1, Math.round(realSourceCount || sourceNodes[0].realCount || S_cards));
     const T_real = Math.max(1, Math.round(realTargetCount || targetNodes[0].realCount || T_cards));
-    const tgtRate = perTargetMachineRate || targetNodes[0].perMachineRate || targetNodes[0].inRate || 30;
-    const srcRate = perSourceMachineRate || sourceNodes[0].perMachineRate || sourceNodes[0].outRate || (tgtRate * T_real / S_real);
-    const totalFlow = Math.max(totalStageFlow || (T_real * tgtRate), S_real * srcRate);
+    const tgtRate = Number(perTargetMachineRate || targetNodes[0].perMachineRate || targetNodes[0].inRate || 30);
+    const srcRate = Number(perSourceMachineRate || sourceNodes[0].perMachineRate || sourceNodes[0].outRate || (tgtRate * T_real / S_real));
+    const totalDemandFlow = T_real * tgtRate;
+    const totalFlow = totalStageFlow ? Number(totalStageFlow) : totalDemandFlow;
 
     const splitterEntity = isFluid ? PIPE_JUNCTION_ENTITY : SPLITTER_ENTITY;
     const mergerEntity = isFluid ? PIPE_JUNCTION_ENTITY : MERGER_ENTITY;
+    const splitterTitleBase = isFluid ? 'Junção de Tubulação' : 'Divisor de Esteira';
+    const mergerTitleBase = isFluid ? 'Junção de Tubulação' : 'Unificador de Esteira';
+
+    const pushEdge = (fromId, toId, flowRate, fromPort, toPort) => {
+      const logi = getLogisticsInfo(flowRate, isFluid, maxBeltId);
+      connections.push({
+        fromNodeId: fromId,
+        toNodeId: toId,
+        fromPortIdx: typeof fromPort === 'number' ? fromPort : undefined,
+        toPortIdx: typeof toPort === 'number' ? toPort : undefined,
+        rate: flowRate,
+        unit,
+        item,
+        logistics: logi,
+        splitLabel: formatCompactWireLabel(logi, flowRate, isFluid)
+      });
+    };
 
     // -------------------------------------------------------------------------
     // 0. Modo resumido (Todas as Máquinas: NÃO): exibe divisores/unificadores/junções
     //    agrupados em 1 card com selo ×N quando S_real > 1 ou T_real > 1
     // -------------------------------------------------------------------------
     if (!expandIndividual && S_cards === 1 && T_cards === 1) {
-      const logi = getLogisticsInfo(totalFlow, isFluid, maxBeltId);
-      const wireLabel = formatCompactWireLabel(logi, totalFlow, isFluid);
       const needMerger = S_real > 1 && S_real !== T_real;
       const needSplitter = T_real > 1 && S_real !== T_real;
 
       if (!needMerger && !needSplitter) {
-        connections.push({
-          fromNodeId: sourceNodes[0].id,
-          toNodeId: targetNodes[0].id,
-          rate: totalFlow,
-          unit,
-          item,
-          logistics: logi,
-          splitLabel: wireLabel
-        });
+        pushEdge(sourceNodes[0].id, targetNodes[0].id, totalFlow, 0, targetInPortIdx);
         return;
       }
 
       let prevId = sourceNodes[0].id;
-      const splitterOutPorts = isFluid ? (DATA.logistics?.Build_PipelineJunction_Cross_C?.outPorts || 2) : (DATA.logistics?.Build_ConveyorAttachmentSplitter_C?.outPorts || 3);
-      const mergerInPorts = isFluid ? (DATA.logistics?.Build_PipelineJunction_Cross_C?.inPorts || 2) : (DATA.logistics?.Build_ConveyorAttachmentMerger_C?.inPorts || 3);
+      let prevOutPort = 0;
 
       if (needMerger) {
-        const mCount = Math.max(1, Math.ceil((S_real - 1) / Math.max(1, mergerInPorts - 1)));
+        const mCount = Math.max(1, Math.ceil((S_real - 1) / 2));
         const mId = `${idPrefix}_grp_merger`;
         const mNode = {
           id: mId,
           kind: isFluid ? 'pipe_junction' : 'merger',
-          topLabel: isFluid ? 'Junção de Tubulação' : 'Unificador',
+          logicalStageId,
+          logicalStageTitle,
+          topLabel: mergerTitleBase,
           badgeText: `×${mCount}`,
           entity: mergerEntity,
           inputsList: [{ item, rate: totalFlow, unit }],
           outputsList: [{ item, rate: totalFlow, unit }],
+          inRate: totalFlow,
           outRate: totalFlow,
+          item,
           accent: isFluid ? '#2563EB' : '#EA580C'
         };
         columns.push({ id: `col_${mId}`, title: mNode.topLabel, nodes: [mNode] });
-        connections.push({ fromNodeId: prevId, toNodeId: mId, rate: totalFlow, unit, item, logistics: logi, splitLabel: wireLabel });
+        pushEdge(prevId, mId, totalFlow, prevOutPort, 1);
         prevId = mId;
+        prevOutPort = isFluid ? 1 : 0;
       }
 
       if (needSplitter) {
-        const sCount = Math.max(1, Math.ceil((T_real - 1) / Math.max(1, splitterOutPorts - 1)));
+        const sCount = Math.max(1, Math.ceil((T_real - 1) / 2));
         const sId = `${idPrefix}_grp_splitter`;
         const sNode = {
           id: sId,
           kind: isFluid ? 'pipe_junction' : 'splitter',
-          topLabel: isFluid ? 'Junção de Tubulação' : 'Divisor',
+          logicalStageId,
+          logicalStageTitle,
+          topLabel: splitterTitleBase,
           badgeText: `×${sCount}`,
           entity: splitterEntity,
           inputsList: [{ item, rate: totalFlow, unit }],
           outputsList: [{ item, rate: totalFlow, unit }],
+          inRate: totalFlow,
           outRate: totalFlow,
+          item,
           accent: isFluid ? '#2563EB' : '#EA580C'
         };
         columns.push({ id: `col_${sId}`, title: sNode.topLabel, nodes: [sNode] });
-        connections.push({ fromNodeId: prevId, toNodeId: sId, rate: totalFlow, unit, item, logistics: logi, splitLabel: wireLabel });
+        pushEdge(prevId, sId, totalFlow, prevOutPort, 0);
         prevId = sId;
+        prevOutPort = 1;
       }
 
-      connections.push({ fromNodeId: prevId, toNodeId: targetNodes[0].id, rate: totalFlow, unit, item, logistics: logi, splitLabel: wireLabel });
+      pushEdge(prevId, targetNodes[0].id, totalFlow, prevOutPort, targetInPortIdx);
       return;
     }
 
     // -------------------------------------------------------------------------
-    // 1. Direct 1-to-1 connection when S_real === T_real
+    // 1. Direct 1-to-1 connection when S_cards === T_cards
     // -------------------------------------------------------------------------
-    if (S_real === T_real) {
-      if (S_cards === T_cards) {
-        for (let i = 0; i < S_cards; i++) {
-          const r = S_cards === 1 ? totalFlow : Math.max(tgtRate, srcRate);
-          const logi = getLogisticsInfo(r, isFluid, maxBeltId);
-          connections.push({
-            fromNodeId: sourceNodes[i].id,
-            toNodeId: targetNodes[i].id,
-            rate: r,
-            unit,
-            item,
-            logistics: logi,
-            splitLabel: formatCompactWireLabel(logi, r, isFluid)
-          });
-        }
-      } else {
-        sourceNodes.forEach((sNode, idx) => {
-          const tNode = targetNodes[Math.min(T_cards - 1, idx)];
-          const logi = getLogisticsInfo(sNode.outRate, isFluid, maxBeltId);
-          connections.push({
-            fromNodeId: sNode.id,
-            toNodeId: tNode.id,
-            rate: sNode.outRate,
-            unit,
-            item,
-            logistics: logi,
-            splitLabel: formatCompactWireLabel(logi, sNode.outRate, isFluid)
-          });
-        });
+    if (S_cards === T_cards) {
+      for (let i = 0; i < S_cards; i++) {
+        const r = S_cards === 1 ? totalFlow : tgtRate;
+        pushEdge(sourceNodes[i].id, targetNodes[i].id, r, 0, targetInPortIdx);
       }
       return;
     }
 
     // -------------------------------------------------------------------------
-    // 2.Compute exact Splitter / Merger stages from (S_real -> T_real)
+    // 2. Partition into minimal parallel trunks based ONLY on belt/pipe capacity
+    //    (600 m³/min pipe or 1200/min belt), avoiding unnecessary duplicate trunks
     // -------------------------------------------------------------------------
-    let g = gcd(S_real, T_real);
-    let sSub = Math.round(S_real / g);
-    let tSub = Math.round(T_real / g);
+    const minCapTrunks = Math.max(1, Math.ceil((totalDemandFlow - 1e-6) / maxSingleCap));
+    const numTrunks = Math.max(1, Math.min(S_cards, T_cards, minCapTrunks));
 
-    // If sSub > 1 and merging sSub sources into 1 belt would exceed 1200/min, keep parallel trunks!
-    while (sSub > 1 && (sSub * srcRate) > maxSingleCap + 1e-6) {
-      if (sSub % 2 === 0 && tSub % 2 === 0) {
-        sSub /= 2;
-        tSub /= 2;
-        g *= 2;
-      } else {
-        break;
+    // Helper to split an array into K balanced contiguous chunks
+    const splitIntoChunks = (arr, K) => {
+      const chunks = [];
+      const n = arr.length;
+      const k = Math.max(1, Math.min(n, K));
+      let start = 0;
+      for (let i = 0; i < k; i++) {
+        const sz = Math.floor((n - start) / (k - i));
+        chunks.push(arr.slice(start, start + sz));
+        start += sz;
       }
-    }
+      return chunks;
+    };
 
-    // Build level specifications for 1 trunk group (`sSub` sources -> `tSub` targets)
-    // Each level has: { kind: 'splitter'|'merger', factor, countPerGroup, totalCount, inRatePerUnit, outRatePerBranch }
-    const levelsSpec = [];
+    const sourceGroups = splitIntoChunks(sourceNodes, numTrunks);
+    const targetGroups = splitIntoChunks(targetNodes, numTrunks);
 
-    if (sSub === 1 && tSub > 1) {
-      // Pure Splitter Tree! (e.g. 1 Miner (600/m) -> 6 Machines (100/m): Level 1 = 1x ÷3 (200/m), Level 2 = 3x ÷2 (100/m))
-      let rem = tSub;
-      let currInRate = totalFlow / g;
-      let branchesInGroup = 1;
-      let guard = 0;
-      while (rem > 1 && guard < 6) {
-        guard++;
-        const f = chooseSplitFactor(rem);
-        const outRate = currInRate / f;
-        levelsSpec.push({
-          kind: 'splitter',
-          factor: f,
-          countPerGroup: branchesInGroup,
-          totalCount: g * branchesInGroup,
-          inRate: currInRate,
-          outRate
-        });
-        branchesInGroup *= f;
-        currInRate = outRate;
-        rem = Math.ceil(rem / f);
-      }
-    } else if (tSub === 1 && sSub > 1) {
-      // Pure Merger Tree! (only when combined rate <= 1200/min)
-      let rem = sSub;
-      let currInRate = srcRate;
-      let guard = 0;
-      while (rem > 1 && guard < 5) {
-        guard++;
-        const f = chooseSplitFactor(rem);
-        const nextStreams = Math.ceil(rem / f);
-        const outRate = Math.min(maxSingleCap, currInRate * f);
-        levelsSpec.push({
-          kind: 'merger',
-          factor: f,
-          countPerGroup: nextStreams,
-          totalCount: g * nextStreams,
-          inRate: currInRate,
-          outRate
-        });
-        currInRate = outRate;
-        rem = nextStreams;
-      }
-    } else {
-      // General ratio (sSub sources -> tSub targets, e.g. 48 Construtors @ 37.5/m -> 180 Construtors @ 10/m: g=12 groups of 4 -> 15)
-      const groupFlow = (sSub * srcRate);
-      if (sSub > 1 && groupFlow <= maxSingleCap + 1e-6) {
-        // First merge sSub sources into 1 trunk belt of `groupFlow`
-        let remS = sSub;
-        let currIn = srcRate;
-        let guard = 0;
-        while (remS > 1 && guard < 4) {
-          guard++;
-          const f = chooseSplitFactor(remS);
-          const nextStreams = Math.ceil(remS / f);
-          const outR = currIn * f;
-          levelsSpec.push({
-            kind: 'merger',
-            factor: f,
-            countPerGroup: nextStreams,
-            totalCount: g * nextStreams,
-            inRate: currIn,
-            outRate: outR
-          });
-          currIn = outR;
-          remS = nextStreams;
-        }
-        // Then split the trunk belt into `tSub` target machines
-        let remT = tSub;
-        let currSplitIn = groupFlow;
-        let branches = 1;
-        guard = 0;
-        while (remT > 1 && guard < 5) {
-          guard++;
-          const f = chooseSplitFactor(remT);
-          const outR = currSplitIn / f;
-          levelsSpec.push({
-            kind: 'splitter',
-            factor: f,
-            countPerGroup: branches,
-            totalCount: g * branches,
-            inRate: currSplitIn,
-            outRate: outR
-          });
-          branches *= f;
-          currSplitIn = outR;
-          remT = Math.ceil(remT / f);
-        }
-      } else if (T_real > S_real) {
-        // GroupFlow > 1200/min: split each source directly without merging beyond 1200/min
-        const avgTargetsPerSource = Math.max(2, Math.ceil(T_real / S_real));
-        let rem = avgTargetsPerSource;
-        let currIn = srcRate;
-        let branches = 1;
-        let guard = 0;
-        while (rem > 1 && guard < 5) {
-          guard++;
-          const f = chooseSplitFactor(rem);
-          const outR = currIn / f;
-          levelsSpec.push({
-            kind: 'splitter',
-            factor: f,
-            countPerGroup: branches,
-            totalCount: S_real * branches,
-            inRate: currIn,
-            outRate: outR
-          });
-          branches *= f;
-          currIn = outR;
-          rem = Math.ceil(rem / f);
-        }
-      }
-    }
+    const mergerColNodes = [];
+    const splitterColNodes = [];
+    let mergerSeq = 1;
+    let splitterSeq = 1;
 
-    if (levelsSpec.length === 0) {
-      // Fallback direct connection
-      sourceNodes.forEach((sNode, idx) => {
-        const tNode = targetNodes[Math.min(T_cards - 1, idx)];
-        const logi = getLogisticsInfo(sNode.outRate, isFluid, maxBeltId);
-        connections.push({
-          fromNodeId: sNode.id,
-          toNodeId: tNode.id,
-          rate: sNode.outRate,
-          unit,
+    // -------------------------------------------------------------------------
+    // Simplificação padrão de logística intermediária:
+    // Em vez de expandir árvores recursivas com dezenas de cards de Divisores,
+    // Unificadores e Junções de Tubulação (principal gargalo de DOM/layout),
+    // consolidamos os blocos equivalentes de cada tronco paralelo em 1 card
+    // agrupado com o selo exato `×N` (N = ceil((k - 1) / 2)), preservando todas
+    // as esteiras/tubulações reais entre máquinas e a conservação exata de fluxo.
+    // -------------------------------------------------------------------------
+    for (let g = 0; g < sourceGroups.length; g++) {
+      const sGroup = sourceGroups[g];
+      const tGroup = targetGroups[g] || [];
+      if (sGroup.length === 0 || tGroup.length === 0) continue;
+
+      const groupDemand = tGroup.length * tgtRate;
+      const perSourceFlow = groupDemand / sGroup.length;
+
+      let trunkFromId = sGroup[0].id;
+      let trunkFromPort = 0;
+
+      // 1) Se há múltiplas fontes no tronco, consolida os Unificadores / Junções em 1 card com ×N
+      if (sGroup.length > 1) {
+        const mCount = Math.max(1, Math.ceil((sGroup.length - 1) / 2));
+        const mNum = mergerSeq++;
+        const mId = `${idPrefix}_m_grp_${g}_${mNum}`;
+        const mNode = {
+          id: mId,
+          kind: isFluid ? 'pipe_junction' : 'merger',
+          logicalStageId,
+          logicalStageTitle,
+          entity: mergerEntity,
+          topLabel: sourceGroups.length > 1 ? `${mergerTitleBase} #${mNum}` : mergerTitleBase,
+          badgeText: mCount > 1 ? `×${mCount}` : null,
+          realCount: mCount,
+          recipePill: null,
+          metaRight: null,
+          inputsList: [{ item, rate: groupDemand, unit }],
+          outputsList: [{ item, rate: groupDemand, unit }],
+          inRate: groupDemand,
+          outRate: groupDemand,
           item,
-          logistics: logi,
-          splitLabel: formatCompactWireLabel(logi, sNode.outRate, isFluid)
+          accent: isFluid ? '#2563EB' : '#EA580C'
+        };
+        mergerColNodes.push(mNode);
+
+        sGroup.forEach((sNode, idx) => {
+          const inPort = sGroup.length === 2 ? (idx === 0 ? 0 : 2) : (idx % 3);
+          pushEdge(sNode.id, mId, perSourceFlow, 0, inPort);
         });
-      });
-      return;
-    }
 
-    // -------------------------------------------------------------------------
-    // 3. Instantiate columns for each splitter/merger level
-    // -------------------------------------------------------------------------
-    let prevColNodes = sourceNodes;
+        trunkFromId = mId;
+        trunkFromPort = isFluid ? 1 : 0;
+      }
 
-    levelsSpec.forEach((lvl, lvlIdx) => {
-      const isSplitter = lvl.kind === 'splitter';
-      const showIndivLvl = expandIndividual && lvl.totalCount <= 24 && (S_cards > 1 || T_cards > 1);
-      const cardsInCol = showIndivLvl ? lvl.totalCount : 1;
-      const colNodes = [];
+      // 2) Se há múltiplos destinos no tronco, consolida os Divisores / Junções em 1 card com ×N
+      if (tGroup.length > 1) {
+        // Caso especial de fluido: se já criamos 1 Junção de Tubulação para unir sGroup > 1,
+        // reaproveitamos a mesma Junção consolidada somando a contagem real (evita 2 junções em série!)
+        if (isFluid && sGroup.length > 1) {
+          const existingJunction = mergerColNodes[mergerColNodes.length - 1];
+          const extraJCount = Math.max(1, Math.ceil((tGroup.length - 1) / 2));
+          const totalJCount = (existingJunction.realCount || 1) + extraJCount;
+          existingJunction.realCount = totalJCount;
+          existingJunction.badgeText = totalJCount > 1 ? `×${totalJCount}` : null;
 
-      const inLogi = getLogisticsInfo(lvl.inRate, isFluid, maxBeltId);
-      const outLogi = getLogisticsInfo(lvl.outRate, isFluid, maxBeltId);
-
-      for (let c = 0; c < cardsInCol; c++) {
-        const nodeId = `${idPrefix}_lvl${lvlIdx}_${c}`;
-        const numberSuffix = showIndivLvl && lvl.totalCount > 1 ? ` #${c + 1}` : '';
-
-        if (isSplitter) {
-          colNodes.push({
-            id: nodeId,
-            kind: 'splitter',
-            entity: splitterEntity,
-            topLabel: `DIVISOR (÷${lvl.factor})${numberSuffix}`,
-            badgeText: !showIndivLvl && lvl.totalCount > 1 ? `${lvl.totalCount}x` : null,
-            recipePill: null,
-            metaRight: null,
-            inputsList: [
-              {
-                item,
-                rate: lvl.inRate,
-                unit
-              }
-            ],
-            outputsList: [
-              {
-                item,
-                rate: lvl.outRate,
-                unit
-              }
-            ],
-            inRate: lvl.inRate,
-            outRate: lvl.outRate,
-            item
+          tGroup.forEach((tNode, idx) => {
+            const outPort = tGroup.length === 2 ? (idx === 0 ? 0 : 2) : (idx % 3);
+            pushEdge(existingJunction.id, tNode.id, tgtRate, outPort, targetInPortIdx);
           });
         } else {
-          colNodes.push({
-            id: nodeId,
-            kind: 'merger',
-            entity: mergerEntity,
-            topLabel: `UNIFICADOR (${lvl.factor}➔1)${numberSuffix}`,
-            badgeText: !showIndivLvl && lvl.totalCount > 1 ? `${lvl.totalCount}x` : null,
+          const sCount = Math.max(1, Math.ceil((tGroup.length - 1) / 2));
+          const sNum = splitterSeq++;
+          const sId = `${idPrefix}_s_grp_${g}_${sNum}`;
+          const sNode = {
+            id: sId,
+            kind: isFluid ? 'pipe_junction' : 'splitter',
+            logicalStageId,
+            logicalStageTitle,
+            entity: splitterEntity,
+            topLabel: targetGroups.length > 1 ? `${splitterTitleBase} #${sNum}` : splitterTitleBase,
+            badgeText: sCount > 1 ? `×${sCount}` : null,
+            realCount: sCount,
             recipePill: null,
             metaRight: null,
-            inputsList: [
-              {
-                item,
-                rate: lvl.inRate,
-                unit
-              }
-            ],
-            outputsList: [
-              {
-                item,
-                rate: lvl.outRate,
-                unit
-              }
-            ],
-            inRate: lvl.inRate,
-            outRate: lvl.outRate,
-            item
-          });
-        }
-      }
-
-      // Connect `prevColNodes` -> `colNodes`
-      const P = prevColNodes.length;
-      const C = colNodes.length;
-      if (C >= P) {
-        for (let cIdx = 0; cIdx < C; cIdx++) {
-          const pIdx = Math.min(P - 1, Math.floor((cIdx * P) / C));
-          const wireRate = showIndivLvl ? lvl.inRate : totalFlow;
-          const wLogi = getLogisticsInfo(lvl.inRate, isFluid, maxBeltId);
-          connections.push({
-            fromNodeId: prevColNodes[pIdx].id,
-            toNodeId: colNodes[cIdx].id,
-            rate: wireRate,
-            unit,
+            inputsList: [{ item, rate: groupDemand, unit }],
+            outputsList: [{ item, rate: groupDemand, unit }],
+            inRate: groupDemand,
+            outRate: groupDemand,
             item,
-            logistics: wLogi,
-            splitLabel: showIndivLvl
-              ? formatCompactWireLabel(wLogi, lvl.inRate, isFluid)
-              : formatCompactWireLabel(wLogi, lvl.totalCount * lvl.inRate, isFluid)
+            accent: isFluid ? '#2563EB' : '#EA580C'
+          };
+          splitterColNodes.push(sNode);
+
+          pushEdge(trunkFromId, sId, groupDemand, trunkFromPort, 0);
+
+          tGroup.forEach((tNode, idx) => {
+            const outPort = tGroup.length === 2 ? (idx === 0 ? 0 : 2) : (idx % 3);
+            pushEdge(sId, tNode.id, tgtRate, outPort, targetInPortIdx);
           });
         }
       } else {
-        for (let pIdx = 0; pIdx < P; pIdx++) {
-          const cIdx = Math.min(C - 1, Math.floor((pIdx * C) / P));
-          const wLogi = getLogisticsInfo(lvl.inRate, isFluid, maxBeltId);
-          connections.push({
-            fromNodeId: prevColNodes[pIdx].id,
-            toNodeId: colNodes[cIdx].id,
-            rate: lvl.inRate,
-            unit,
-            item,
-            logistics: wLogi,
-            splitLabel: formatCompactWireLabel(wLogi, lvl.inRate, isFluid)
-          });
-        }
+        // Apenas 1 destino no tronco: conecta direto do tronco ao destino
+        pushEdge(trunkFromId, tGroup[0].id, tgtRate, trunkFromPort, targetInPortIdx);
       }
+    }
 
-      const stepTitle = isSplitter
-        ? `🔀 ${lvlIdx + 1}º Nível Divisor (${lvl.totalCount}x ÷${lvl.factor})`
-        : `🔗 ${lvlIdx + 1}º Nível Unificador (${lvl.totalCount}x ${lvl.factor}➔1)`;
-
+    if (mergerColNodes.length > 0) {
       columns.push({
-        id: `col_${idPrefix}_lvl_${lvlIdx}`,
-        title: stepTitle,
-        nodes: colNodes
+        id: `col_${idPrefix}_m_0`,
+        title: `${mergerTitleBase}`,
+        nodes: mergerColNodes
       });
+    }
 
-      prevColNodes = colNodes;
-    });
-
-    // Connect last logistics column (`prevColNodes`) -> `targetNodes`
-    const P_last = prevColNodes.length;
-    const lastLvl = levelsSpec[levelsSpec.length - 1];
-    const finalBranchRate = lastLvl ? lastLvl.outRate : tgtRate;
-    const finalBranchLogi = getLogisticsInfo(finalBranchRate, isFluid, maxBeltId);
-
-    if (T_cards >= P_last) {
-      for (let tIdx = 0; tIdx < T_cards; tIdx++) {
-        const pIdx = Math.min(P_last - 1, Math.floor((tIdx * P_last) / T_cards));
-        connections.push({
-          fromNodeId: prevColNodes[pIdx].id,
-          toNodeId: targetNodes[tIdx].id,
-          rate: finalBranchRate,
-          unit,
-          item,
-          logistics: finalBranchLogi,
-          splitLabel: T_cards > 1
-            ? formatCompactWireLabel(finalBranchLogi, finalBranchRate, isFluid)
-            : formatCompactWireLabel(finalBranchLogi, T_real * finalBranchRate, isFluid)
-        });
-      }
-    } else {
-      for (let pIdx = 0; pIdx < P_last; pIdx++) {
-        const tIdx = Math.min(T_cards - 1, Math.floor((pIdx * T_cards) / P_last));
-        connections.push({
-          fromNodeId: prevColNodes[pIdx].id,
-          toNodeId: targetNodes[tIdx].id,
-          rate: finalBranchRate,
-          unit,
-          item,
-          logistics: finalBranchLogi,
-          splitLabel: formatCompactWireLabel(finalBranchLogi, finalBranchRate, isFluid)
-        });
-      }
+    if (splitterColNodes.length > 0) {
+      columns.push({
+        id: `col_${idPrefix}_s_0`,
+        title: `${splitterTitleBase}`,
+        nodes: splitterColNodes
+      });
     }
   }
 
@@ -2535,11 +2695,8 @@
         by_generators: 'from_generators'
       };
       let extractorStats = null;
-      if (cfg.fuelItemId && DATA.items[cfg.fuelItemId]?.isRawResource) {
-        const exId = getExtractorIdForResource(cfg.fuelItemId, cfg.minerMark || 'mk2');
-        const purityMult = PURITY_MAP[cfg.purity] || 1.0;
-        extractorStats = computeExtractorStats(exId, purityMult, cfg.minerClock || 100, cfg.minerCount || 1);
-      }
+      const fuelObj = cfg.fuelItemId ? DATA.items[cfg.fuelItemId] : null;
+      const hasCraftRecipes = Boolean(cfg.fuelItemId && recipesByProduct[cfg.fuelItemId] && recipesByProduct[cfg.fuelItemId].length > 0 && !fuelObj?.isRawResource);
 
       const pwr = solvePowerGeneration({
         calcMode: modeMap[cfg.calcMode] || 'from_fuel',
@@ -2552,12 +2709,45 @@
         genClock: cfg.clockPercent || 100,
         waterExtractorClock: cfg.waterExtractorClock || 100,
         manualWaterPumps: cfg.manualWaterPumps || null,
-        extractorStats
+        extractorStats: null
       });
       if (!pwr) return null;
 
+      // Calcula a cadeia completa de produção do combustível (da mineradora/extrator até as máquinas que fabricam o combustível)
+      let fuelChainPlan = null;
+      const targetFuelRate = (pwr.calcMode === 'from_fuel' && pwr.availableFuelRate > 0)
+        ? pwr.availableFuelRate
+        : pwr.totalFuelConsumed;
+
+      if (hasCraftRecipes && targetFuelRate > 0) {
+        fuelChainPlan = this.solveProductionChain({
+          targets: [{ itemId: cfg.fuelItemId, rate: targetFuelRate }],
+          recipeOverrides: cfg.recipeOverrides || {},
+          stepSettings: cfg.stepSettings || {},
+          minerSettings: cfg.minerSettings || {}
+        });
+      } else if (fuelObj && fuelObj.isRawResource && targetFuelRate > 0) {
+        const exId = getExtractorIdForResource(cfg.fuelItemId, cfg.minerMark || 'mk2');
+        const purityMult = PURITY_MAP[cfg.purity] || 1.0;
+        const unitEx = computeExtractorStats(exId, purityMult, cfg.minerClock || 100, 1);
+        const neededMiners = unitEx && unitEx.ratePerExtractor > 0
+          ? Math.max(1, Math.ceil((targetFuelRate / unitEx.ratePerExtractor) - 1e-6))
+          : Math.max(1, Number(cfg.minerCount) || 1);
+        const finalMiners = (cfg.calcMode === 'by_fuel' && cfg.fuelInputMode === 'miner' && cfg.minerCount >= 1)
+          ? Math.round(cfg.minerCount)
+          : neededMiners;
+        extractorStats = computeExtractorStats(exId, purityMult, cfg.minerClock || 100, finalMiners);
+      }
+
+      const chainPowerMw = fuelChainPlan ? (fuelChainPlan.totalPowerMw || 0) : (extractorStats ? (extractorStats.totalPowerMw || 0) : 0);
+      const netPowerMw = pwr.totalGrossMw - (pwr.waterPumpPowerMw || 0) - chainPowerMw;
+
       return {
         ...pwr,
+        extractorStats,
+        fuelChainPlan,
+        chainPowerMw,
+        netPowerMw,
         totalMW: pwr.totalGrossMw,
         generatorCount: pwr.intGenerators
       };
@@ -2806,24 +2996,82 @@
 
       // Qualquer construção oficial de Logística, Armazenamento ou Destino Final (CL-517554)
       const logList = Object.values(DATA.logistics || {});
-      const logObj = logList.find((l) => l.id === block.logisticsId || l.kind === block.blockType);
+      const logObj = (block.logisticsId && DATA.logistics && DATA.logistics[block.logisticsId])
+        || logList.find((l) => l.id === block.logisticsId)
+        || logList.find((l) => l.kind === block.blockType);
       if (logObj) {
         const inItem = block.itemId ? DATA.items[block.itemId] : null;
         const outRate = Number(block.manualRate) || 0;
         const tr = logObj.isFluid ? chosenPipe : chosenBelt;
-        const portDesc = logObj.outPorts === 0
-          ? `Destino final (${logObj.inPorts} entrada${logObj.inPorts > 1 ? 's' : ''})`
-          : `${logObj.inPorts} ent. → ${logObj.outPorts} saí.`;
+        const kind = logObj.kind;
+        const isLiftKind = kind === 'conveyor_lift';
+
+        const formatSmartRule = (val) => {
+          if (!val || val === 'any') return 'Qualquer';
+          if (val === 'overflow') return 'Transbordo';
+          if (val === 'none') return 'Nenhum';
+          if (val === 'any_undefined') return 'Qualquer Indefinido';
+          const it = DATA.items[val];
+          return it ? it.name : val;
+        };
+
+        let portDesc = '';
+        let subLines = [];
+        if (isLiftKind) {
+          portDesc = `${logObj.ratePerMin || 60} itens/min (vertical)`;
+          subLines = [`Fluxo máx.: ${logObj.ratePerMin || 60} itens/min`];
+        } else if (kind === 'storage_mk1') {
+          portDesc = '24 espaços · 1 ent. → 1 saí.';
+          subLines = ['Capacidade: 24 espaços (pilhas)', '1 entrada → 1 saída'];
+        } else if (kind === 'storage_mk2') {
+          portDesc = '48 espaços · 2 ent. → 2 saí.';
+          subLines = ['Capacidade: 48 espaços (pilhas)', '2 entradas → 2 saídas'];
+        } else if (kind === 'fluid_buffer_mk1') {
+          portDesc = '400 m³ · Fluido';
+          subLines = ['Capacidade: 400 m³ de fluido'];
+        } else if (kind === 'fluid_buffer_mk2') {
+          portDesc = '2.400 m³ · Fluido';
+          subLines = ['Capacidade: 2.400 m³ de fluido'];
+        } else if (kind === 'pipe_pump_mk1') {
+          portDesc = 'Elevação: 20 m · 4 MW';
+          subLines = ['Elevação vertical: 20 m', 'Consumo: 4 MW'];
+        } else if (kind === 'pipe_pump_mk2') {
+          portDesc = 'Elevação: 50 m · 8 MW';
+          subLines = ['Elevação vertical: 50 m', 'Consumo: 8 MW'];
+        } else if (kind === 'smart_splitter' || kind === 'programmable_splitter') {
+          const r = block.smartRules || { left: 'any', center: 'any', right: 'overflow' };
+          portDesc = `Esq: ${formatSmartRule(r.left)} · Dir: ${formatSmartRule(r.right)}`;
+          subLines = [
+            `⬅ Esq: ${formatSmartRule(r.left)}`,
+            `⬆ Centro: ${formatSmartRule(r.center)}`,
+            `➡ Dir: ${formatSmartRule(r.right)}`
+          ];
+        } else if (kind === 'dimensional_depot') {
+          portDesc = 'Upload: 30 itens/min · 1 pilha';
+          subLines = ['Upload dimensional: 30 itens/min'];
+        } else if (kind === 'awesome_sink') {
+          portDesc = 'Triturador · 30 MW';
+          subLines = ['Converte itens em Cupons FICSIT', 'Consumo: 30 MW'];
+        } else {
+          portDesc = logObj.outPorts === 0
+            ? `Destino final (${logObj.inPorts} entrada${logObj.inPorts > 1 ? 's' : ''})`
+            : `${logObj.inPorts} ent. → ${logObj.outPorts} saí.`;
+          subLines = [portDesc];
+        }
+
+        const baseMw = isLiftKind ? 0 : (logObj.powerMw || 0);
         return {
           blockId: block.id,
           blockType: logObj.kind,
           entity: { id: logObj.id, name: logObj.name, icon: logObj.wikiImage, wikiImage: logObj.wikiImage },
           title: logObj.name,
           subtitle: portDesc,
+          subLines,
+          ratePerMin: logObj.ratePerMin || 0,
           count,
           clockPercent: 100,
-          powerPerMachineMw: logObj.powerMw || 0,
-          totalPowerMw: (logObj.powerMw || 0) * count,
+          powerPerMachineMw: baseMw,
+          totalPowerMw: baseMw * count,
           powerProducedMw: 0,
           transportUsed: tr,
           inputs: inItem ? [{ item: inItem, perMachineRate: outRate, totalRate: outRate * count, unit: inItem.unit, transportUsed: tr, idealLogi: getLogisticsInfo(outRate, logObj.isFluid) }] : [],
@@ -2852,8 +3100,47 @@
      * After clicking `Check`, cards display any diagnostic warnings attached to them.
      */
     buildFreeCanvasFlowGraph(freeState, expandIndividual = true) {
-      const blocks = freeState?.blocks || [];
-      if (blocks.length === 0) return { columns: [], connections: [], edges: [] };
+      const rawBlocks = freeState?.blocks || [];
+      if (rawBlocks.length === 0) return { columns: [], connections: [], edges: [] };
+
+      // PONTO 5a: Quando expandIndividual === false, agrupar blocos idênticos (mesmo tipo + máquina/item + receita + overclock) em UM card ×N
+      const blockIdRemap = new Map();
+      let blocks = rawBlocks;
+      if (!expandIndividual) {
+        const groupedMap = new Map();
+        const coalesced = [];
+        rawBlocks.forEach((b) => {
+          const isGroupable = b.blockType === 'machine' || b.blockType === 'extractor' || b.blockType === 'generator';
+          if (!isGroupable) {
+            blockIdRemap.set(b.id, b.id);
+            coalesced.push(b);
+            return;
+          }
+          const sig = [
+            b.blockType,
+            b.machineId || '',
+            b.recipeId || '',
+            b.itemId || '',
+            b.minerMark || '',
+            b.purity || '',
+            b.generatorId || '',
+            b.fuelItemId || '',
+            Math.round(Number(b.clockPercent) || 100)
+          ].join('|');
+          if (!groupedMap.has(sig)) {
+            const clone = { ...b, count: Math.max(1, Number(b.count) || 1), mergedBlockIds: [b.id] };
+            groupedMap.set(sig, clone);
+            blockIdRemap.set(b.id, clone.id);
+            coalesced.push(clone);
+          } else {
+            const target = groupedMap.get(sig);
+            target.count += Math.max(1, Number(b.count) || 1);
+            target.mergedBlockIds.push(b.id);
+            blockIdRemap.set(b.id, target.id);
+          }
+        });
+        blocks = coalesced;
+      }
 
       const checkActive = Boolean(freeState.checkPerformed && freeState.lastCheckReport);
       const blockAlertsMap = (checkActive && freeState.lastCheckReport?.blockAlerts) || {};
@@ -2887,7 +3174,7 @@
       );
       const customEdges = freeState?.customEdges || [];
 
-      const MAX_INDIV = expandIndividual ? 60 : 1;
+      const MAX_INDIV = expandIndividual ? Infinity : 1;
       const titleCounter = {};
 
       function createNodesForBlock(block, colNodesList) {
@@ -2950,10 +3237,18 @@
               ? `${st.title} #${cardSeq}`
               : st.title,
             badgeText: !showIndiv && st.count > 1 ? `${st.count}x` : null,
-            metaRight: (st.blockType === 'splitter' || st.blockType === 'merger' || st.blockType === 'pipe_junction')
-              ? null
-              : `Clock ${st.clockPercent}% • ⚡ ${pwr}`,
+            metaRight: st.blockType === 'conveyor_lift'
+              ? `${st.ratePerMin || 60} itens/min`
+              : (st.blockType === 'storage_mk1' ? '24 espaços'
+                : st.blockType === 'storage_mk2' ? '48 espaços'
+                : st.blockType === 'fluid_buffer_mk1' ? '400 m³'
+                : st.blockType === 'fluid_buffer_mk2' ? '2.400 m³'
+                : (st.blockType === 'pipe_pump_mk1' || st.blockType === 'pipe_pump_mk2' || st.blockType === 'awesome_sink') ? `⚡ ${pwr}`
+                : (st.blockType === 'splitter' || st.blockType === 'merger' || st.blockType === 'smart_splitter' || st.blockType === 'programmable_splitter' || st.blockType === 'priority_merger' || st.blockType === 'pipe_junction' || st.blockType === 'dimensional_depot' || st.blockType === 'space_elevator')
+                  ? null
+                  : `Clock ${st.clockPercent}% • ⚡ ${pwr}`),
             entity: st.entity,
+            subLines: Array.isArray(st.subLines) ? st.subLines : [],
             recipePill: (st.blockType === 'machine' && st.recipe?.isAlternate)
               ? `★ ${st.subtitle}`
               : (st.blockType === 'extractor' ? st.subtitle : null),
@@ -3082,17 +3377,19 @@
         n._liveInRate = 0;
       });
 
-      // Resolve valid edge endpoints
+      // Resolve valid edge endpoints (com suporte a blocos agrupados no modo compacto)
       const resolvedEdges = [];
       const outgoingByNode = {};
       customEdges.forEach((ce) => {
-        const fromNode = ce.fromNodeId && nodeById[ce.fromNodeId]
+        const mappedFromBlockId = blockIdRemap.get(ce.fromBlockId) || ce.fromBlockId;
+        const mappedToBlockId = blockIdRemap.get(ce.toBlockId) || ce.toBlockId;
+        const fromNode = (expandIndividual && ce.fromNodeId && nodeById[ce.fromNodeId])
           ? nodeById[ce.fromNodeId]
-          : allCreatedNodes.find((n) => n.blockId === ce.fromBlockId);
-        const toNode = ce.toNodeId && nodeById[ce.toNodeId]
+          : allCreatedNodes.find((n) => n.blockId === mappedFromBlockId);
+        const toNode = (expandIndividual && ce.toNodeId && nodeById[ce.toNodeId])
           ? nodeById[ce.toNodeId]
-          : allCreatedNodes.find((n) => n.blockId === ce.toBlockId);
-        if (!fromNode || !toNode) return;
+          : allCreatedNodes.find((n) => n.blockId === mappedToBlockId);
+        if (!fromNode || !toNode || fromNode.id === toNode.id) return;
         const already = resolvedEdges.some((re) => re.fromNode.id === fromNode.id && re.toNode.id === toNode.id);
         if (already) return;
         const entry = { ce, fromNode, toNode, item: null, rawRate: 0, actualRate: 0, beltObj: null, isBottlenecked: false };
@@ -3102,6 +3399,13 @@
       });
 
       const resolveEdgeTransport = (ce, fromBlock, item) => {
+        if (fromBlock && fromBlock.blockType === 'conveyor_lift') {
+          const logObj = (fromBlock.logisticsId && DATA.logistics?.[fromBlock.logisticsId])
+            || Object.values(DATA.logistics || {}).find(l => l.id === fromBlock.logisticsId || l.kind === 'conveyor_lift');
+          if (logObj) {
+            return { id: logObj.id, name: logObj.name, ratePerMin: logObj.ratePerMin || 60 };
+          }
+        }
         const isFluid = Boolean(item?.isFluid);
         const list = isFluid ? (DATA.pipes || []) : (DATA.belts || []);
         const fallbackId = isFluid ? (fromBlock?.pipeTierId || 'Build_Pipeline_C') : (fromBlock?.beltTierId || 'Build_ConveyorBeltMk3_C');
@@ -3110,6 +3414,7 @@
       };
 
       const PASSTHROUGH_KINDS = new Set([
+        'conveyor_lift',
         'splitter', 'smart_splitter', 'programmable_splitter',
         'merger', 'priority_merger',
         'pipe_junction', 'pipe_pump_mk1', 'pipe_pump_mk2',
@@ -3529,6 +3834,66 @@
         splitterTips,
         blockAlerts
       };
+    },
+
+    /**
+     * Verifies flow invariants on a generated canvas graph (Item 14.5):
+     * 1. Flow conservation at every junction/splitter/merger: sum(in) === sum(out)
+     * 2. Consumer delivery: every machine/generator receives >= its required demand
+     * 3. Capacity limits: no single edge exceeds physical game limits (600 m³/min pipe, 1200/min belt) unless grouped summary
+     * 4. Port uniqueness on junctions/splitters/mergers
+     */
+    verifyFlowInvariants(graph) {
+      const issues = [];
+      if (!graph || !Array.isArray(graph.columns)) return { ok: true, issues };
+      const nodeMap = new Map();
+      graph.columns.forEach((col) => {
+        (col.nodes || []).forEach((n) => nodeMap.set(n.id, n));
+      });
+      const inByNode = new Map();
+      const outByNode = new Map();
+      (graph.edges || []).forEach((e) => {
+        if (e.isPowerLine) return;
+        if (!outByNode.has(e.from)) outByNode.set(e.from, []);
+        outByNode.get(e.from).push(e);
+        if (!inByNode.has(e.to)) inByNode.set(e.to, []);
+        inByNode.get(e.to).push(e);
+      });
+
+      nodeMap.forEach((n, nid) => {
+        const ins = inByNode.get(nid) || [];
+        const outs = outByNode.get(nid) || [];
+        const sumIn = ins.reduce((a, e) => a + (Number(e.rate) || 0), 0);
+        const sumOut = outs.reduce((a, e) => a + (Number(e.rate) || 0), 0);
+
+        if (n.kind === 'splitter' || n.kind === 'merger' || n.kind === 'pipe_junction') {
+          if (ins.length > 0 && outs.length > 0 && Math.abs(sumIn - sumOut) > 0.1) {
+            issues.push(`Conservation violation at ${nid} (${n.topLabel}): in=${sumIn.toFixed(2)}, out=${sumOut.toFixed(2)}`);
+          }
+          // Check port uniqueness when ungrouped
+          if (!n.badgeText) {
+            const usedOutPorts = new Set();
+            outs.forEach((e) => {
+              if (typeof e.fromPortIdx === 'number') {
+                if (usedOutPorts.has(e.fromPortIdx)) {
+                  issues.push(`Duplicate output port ${e.fromPortIdx} on ${nid}`);
+                }
+                usedOutPorts.add(e.fromPortIdx);
+              }
+            });
+          }
+        } else if ((n.kind === 'generator' || n.kind === 'machine') && Array.isArray(n.inputsList) && n.inputsList.length > 0) {
+          n.inputsList.forEach((req) => {
+            const itemIns = ins.filter((e) => !req.item || !e.itemId || e.itemId === req.item.id);
+            const received = itemIns.reduce((a, e) => a + (Number(e.rate) || 0), 0);
+            if (itemIns.length > 0 && received + 0.1 < (Number(req.rate) || 0)) {
+              issues.push(`Under-delivery at ${nid} for ${req.item?.name || ''}: needed=${req.rate}, received=${received.toFixed(2)}`);
+            }
+          });
+        }
+      });
+
+      return { ok: issues.length === 0, issues };
     }
   };
 

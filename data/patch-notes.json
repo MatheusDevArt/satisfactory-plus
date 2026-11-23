@@ -1,5 +1,30 @@
 [
   {
+    "id": "2026-11-23-v25-auditoria-completa-energia-barra-lateral-configuracoes",
+    "date": "23/11/2026",
+    "title": "v2.5 — Nova Barra de Navegação Principal, Configurações (i18n + Recuperação), Áreas de Etapa Dinâmicas e Auditoria Completa de Energia",
+    "items": [
+      { "tag": "Novo", "text": "Nova barra lateral principal esquerda (#main-nav-rail) com abas agrupadas, arte industrial e botão de Configurações com suporte a Português, Inglês e Espanhol, recuperação de conta sem e-mail (pergunta de segurança com hash SHA-256), perfil opcional e preferências unificadas." },
+      { "tag": "Novo", "text": "Áreas de etapa dinâmicas no canvas que englobam máquinas e logística (divisores, unificadores, junções e elevadores), recalculam em tempo real ao arrastar e movem toda a etapa ao arrastar a aba de título." },
+      { "tag": "Novo", "text": "Distribuição automática de andares (3D) por etapas inteiras sem quebrar etapas ao meio, com conversão automática de esteiras entre andares em Elevadores de Esteira (v.1 a v.6) e bombas em tubulações." },
+      { "tag": "Melhoria", "text": "Cards quadrados compactos (3 por linha) com imagem preenchendo o card por etapa, cor neutra global #101117, scrollbar fina de 6px, todos os campos numéricos em formato NumberStepper (‹ valor ›), resultados da Calculadora em card próprio à direita com rolagem interna e card Informações da Máquina unificado entre Produção e Oficina." },
+      { "tag": "Melhoria", "text": "Cores diversificadas por item/fluido em todas as esteiras e tubulações, setas ancoradas pela frente ao centro geométrico das portas com 1 conexão por porta e barra de status inferior completa também na aba Energia." },
+      { "tag": "Correção", "text": "Auditoria completa da aba Energia e Produção: removido o limite de 24/60 cards no modo \"Mostrar todas as máquinas\" (suportando 34x, 54x, 68x, 144x+ cards individuais), propagação de fluxo bottom-up conservativa (soma das saídas = entrada), valor digitado pelo usuário preservado (250 = 250), overclock reduzindo geradores (135 → 54 em 250%), isolamento de estado ao trocar modo/combustível, Junção de Tubulação com 4 portas azuis e atualização imediata do tier do Elevador de Esteira." }
+    ]
+  },
+  {
+    "id": "2026-11-21-sistema-visual-unificado-sidebar-tutorial-passo-a-passo",
+    "date": "21/11/2026",
+    "title": "Identidade visual unificada, barras laterais para fábricas grandes e Tutorial passo a passo",
+    "items": [
+      { "tag": "Melhoria", "text": "Criado um sistema visual único (cards com etiqueta laranja #EA580C, listas com ícone à esquerda e chips de filtro) aplicado em Produção, Oficina, Biblioteca, Receitas, Calculadora, Projetos e Reports." },
+      { "tag": "Melhoria", "text": "Os três modais seletores (Escolher Produto Final, Adicionar Máquina e Escolher Receita) agora compartilham o mesmo tamanho ampliado, cabeçalho, busca, filtros e cards com ícones maiores à esquerda." },
+      { "tag": "Melhoria", "text": "Em Produção, o card Máquinas por Tipo organiza Extração, Máquinas de produção, Esteiras, Divisores/Unificadores, Conexões/Tubos e Energia em grupos recolhíveis com busca fixa e foco direto no espaço." },
+      { "tag": "Melhoria", "text": "Na Oficina, a área de adição ficou compacta com busca, botão + Adicionar e 4 atalhos rápidos, além de lista agrupada por tipo pronta para 100+ blocos." },
+      { "tag": "Novo", "text": "Tutorial refeito do zero com 11 tópicos (incluindo Projetos e Reportar separados) e 42 passos com prints reais exclusivos destacados em laranja." }
+    ]
+  },
+  {
     "id": "2026-11-21-seletores-ampliados-agrupamento-tutorial-completo",
     "date": "21/11/2026",
     "title": "Seletores ampliados padronizados, barra lateral compacta, correção de máquina/receita e Tutorial completo",

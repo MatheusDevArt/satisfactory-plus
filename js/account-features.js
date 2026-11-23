@@ -154,8 +154,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function applyUserPreferences(prefs) {
   if (!prefs || typeof prefs !== 'object') return;
-  if ((prefs.theme === 'dark' || prefs.theme === 'light') && typeof applyTheme === 'function') {
-    applyTheme(prefs.theme, { persistLocal: true, saveAccount: false, rerender: false });
+  if ((prefs.theme === 'dark' || prefs.theme === 'light' || prefs.theme === 'system') && typeof applyTheme === 'function') {
+    const resolvedTheme = prefs.theme === 'system'
+      ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+      : prefs.theme;
+    applyTheme(resolvedTheme, { persistLocal: true, saveAccount: false, rerender: false });
+  }
+  if (typeof syncSettingsFromAccountPreferences === 'function') {
+    syncSettingsFromAccountPreferences(prefs, AccountState.user?.profile || null);
   }
   if (typeof syncLibraryPrefsFromAccount === 'function') {
     syncLibraryPrefsFromAccount(prefs);
@@ -352,6 +358,7 @@ function updateAuthHeaderUI() {
       ${AccountState.menuOpen ? `
         <div class="user-dropdown-menu">
           <div class="user-dropdown-head">Conectado como <strong>${uName}</strong></div>
+          <button type="button" class="context-menu-item" onclick="if(typeof openSettingsModal==='function'){AccountState.menuOpen=false;updateAuthHeaderUI();openSettingsModal();}">⚙️ Configurações & Conta</button>
           <button type="button" class="context-menu-item" onclick="openChangePasswordModal()">🔑 Alterar senha</button>
           <div class="context-menu-divider"></div>
           <button type="button" class="context-menu-item danger" onclick="performLogout()">🚪 Sair</button>
@@ -451,6 +458,65 @@ function renderAuthModalBody() {
     return;
   }
 
+  if (st.tab === 'forgot-password') {
+    if (titleEl) titleEl.textContent = '🛡️ Recuperar Senha (Pergunta de Segurança)';
+    const recQuestion = st.recoveryQuestion || '';
+    const recUser = st.recoveryUsername || '';
+    body.innerHTML = `
+      <div class="mode-switch-mini">
+        <button type="button" class="mini-pill" onclick="switchAuthTab('login')">← Voltar ao Login</button>
+        <button type="button" class="mini-pill active">Recuperar Senha</button>
+      </div>
+      ${st.notice ? `<div class="form-alert info">ℹ️ ${escText(st.notice)}</div>` : ''}
+      ${st.error ? `<div class="form-alert error">⚠️ ${escText(st.error)}</div>` : ''}
+      ${!recQuestion ? `
+        <form onsubmit="submitFetchRecoveryQuestion(event)" class="account-form">
+          <div class="field-group">
+            <label for="rec-username">Nome de usuário</label>
+            <input id="rec-username" type="text" class="sidebar-input" required minlength="3" maxlength="20" value="${escText(recUser)}" placeholder="Digite seu nome de usuário" />
+            <small class="field-hint">Exibiremos a pergunta de segurança cadastrada na sua conta (limite de 5 tentativas por hora).</small>
+          </div>
+          <button type="submit" class="btn-mount-flow ready" ${st.loading ? 'disabled' : ''}>
+            ${st.loading ? '⏳ Buscando...' : '🔎 Ver Pergunta de Segurança'}
+          </button>
+        </form>
+      ` : `
+        <form onsubmit="submitRecoverPassword(event)" class="account-form">
+          <div class="field-group">
+            <label>Usuário</label>
+            <input type="text" class="sidebar-input" value="${escText(recUser)}" disabled />
+          </div>
+          <div class="field-group">
+            <label>Pergunta de segurança</label>
+            <div class="recovery-question-box">${escText(recQuestion)}</div>
+          </div>
+          <div class="field-group">
+            <label for="rec-answer">Sua resposta</label>
+            <input id="rec-answer" type="text" class="sidebar-input" required minlength="2" placeholder="Digite sua resposta (maiúsculas e acentos são ignorados)" autocomplete="off" />
+          </div>
+          <div class="field-group">
+            <label for="rec-new-pass">Nova senha (mínimo 8 caracteres)</label>
+            <div class="password-field-wrap">
+              <input id="rec-new-pass" type="password" class="sidebar-input" required minlength="8" autocomplete="new-password" />
+              <button type="button" class="btn-toggle-eye" onclick="togglePasswordVisibility('rec-new-pass', this)">👁️</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label for="rec-confirm-pass">Confirmar nova senha</label>
+            <div class="password-field-wrap">
+              <input id="rec-confirm-pass" type="password" class="sidebar-input" required minlength="8" autocomplete="new-password" />
+              <button type="button" class="btn-toggle-eye" onclick="togglePasswordVisibility('rec-confirm-pass', this)">👁️</button>
+            </div>
+          </div>
+          <button type="submit" class="btn-mount-flow ready" ${st.loading ? 'disabled' : ''}>
+            ${st.loading ? '⏳ Verificando...' : '🔓 Redefinir Senha e Entrar'}
+          </button>
+        </form>
+      `}
+    `;
+    return;
+  }
+
   const isReg = st.tab === 'register';
   if (titleEl) titleEl.textContent = isReg ? '✨ Criar Conta' : '👤 Entrar na Conta';
 
@@ -493,6 +559,11 @@ function renderAuthModalBody() {
           />
           <button type="button" class="btn-toggle-eye" onclick="togglePasswordVisibility('auth-password', this)" title="Mostrar/ocultar senha">👁️</button>
         </div>
+        ${!isReg ? `
+          <div style="display:flex;justify-content:flex-end;margin-top:4px;">
+            <button type="button" class="btn-link-forgot" onclick="switchAuthTab('forgot-password')">Esqueci minha senha</button>
+          </div>
+        ` : ''}
       </div>
 
       ${isReg ? `
@@ -511,8 +582,29 @@ function renderAuthModalBody() {
             <button type="button" class="btn-toggle-eye" onclick="togglePasswordVisibility('auth-confirm', this)" title="Mostrar/ocultar senha">👁️</button>
           </div>
         </div>
-        <div class="form-alert warn">
-          🔒 <strong>Atenção:</strong> Como não pedimos e-mail, <strong>não existe recuperação de senha</strong>. Guarde sua senha em um local seguro.
+        <div class="field-group">
+          <label for="auth-sec-question">Crie sua pergunta de segurança (Recuperação sem e-mail)</label>
+          <input
+            id="auth-sec-question"
+            type="text"
+            class="sidebar-input"
+            minlength="5"
+            maxlength="140"
+            placeholder="Digite a pergunta que você quiser..."
+            autocomplete="off"
+          />
+        </div>
+        <div class="field-group">
+          <label for="auth-sec-answer">Sua resposta secreta</label>
+          <input
+            id="auth-sec-answer"
+            type="text"
+            class="sidebar-input"
+            minlength="2"
+            placeholder="Sua resposta (maiúsculas e acentos são ignorados)"
+            autocomplete="off"
+          />
+          <small class="field-hint">⚠️ Não use dados pessoais sensíveis na pergunta ou resposta. Você também pode configurar ou alterar isso depois em Configurações.</small>
         </div>
       ` : ''}
 
@@ -565,6 +657,8 @@ async function submitRegisterForm(e) {
   const username = (document.getElementById('auth-username')?.value || '').trim();
   const password = document.getElementById('auth-password')?.value || '';
   const confirmPassword = document.getElementById('auth-confirm')?.value || '';
+  const securityQuestion = (document.getElementById('auth-sec-question')?.value || '').trim();
+  const securityAnswer = (document.getElementById('auth-sec-answer')?.value || '').trim();
 
   if (password !== confirmPassword) {
     AccountState.authModal.error = 'As senhas não conferem.';
@@ -577,9 +671,14 @@ async function submitRegisterForm(e) {
   renderAuthModalBody();
 
   try {
+    const payload = { username, password, confirmPassword };
+    if (securityAnswer.length >= 2) {
+      payload.securityQuestion = securityQuestion;
+      payload.securityAnswer = securityAnswer;
+    }
     const res = await apiFetch('/api/auth?action=register', {
       method: 'POST',
-      body: JSON.stringify({ username, password, confirmPassword })
+      body: JSON.stringify(payload)
     });
     if (!res.ok) {
       AccountState.authModal.loading = false;
@@ -588,6 +687,7 @@ async function submitRegisterForm(e) {
       return;
     }
     AccountState.user = res.data.user;
+    try { localStorage.setItem('splus_user_cache', JSON.stringify(res.data.user)); } catch {}
     if (AccountState.user && AccountState.user.preferences) {
       applyUserPreferences(AccountState.user.preferences);
     }
@@ -601,6 +701,89 @@ async function submitRegisterForm(e) {
   } catch {
     AccountState.authModal.loading = false;
     AccountState.authModal.error = 'Erro de conexão com o servidor. Tente novamente.';
+    renderAuthModalBody();
+  }
+}
+
+async function submitFetchRecoveryQuestion(e) {
+  e.preventDefault();
+  const username = (document.getElementById('rec-username')?.value || '').trim();
+  if (!username) return;
+  AccountState.authModal.loading = true;
+  AccountState.authModal.error = '';
+  AccountState.authModal.recoveryUsername = username;
+  renderAuthModalBody();
+
+  try {
+    // Suporte híbrido: servidor (/api/auth?action=recovery-question) + fallback local (caso offline)
+    const res = await apiFetch('/api/auth?action=recovery-question', {
+      method: 'POST',
+      body: JSON.stringify({ username })
+    });
+    if (res.ok && res.data && res.data.securityQuestion) {
+      AccountState.authModal.loading = false;
+      AccountState.authModal.recoveryQuestion = res.data.securityQuestion;
+      AccountState.authModal.recoveryUsername = res.data.username || username;
+      renderAuthModalBody();
+      return;
+    }
+    if (typeof checkLocalSecurityRecoveryQuestion === 'function') {
+      const localQ = checkLocalSecurityRecoveryQuestion(username);
+      if (localQ) {
+        AccountState.authModal.loading = false;
+        AccountState.authModal.recoveryQuestion = localQ;
+        AccountState.authModal.recoveryUsername = username;
+        renderAuthModalBody();
+        return;
+      }
+    }
+    AccountState.authModal.loading = false;
+    AccountState.authModal.error = res.data?.error || 'Não foi possível iniciar a recuperação para este usuário.';
+    renderAuthModalBody();
+  } catch {
+    AccountState.authModal.loading = false;
+    AccountState.authModal.error = 'Erro de conexão com o servidor.';
+    renderAuthModalBody();
+  }
+}
+
+async function submitRecoverPassword(e) {
+  e.preventDefault();
+  const username = AccountState.authModal.recoveryUsername || '';
+  const securityAnswer = (document.getElementById('rec-answer')?.value || '').trim();
+  const newPassword = document.getElementById('rec-new-pass')?.value || '';
+  const confirmPassword = document.getElementById('rec-confirm-pass')?.value || '';
+
+  if (newPassword !== confirmPassword) {
+    AccountState.authModal.error = 'A confirmação da nova senha não confere.';
+    renderAuthModalBody();
+    return;
+  }
+
+  AccountState.authModal.loading = true;
+  AccountState.authModal.error = '';
+  renderAuthModalBody();
+
+  try {
+    const res = await apiFetch('/api/auth?action=recover-password', {
+      method: 'POST',
+      body: JSON.stringify({ username, securityAnswer, newPassword, confirmPassword })
+    });
+    if (!res.ok) {
+      AccountState.authModal.loading = false;
+      AccountState.authModal.error = res.data?.error || 'Resposta incorreta ou erro na redefinição.';
+      renderAuthModalBody();
+      return;
+    }
+    AccountState.user = res.data.user;
+    try { localStorage.setItem('splus_user_cache', JSON.stringify(res.data.user)); } catch {}
+    closeAuthModal();
+    updateAuthHeaderUI();
+    updateRoleBasedTabs();
+    showAccountToast('Senha redefinida com sucesso!', 'success');
+  } catch {
+    AccountState.authModal.loading = false;
+    AccountState.authModal.error = 'Erro de conexão com o servidor.';
     renderAuthModalBody();
   }
 }
@@ -1308,19 +1491,30 @@ function renderAdminReportsMode(sidebarEl, emptyOverlay) {
   emptyOverlay.innerHTML = '';
 
   const st = AccountState.adminReports;
-  sidebarEl.innerHTML = `
-    <div class="sidebar-step-block">
-      <div class="step-header-row">
-        <span class="step-badge">ADMIN</span>
-        <h4>Filtros de Reports</h4>
-      </div>
+  const allList = st.list || [];
+  const typeOpts = [
+    { key: 'all', label: 'Todos os tipos', icon: '📋', color: '#475569', count: allList.length },
+    { key: 'bug', label: 'Bug', icon: '🐛', color: '#DC2626', count: allList.filter(r => r.type === 'bug').length },
+    { key: 'suggestion', label: 'Sugestão', icon: '💡', color: '#2563EB', count: allList.filter(r => r.type === 'suggestion').length },
+    { key: 'rating', label: 'Avaliação', icon: '⭐', color: '#7C3AED', count: allList.filter(r => r.type === 'rating').length }
+  ];
+  const statusOpts = [
+    { key: 'all', label: 'Todos os status', icon: '📂', color: '#475569' },
+    { key: 'novo', label: 'Novos', icon: '🆕', color: '#2563EB' },
+    { key: 'lido', label: 'Lidos', icon: '👁️', color: '#0891B2' },
+    { key: 'resolvido', label: 'Resolvidos', icon: '✓', color: '#16A34A' }
+  ];
 
+  const filtersCard = DS.sectionCard({
+    chip: 'REPORTS',
+    title: 'Filtros de Reports',
+    bodyHtml: `
       <div class="field-group">
         <label>Buscar por texto</label>
         <input
           type="text"
           class="sidebar-input"
-          placeholder="🔍 Buscar mensagem, título ou ID..."
+          placeholder="Buscar mensagem, título ou ID..."
           value="${escText(st.searchQuery)}"
           oninput="AccountState.adminReports.searchQuery = this.value; renderAdminReportsWorkspace();"
         />
@@ -1339,22 +1533,32 @@ function renderAdminReportsMode(sidebarEl, emptyOverlay) {
 
       <div class="field-group">
         <label>Tipo</label>
-        <select class="sidebar-select" onchange="AccountState.adminReports.filterType = this.value; renderAdminReportsWorkspace();">
-          <option value="all" ${st.filterType === 'all' ? 'selected' : ''}>Todos os tipos</option>
-          <option value="bug" ${st.filterType === 'bug' ? 'selected' : ''}>🐛 Bug</option>
-          <option value="suggestion" ${st.filterType === 'suggestion' ? 'selected' : ''}>💡 Sugestão</option>
-          <option value="rating" ${st.filterType === 'rating' ? 'selected' : ''}>⭐ Avaliação</option>
-        </select>
+        <div class="ds-opt-list">
+          ${typeOpts.map(t => DS.optionRow({
+            color: t.color,
+            iconHtml: `<span style="font-size:15px;">${t.icon}</span>`,
+            title: t.label,
+            count: t.count,
+            selected: (st.filterType || 'all') === t.key,
+            compact: true,
+            onClick: `AccountState.adminReports.filterType='${t.key}'; renderAdminReportsMode(document.getElementById('left-sidebar-content'), document.getElementById('spaces-empty-overlay'));`
+          })).join('')}
+        </div>
       </div>
 
       <div class="field-group">
         <label>Status</label>
-        <select class="sidebar-select" onchange="AccountState.adminReports.filterStatus = this.value; renderAdminReportsWorkspace();">
-          <option value="all" ${st.filterStatus === 'all' ? 'selected' : ''}>Todos</option>
-          <option value="novo" ${st.filterStatus === 'novo' ? 'selected' : ''}>Novos</option>
-          <option value="lido" ${st.filterStatus === 'lido' ? 'selected' : ''}>Lidos</option>
-          <option value="resolvido" ${st.filterStatus === 'resolvido' ? 'selected' : ''}>Resolvidos</option>
-        </select>
+        <div class="ds-opt-list">
+          ${statusOpts.map(s => DS.optionRow({
+            color: s.color,
+            iconHtml: `<span style="font-size:14px;">${s.icon}</span>`,
+            title: s.label,
+            arrow: true,
+            selected: (st.filterStatus || 'all') === s.key,
+            compact: true,
+            onClick: `AccountState.adminReports.filterStatus='${s.key}'; renderAdminReportsMode(document.getElementById('left-sidebar-content'), document.getElementById('spaces-empty-overlay'));`
+          })).join('')}
+        </div>
       </div>
 
       <div class="field-group">
@@ -1366,20 +1570,33 @@ function renderAdminReportsMode(sidebarEl, emptyOverlay) {
         </select>
       </div>
 
-      <button type="button" class="btn-small-accent" style="width:100%; padding:8px;" onclick="loadAdminReports()">🔄 Atualizar</button>
-      <button type="button" class="btn-icon-action" style="width:100%; padding:8px; margin-top:6px;" onclick="markAllAdminReportsRead()">✓ Marcar todos como lidos</button>
-    </div>
+      <button type="button" class="ds-btn-primary" style="width:100%;" onclick="loadAdminReports()">🔄 Atualizar</button>
+      <button type="button" class="ds-btn-secondary" style="width:100%;" onclick="markAllAdminReportsRead()">✓ Marcar todos como lidos</button>
+    `
+  });
 
-    <div class="sidebar-step-block">
-      <div class="step-header-row">
-        <span class="step-badge">EXPORTAR</span>
-        <h4>Download em .TXT</h4>
+  const exportCard = DS.sectionCard({
+    chip: 'EXPORTAR',
+    title: 'Download (.TXT)',
+    bodyHtml: `
+      <div class="admin-export-row-3">
+        <button type="button" class="admin-exp-btn" onclick="downloadAdminReportsTxt('active')" title="Baixar reports ativos (.txt)">
+          <svg class="ui-ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          <span>Ativos</span>
+        </button>
+        <button type="button" class="admin-exp-btn" onclick="downloadAdminReportsTxt('history')" title="Baixar histórico (.txt)">
+          <svg class="ui-ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          <span>Histórico</span>
+        </button>
+        <button type="button" class="admin-exp-btn" onclick="downloadAdminReportsTxt('all')" title="Baixar todos os reports (.txt)">
+          <svg class="ui-ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+          <span>Todos</span>
+        </button>
       </div>
-      <button type="button" class="btn-mount-flow ready" onclick="downloadAdminReportsTxt('active')">📥 Baixar Ativos (.txt)</button>
-      <button type="button" class="btn-icon-action" style="width:100%; padding:8px; margin-top:6px;" onclick="downloadAdminReportsTxt('history')">🗂️ Baixar Histórico (.txt)</button>
-      <button type="button" class="btn-icon-action" style="width:100%; padding:8px; margin-top:6px;" onclick="downloadAdminReportsTxt('all')">📄 Baixar Todos (.txt)</button>
-    </div>
-  `;
+    `
+  });
+
+  sidebarEl.innerHTML = `<div class="ds-card-stack">${exportCard}${filtersCard}</div>`;
 
   loadAdminReports();
 }
@@ -1675,7 +1892,7 @@ function buildProjectSnapshot(sourceMode) {
     summary = `Modo Livre • ${(AppState.free.blocks || []).length} bloco(s) • ${(AppState.free.customEdges || []).length} conexão(ões)`;
   } else if (AppState.production.driver === 'input') {
     const tIt = AppState.push.targetItemId ? Solver.getItem(AppState.push.targetItemId) : null;
-    summary = `Produção (Entrada ➔ Produto) • ${tIt ? tIt.name : 'Sem produto'}`;
+    summary = `Produção (Entrada ➔ Item) • ${tIt ? tIt.name : 'Sem item'}`;
   } else {
     const names = AppState.pull.targets.map((t) => `${fmt(t.rate, 0)}/m ${Solver.getItem(t.itemId)?.name || ''}`).join(', ');
     summary = `Produção (Meta) • ${names}`;
@@ -1965,60 +2182,517 @@ function renderProjectsMode(sidebarEl, emptyOverlay) {
   emptyOverlay.classList.add('hidden');
   emptyOverlay.innerHTML = '';
 
-  const pState = AccountState.projects;
-  sidebarEl.innerHTML = `
-    <div class="sidebar-step-block">
-      <div class="step-header-row">
-        <span class="step-badge">PROJETOS</span>
-        <h4>Suas Fábricas Salvas</h4>
+  const list = AccountState.projects.list || [];
+  const prodCount = list.filter(p => p.sourceMode !== 'free').length;
+  const freeCount = list.filter(p => p.sourceMode === 'free').length;
+
+  sidebarEl.innerHTML = `<div class="ds-card-stack">${DS.sectionCard({
+    chip: 'PROJETOS',
+    title: 'Suas Fábricas Salvas',
+    count: list.length,
+    bodyHtml: `
+      <div class="ds-opt-list">
+        ${DS.optionRow({ color: '#475569', iconHtml: '<span>📁</span>', title: 'Todos os Projetos', count: list.length, selected: true, onClick: 'loadUserProjects()' })}
+        ${DS.optionRow({ color: '#2563EB', iconHtml: '<span>🏭</span>', title: 'Linhas de Produção', count: prodCount, onClick: "switchMode('production')" })}
+        ${DS.optionRow({ color: '#0891B2', iconHtml: '<span>🛠️</span>', title: 'Fábricas da Oficina', count: freeCount, onClick: "switchMode('free')" })}
       </div>
-      <p class="step-help-text">
-        Salve qualquer linha da aba <strong>🏭 Produção</strong> ou <strong>🛠️ Oficina</strong> e reabra com todas as receitas, máquinas, conexões e posições.
-      </p>
-      <button type="button" class="btn-small-accent" style="width:100%; padding:8px;" onclick="loadUserProjects()">🔄 Atualizar Projetos</button>
-    </div>
-  `;
+      <button type="button" class="ds-btn-primary" style="width:100%;" onclick="loadUserProjects()">🔄 Atualizar Projetos</button>
+    `
+  })}</div>`;
 
   loadUserProjects();
+}
+
+function setProjectsFilterMode(mode) {
+  AccountState.projects.filterMode = mode || 'all';
+  renderProjectsWorkspace();
+}
+
+function setProjectsSearchQuery(q) {
+  AccountState.projects.searchQuery = q || '';
+  renderProjectsWorkspace();
 }
 
 function renderProjectsWorkspace() {
   const view = document.getElementById('projects-workspace-view');
   if (!view) return;
   const pState = AccountState.projects;
+  const filterMode = pState.filterMode || 'all';
+  const query = String(pState.searchQuery || '').trim().toLowerCase();
+
+  const filteredList = (pState.list || []).filter((p) => {
+    if (filterMode !== 'all' && (p.sourceMode || 'production') !== filterMode) return false;
+    if (query) {
+      const hay = `${p.name || ''} ${p.summary || ''}`.toLowerCase();
+      if (!hay.includes(query)) return false;
+    }
+    return true;
+  });
+
+  const usedPct = Math.min(100, Math.round(((pState.list.length || 0) / Math.max(1, pState.maxProjects || 10)) * 100));
+
+  const cardsHtml = pState.loading
+    ? `<div class="proj-empty-box"><p>Carregando seus projetos...</p></div>`
+    : (pState.list.length === 0
+      ? `<div class="proj-empty-box">
+          <div class="proj-empty-ico">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          </div>
+          <h4>Nenhum projeto salvo ainda</h4>
+          <p>Monte uma linha em Produção ou Oficina e clique em Salvar para manter suas fábricas na nuvem.</p>
+          <div class="proj-empty-btns">
+            <button type="button" class="ds-btn-primary" onclick="switchMode('production')">Ir para Produção</button>
+            <button type="button" class="ds-btn-secondary" onclick="switchMode('free')">Abrir Oficina</button>
+          </div>
+        </div>`
+      : (filteredList.length === 0
+        ? `<div class="proj-empty-box"><p>Nenhum projeto corresponde ao filtro atual.</p></div>`
+        : `<div class="projects-cards-grid proj-cards-v2">
+            ${filteredList.map((p) => {
+              const isFree = p.sourceMode === 'free';
+              return `
+                <article class="project-saved-card proj-card-v2 ${pState.activeProjectId === p.id ? 'is-active' : ''}">
+                  <div class="proj-card-head">
+                    <span class="proj-mode-badge ${isFree ? 'is-free' : 'is-prod'}">
+                      ${isFree
+                        ? '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg> Oficina'
+                        : '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg> Produção'}
+                    </span>
+                    <span class="proj-card-date">${fmtDateBR(p.updatedAt)}</span>
+                  </div>
+                  <h3 class="proj-card-title">${escText(p.name)}</h3>
+                  <p class="project-card-summary">${escText(p.summary || 'Projeto salvo do Satisfactory+')}</p>
+                  <div class="proj-card-meta">Criado em ${fmtDateBR(p.createdAt)}</div>
+                  <div class="proj-card-foot">
+                    <button type="button" class="ds-btn-primary proj-open-btn" onclick="openSavedProjectInSpaces('${escText(p.id)}')">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                      Abrir
+                    </button>
+                    <button type="button" class="proj-ico-btn" onclick="shareSavedProject('${escText(p.id)}', '${escText(p.name)}')" title="Compartilhar projeto entre contas" aria-label="Compartilhar projeto">
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+                    </button>
+                    <button type="button" class="proj-ico-btn" onclick="exportSavedProjectCompactPng('${escText(p.id)}', '${escText(p.name)}')" title="Baixar imagem compactada (PNG) com resumo" aria-label="Baixar imagem do projeto">
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    </button>
+                    <button type="button" class="proj-ico-btn" onclick="openRenameProjectModal('${escText(p.id)}', '${escText(p.name)}')" title="Renomear projeto" aria-label="Renomear projeto">
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                    </button>
+                    <button type="button" class="proj-ico-btn is-danger" onclick="deleteSavedProject('${escText(p.id)}', '${escText(p.name)}')" title="Remover projeto" aria-label="Remover projeto">
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                  </div>
+                </article>
+              `;
+            }).join('')}
+          </div>`));
 
   view.innerHTML = `
-    <div class="lib-workspace-header">
-      <div>
-        <h2>📁 Meus Projetos</h2>
-        <span>${pState.list.length} / ${pState.maxProjects} projeto(s) salvo(s) na sua conta</span>
+    <div class="proj-ws-shell">
+      <div class="proj-ws-header">
+        <div class="proj-ws-title-group">
+          <div class="proj-ws-icon">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+          </div>
+          <div>
+            <h2>Meus Projetos</h2>
+            <p>Suas fábricas salvas em Produção e Oficina sincronizadas na conta.</p>
+          </div>
+        </div>
+        <div class="proj-ws-quota">
+          <div class="proj-ws-quota-top">
+            <span>Armazenamento</span>
+            <strong>${pState.list.length} / ${pState.maxProjects}</strong>
+          </div>
+          <div class="proj-ws-quota-bar"><i style="width:${usedPct}%"></i></div>
+        </div>
       </div>
-    </div>
 
-    ${pState.error ? `<div class="form-alert error" style="display:flex;align-items:center;justify-content:space-between;gap:12px;"><span>⚠️ ${escText(pState.error)}</span><button type="button" class="btn-small-accent" onclick="loadUserProjects()">Tentar de novo</button></div>` : ''}
-    ${pState.loading ? '<div class="picker-empty">⏳ Carregando projetos...</div>' : `
-      <div class="projects-cards-grid">
-        ${pState.list.length === 0 ? `
-          <div class="picker-empty">
-            Você ainda não salvou nenhum projeto. Monte uma linha na aba <strong>🏭 Produção</strong> ou <strong>🛠️ Oficina</strong> e clique em <strong>💾 Salvar</strong>.
-          </div>
-        ` : pState.list.map((p) => `
-          <div class="project-saved-card ${pState.activeProjectId === p.id ? 'is-active' : ''}">
-            <div class="project-card-top">
-              <span class="lib-badge">${p.sourceMode === 'free' ? '🛠️ Oficina' : '🏭 Produção'}</span>
-              <small>Atualizado: ${fmtDateBR(p.updatedAt)}</small>
-            </div>
-            <h3>${escText(p.name)}</h3>
-            <p class="project-card-summary">${escText(p.summary || 'Projeto salvo do Satisfactory+')}</p>
-            <div class="project-card-dates">Criado em: ${fmtDateBR(p.createdAt)}</div>
-            <div class="project-card-actions">
-              <button type="button" class="btn-mount-flow ready" style="padding:8px 12px; font-size:12px;" onclick="openSavedProjectInSpaces('${escText(p.id)}')">🚀 Abrir no Spaces</button>
-              <button type="button" class="btn-icon-action" onclick="openRenameProjectModal('${escText(p.id)}', '${escText(p.name)}')">✏️ Renomear</button>
-              <button type="button" class="btn-icon-danger" onclick="deleteSavedProject('${escText(p.id)}', '${escText(p.name)}')" title="Remover projeto">🗑️</button>
-            </div>
-          </div>
-        `).join('')}
+      <div class="proj-ws-toolbar">
+        <div class="proj-ws-filters">
+          <button type="button" class="proj-filter-btn ${filterMode === 'all' ? 'active' : ''}" onclick="setProjectsFilterMode('all')">Todos (${pState.list.length})</button>
+          <button type="button" class="proj-filter-btn ${filterMode === 'production' ? 'active' : ''}" onclick="setProjectsFilterMode('production')">Produção</button>
+          <button type="button" class="proj-filter-btn ${filterMode === 'free' ? 'active' : ''}" onclick="setProjectsFilterMode('free')">Oficina</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="ds-btn-secondary" onclick="openImportSharedProjectModal()" title="Importar projeto compartilhado por outra conta">
+            <svg class="ui-ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Importar código
+          </button>
+          <input type="search" class="sidebar-input proj-ws-search" placeholder="Buscar projeto..." value="${escText(pState.searchQuery || '')}" oninput="setProjectsSearchQuery(this.value)" />
+        </div>
       </div>
-    `}
+
+      ${pState.error ? `<div class="form-alert error" style="display:flex;align-items:center;justify-content:space-between;gap:12px;"><span>${escText(pState.error)}</span><button type="button" class="ds-btn-primary" onclick="loadUserProjects()">Tentar de novo</button></div>` : ''}
+      ${cardsHtml}
+    </div>
   `;
+}
+
+
+/* ============================================================================
+ * COMPARTILHAR PROJETO ENTRE CONTAS + EXPORTAR PNG COMPACTADO COM FICHA TÉCNICA
+ * ========================================================================== */
+
+async function shareSavedProject(projectId, projectName) {
+  if (!AccountState.user) {
+    showAccountToast('Entre na sua conta para compartilhar projetos.', 'error');
+    return;
+  }
+  const res = await apiFetch('/api/projects?action=share', {
+    method: 'POST',
+    body: JSON.stringify({ id: projectId })
+  });
+  if (!res.ok || !res.data?.shareCode) {
+    showAccountToast(res.data?.error || 'Não foi possível gerar o código de compartilhamento.', 'error');
+    return;
+  }
+  const code = res.data.shareCode;
+  const modal = document.getElementById('save-project-modal');
+  const titleEl = document.getElementById('save-project-title');
+  const bodyEl = document.getElementById('save-project-body');
+  if (titleEl) titleEl.textContent = 'Compartilhar Projeto';
+  if (bodyEl) {
+    bodyEl.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <p style="margin:0;font-size:13px;color:var(--text-secondary);line-height:1.5;">
+          Envie este código para outro jogador do <strong>Satisfactory+</strong> importar uma cópia de <strong>${escText(projectName)}</strong> na conta dele (em <em>Projetos → Importar código</em>):
+        </p>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="shared-code-output" type="text" readonly class="sidebar-input" value="${escText(code)}" style="font-family:var(--font-mono);font-size:16px;font-weight:800;text-align:center;letter-spacing:0.06em;" />
+          <button type="button" class="ds-btn-primary" onclick="navigator.clipboard?.writeText('${escText(code)}'); showAccountToast('Código copiado!', 'success');">Copiar</button>
+        </div>
+        <div style="display:flex;justify-content:flex-end;">
+          <button type="button" class="ds-btn-secondary" onclick="closeSaveProjectModal()">Fechar</button>
+        </div>
+      </div>
+    `;
+  }
+  if (modal) modal.classList.remove('hidden');
+}
+
+function openImportSharedProjectModal() {
+  const modal = document.getElementById('save-project-modal');
+  const titleEl = document.getElementById('save-project-title');
+  const bodyEl = document.getElementById('save-project-body');
+  if (titleEl) titleEl.textContent = 'Importar Projeto Compartilhado';
+  if (bodyEl) {
+    bodyEl.innerHTML = `
+      <form onsubmit="submitImportSharedProject(event)" style="display:flex;flex-direction:column;gap:12px;">
+        <p style="margin:0;font-size:13px;color:var(--text-secondary);line-height:1.5;">
+          Cole o código recebido de outra conta (formato <code>SP-XXXXXXXX</code>) para importar uma cópia do projeto para a sua lista.
+        </p>
+        <div class="field-group">
+          <label for="import-shared-code-input">Código do projeto</label>
+          <input id="import-shared-code-input" type="text" class="sidebar-input" required placeholder="SP-A1B2C3D4" autocomplete="off" style="font-family:var(--font-mono);text-transform:uppercase;" />
+        </div>
+        <div id="import-shared-error" class="form-alert error hidden"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button type="button" class="ds-btn-secondary" onclick="closeSaveProjectModal()">Cancelar</button>
+          <button type="submit" class="ds-btn-primary">Importar projeto</button>
+        </div>
+      </form>
+    `;
+  }
+  if (modal) modal.classList.remove('hidden');
+}
+
+async function submitImportSharedProject(e) {
+  e.preventDefault();
+  const inp = document.getElementById('import-shared-code-input');
+  const errEl = document.getElementById('import-shared-error');
+  const shareCode = (inp?.value || '').trim().toUpperCase();
+  if (errEl) { errEl.classList.add('hidden'); errEl.textContent = ''; }
+
+  const res = await apiFetch('/api/projects?action=import-shared', {
+    method: 'POST',
+    body: JSON.stringify({ shareCode })
+  });
+  if (!res.ok) {
+    if (errEl) {
+      errEl.textContent = res.data?.error || 'Não foi possível importar este código.';
+      errEl.classList.remove('hidden');
+    }
+    return;
+  }
+  closeSaveProjectModal();
+  showAccountToast(`Projeto "${res.data?.project?.name || 'Compartilhado'}" importado com sucesso!`, 'success');
+  loadUserProjects();
+}
+
+/**
+ * Gera e baixa uma imagem PNG de alta resolução do projeto salvo:
+ * - Obrigatoriamente no formato COMPACTADO (cards compactos 236px, visão completa do fluxograma)
+ * - Painel lateral direito com resumo completo: máquinas por tipo, logística/conexões, energia, recursos e saídas.
+ */
+async function exportSavedProjectCompactPng(projectId, projectName) {
+  showAccountToast('Gerando imagem compactada do projeto...', 'info');
+  let proj = null;
+  try {
+    const res = await apiFetch(`/api/projects?id=${encodeURIComponent(projectId)}`, { method: 'GET' });
+    if (res.ok && res.data?.project) proj = res.data.project;
+  } catch {}
+  if (!proj || !proj.payload) {
+    showAccountToast('Não foi possível carregar os dados deste projeto.', 'error');
+    return;
+  }
+
+  const p = proj.payload;
+  let graph = null;
+  let totalPowerMw = 0;
+
+  try {
+    if (p.sourceMode === 'free' && p.free && typeof Solver?.buildFreeCanvasGraph === 'function') {
+      const diag = Solver.analyzeFreeProject ? Solver.analyzeFreeProject(p.free) : null;
+      graph = Solver.buildFreeCanvasGraph(p.free, diag);
+      totalPowerMw = Number(diag?.totalPowerConsumedMw || 0);
+    } else if (p.pull && Array.isArray(p.pull.targets) && p.pull.targets.length > 0) {
+      const pullRes = Solver.solvePull(p.pull);
+      graph = Solver.buildCanvasFlowGraph('pull', pullRes, { showAllMachines: false });
+      totalPowerMw = Number(pullRes?.totalPowerMw || 0);
+    }
+  } catch (err) {
+    console.error('[exportPng] graph error:', err);
+  }
+
+  if (!graph || !Array.isArray(graph.columns) || graph.columns.length === 0) {
+    showAccountToast('Este projeto não possui uma linha de produção montada para exportar.', 'error');
+    return;
+  }
+
+  // Posiciona todos os cards no formato COMPACTADO (220×92)
+  const CW = 220;
+  const CH = 86;
+  const COL_GAP = 64;
+  const ROW_GAP = 22;
+  const PAD = 36;
+
+  const nodePos = new Map();
+  let curX = PAD;
+  let maxGraphY = 420;
+
+  graph.columns.forEach((col) => {
+    const nodes = col.nodes || [];
+    if (nodes.length === 0) return;
+    const rows = Math.min(8, nodes.length);
+    const subCols = Math.ceil(nodes.length / rows);
+    nodes.forEach((n, idx) => {
+      const sc = Math.floor(idx / rows);
+      const sr = idx % rows;
+      const x = curX + sc * (CW + 24);
+      const y = PAD + 48 + sr * (CH + ROW_GAP);
+      nodePos.set(n.id, { x, y, w: CW, h: CH, node: n });
+      if (y + CH + PAD > maxGraphY) maxGraphY = y + CH + PAD;
+    });
+    curX += subCols * CW + Math.max(0, subCols - 1) * 24 + COL_GAP;
+  });
+
+  const graphW = Math.max(760, curX - COL_GAP + PAD);
+  const sideW = 340;
+  const totalW = graphW + sideW;
+  const totalH = Math.max(640, maxGraphY + 24);
+
+  // Coleta estatísticas para a ficha técnica
+  const machineCounts = new Map();
+  const inputTotals = new Map();
+  const outputTotals = new Map();
+  let totalMachines = 0;
+  let totalSplitters = 0;
+  let totalMergers = 0;
+  let totalJunctions = 0;
+
+  for (const { node } of nodePos.values()) {
+    const mult = node.badgeText && /^×(\d+)/.test(node.badgeText) ? Number(node.badgeText.slice(1)) : (Number(node.realCount) || 1);
+    if (node.kind === 'splitter' || node.kind === 'smart_splitter') totalSplitters += mult;
+    else if (node.kind === 'merger' || node.kind === 'priority_merger') totalMergers += mult;
+    else if (node.kind === 'pipe_junction') totalJunctions += mult;
+    else if (node.kind === 'final_product') {
+      (node.outputsList || []).forEach((o) => {
+        if (!o.item) return;
+        outputTotals.set(o.item.name, (outputTotals.get(o.item.name) || 0) + (Number(o.rate) || 0));
+      });
+    } else if (node.kind !== 'power_emblem') {
+      const nm = node.entity?.name || node.topLabel || 'Máquina';
+      machineCounts.set(nm, (machineCounts.get(nm) || 0) + mult);
+      totalMachines += mult;
+      if (node.kind === 'extractor' && node.resourceExtractInfo?.item) {
+        const rName = node.resourceExtractInfo.item.name;
+        inputTotals.set(rName, (inputTotals.get(rName) || 0) + (Number(node.resourceExtractInfo.rate) || 0));
+      }
+    }
+  }
+
+  const canvas = document.createElement('canvas');
+  const scale = Math.min(2, 3200 / Math.max(totalW, totalH));
+  canvas.width = Math.round(totalW * scale);
+  canvas.height = Math.round(totalH * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+
+  // Fundo escuro neutro #101117 + grade sutil
+  ctx.fillStyle = '#0c0d12';
+  ctx.fillRect(0, 0, totalW, totalH);
+  ctx.fillStyle = 'rgba(148, 163, 184, 0.14)';
+  for (let gx = 24; gx < graphW; gx += 28) {
+    for (let gy = 24; gy < totalH; gy += 28) {
+      ctx.fillRect(gx, gy, 1.5, 1.5);
+    }
+  }
+
+  // Cabeçalho do fluxograma
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = '700 18px Inter, Segoe UI, sans-serif';
+  ctx.fillText(proj.name || projectName || 'Projeto Satisfactory+', PAD, 34);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '500 12px Inter, Segoe UI, sans-serif';
+  ctx.fillText(`Visão Compactada · ${(graph.edges || []).length} conexões · Satisfactory+ v2.5`, PAD, 54);
+
+  // Conexões (ortogonais limpas)
+  (graph.edges || []).forEach((e) => {
+    const a = nodePos.get(e.from);
+    const b = nodePos.get(e.to);
+    if (!a || !b) return;
+    const x1 = a.x + a.w;
+    const y1 = a.y + a.h / 2;
+    const x2 = b.x;
+    const y2 = b.y + b.h / 2;
+    const midX = x1 + (x2 - x1) / 2;
+    ctx.strokeStyle = e.isPipe ? '#3b82f6' : '#f97316';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(midX, y1);
+    ctx.lineTo(midX, y2);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  });
+
+  // Helper rounded rect
+  const roundRect = (x, y, w, h, r) => {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  };
+
+  // Cards compactados
+  for (const { x, y, w, h, node } of nodePos.values()) {
+    const isFinal = node.kind === 'final_product' || Boolean(node.isFinalProduct);
+    roundRect(x, y, w, h, 14);
+    ctx.fillStyle = isFinal ? '#EA580C' : '#101117';
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = isFinal ? '#EA580C' : 'rgba(148, 163, 184, 0.25)';
+    ctx.stroke();
+
+    // Título
+    const title = isFinal
+      ? (node.outputsList?.[0]?.item?.name || node.entity?.name || 'Item Final')
+      : (node.entity?.name || node.topLabel || 'Bloco');
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 12.5px Inter, Segoe UI, sans-serif';
+    ctx.fillText(title.length > 22 ? `${title.slice(0, 21)}…` : title, x + 14, y + 28);
+
+    // Selo ×N
+    const badge = node.badgeText || (isFinal ? 'FINAL' : '');
+    if (badge) {
+      const bw = Math.max(34, badge.length * 8 + 14);
+      roundRect(x + w - bw - 10, y + 12, bw, 20, 10);
+      ctx.fillStyle = isFinal ? '#ffffff' : '#EA580C';
+      ctx.fill();
+      ctx.fillStyle = isFinal ? '#EA580C' : '#ffffff';
+      ctx.font = '700 10.5px monospace';
+      ctx.fillText(badge, x + w - bw - 3, y + 25.5);
+    }
+
+    // Chip de fluxo principal
+    const mainEntry = (node.kind === 'extractor' && node.resourceExtractInfo)
+      ? node.resourceExtractInfo
+      : (node.outputsList?.[0] || node.inputsList?.[0] || null);
+    if (mainEntry) {
+      const nm = mainEntry.item?.name || mainEntry.customName || 'Fluxo';
+      const txt = `${nm.length > 16 ? nm.slice(0, 15) + '…' : nm} · ${fmt(mainEntry.rate || 0, 1)} ${mainEntry.unit || 'un'}/m`;
+      roundRect(x + 12, y + 48, w - 24, 24, 12);
+      ctx.fillStyle = isFinal ? 'rgba(255,255,255,0.18)' : 'rgba(148, 163, 184, 0.12)';
+      ctx.fill();
+      ctx.fillStyle = isFinal ? '#ffffff' : '#cbd5e1';
+      ctx.font = '600 11px Inter, Segoe UI, sans-serif';
+      ctx.fillText(txt, x + 20, y + 64);
+    }
+  }
+
+  // Painel direito com informações completas da linha de produção
+  ctx.fillStyle = '#101117';
+  ctx.fillRect(graphW, 0, sideW, totalH);
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(graphW, 0);
+  ctx.lineTo(graphW, totalH);
+  ctx.stroke();
+
+  let sy = 36;
+  const sx = graphW + 22;
+  ctx.fillStyle = '#EA580C';
+  ctx.font = '800 11px Inter, Segoe UI, sans-serif';
+  ctx.fillText('FICHA TÉCNICA DA LINHA', sx, sy);
+  sy += 24;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '800 16px Inter, Segoe UI, sans-serif';
+  const pTitle = proj.name || projectName || 'Projeto';
+  ctx.fillText(pTitle.length > 26 ? pTitle.slice(0, 25) + '…' : pTitle, sx, sy);
+  sy += 24;
+
+  const drawStatLine = (lbl, val) => {
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '500 12px Inter, Segoe UI, sans-serif';
+    ctx.fillText(lbl, sx, sy);
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = '700 12px monospace';
+    ctx.fillText(String(val), graphW + sideW - 22 - ctx.measureText(String(val)).width, sy);
+    sy += 21;
+  };
+
+  drawStatLine('Modo:', proj.sourceMode === 'free' ? 'Oficina' : 'Produção');
+  drawStatLine('Total de máquinas:', totalMachines);
+  drawStatLine('Energia estimada:', `${fmt(totalPowerMw, 1)} MW`);
+  drawStatLine('Conexões (esteiras/tubos):', (graph.edges || []).length);
+  drawStatLine('Divisores / Unificadores:', `${totalSplitters} / ${totalMergers}`);
+  if (totalJunctions > 0) drawStatLine('Junções de tubulação:', totalJunctions);
+
+  const drawSectionList = (heading, entries, suffix = '') => {
+    if (entries.length === 0 || sy > totalH - 60) return;
+    sy += 10;
+    ctx.fillStyle = '#EA580C';
+    ctx.font = '700 11px Inter, Segoe UI, sans-serif';
+    ctx.fillText(heading, sx, sy);
+    sy += 18;
+    entries.slice(0, 12).forEach(([k, v]) => {
+      if (sy > totalH - 36) return;
+      const valTxt = suffix ? `${fmt(v, 1)}${suffix}` : `×${v}`;
+      drawStatLine(k.length > 22 ? k.slice(0, 21) + '…' : k, valTxt);
+    });
+  };
+
+  drawSectionList('MÁQUINAS POR TIPO', [...machineCounts.entries()]);
+  drawSectionList('RECURSOS DE ENTRADA', [...inputTotals.entries()], '/min');
+  drawSectionList('PRODUÇÃO FINAL', [...outputTotals.entries()], '/min');
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '600 11px Inter, Segoe UI, sans-serif';
+  ctx.fillText('Gerado por Satisfactory+ v2.5', sx, totalH - 18);
+
+  const safeFile = String(proj.name || projectName || 'projeto')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = `${safeFile}-satisfactory-plus.png`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  showAccountToast('Imagem PNG compactada baixada com sucesso!', 'success');
 }
