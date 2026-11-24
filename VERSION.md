@@ -3,13 +3,19 @@
 > **Regra de versionamento**: A versão oficial exibida na barra lateral (`#app-version-label`) **só deve ser incrementada quando houver publicação/push oficial autorizado para o repositório**. Ao realizar cada push oficial, atualizar este arquivo com a nova versão, data e resumo das alterações.
 
 ## Versão Atual em Produção (Último Push Oficial)
-- **Versão**: `v2.6`
-- **Data**: 2026-11-23
-- **Próxima versão alvo**: `v2.7` (somente quando autorizado novo push)
+- **Versão**: `v2.7`
+- **Data**: 2026-11-24 03:05
+- **Próxima versão alvo**: `v2.8` (somente quando autorizado novo push)
 
 ---
 
 ## Histórico de Versões Publicadas
+
+### `v2.7` — 2026-11-24 às 03:05
+- **Tradução Completa (PT / EN / ES) + Seletor Rápido**: motor de internacionalização completo, seletor rápido `PT · EN · ES` no topo (com siglas protegidas contra tradução) e detecção automática de idioma por região.
+- **Recuperação Assistida de Senha (Código Único `REC-XXXX-XXXX`)**: contas sem pergunta de segurança agora podem pedir ajuda à equipe pela tela de login ou em *Configurações → Conta e segurança* e redefinir a senha com código único válido por 24h na aba *Usar código*.
+- **Melhorias de Interface**: botão único de direção da linha na barra vertical direita, novas dicas visuais em laranja e barra de navegação minimizada em 3 níveis.
+- **Notificações & Gestão Interna**: e-mail HTML estilizado para novos reports, separação de cargos `CEO` vs `Admin` e gestão de cargos no Painel CEO.
 
 ### `v2.6` — 2026-11-23
 - **Blindagem de Segurança Full-Stack**: autenticação e checagem de propriedade no proxy de anexos (`/api/media`), eliminação de XSS em ações de cards de Projetos, parser aritmético seguro sem `Function()`/`eval()` na Calculadora, cabeçalhos HTTP de segurança em `vercel.json` (HSTS, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`), proteção CSRF reforçada, rate-limit distribuído via Redis e atualização de `@vercel/blob` para `2.4.0` (0 vulnerabilidades no `npm audit`).

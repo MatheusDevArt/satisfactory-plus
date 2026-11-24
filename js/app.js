@@ -4141,15 +4141,6 @@ function renderMapWorkspace(filteredLocs) {
   if (!document.getElementById('leaflet-map-canvas')) {
     container.innerHTML = `
       <div class="interactive-map-stage">
-        <div class="map-top-hud">
-          <div class="map-hud-title">
-            <strong>🗺️ Mapa Real MASSAGE-2(A-B)b (Dados &amp; Ícones Oficiais MapGenie)</strong>
-            <span>Use o scroll para dar zoom no terreno, arraste para navegar e clique em qualquer ícone para ver detalhes ou enviar para a Produção</span>
-          </div>
-          <div class="map-hud-actions">
-            <button class="btn-small-accent" onclick="centerLeafletMap()">🎯 Centralizar Mapa</button>
-          </div>
-        </div>
         <div class="map-board-wrapper">
           <div id="leaflet-map-canvas" class="leaflet-map-canvas"></div>
           <div id="map-detail-card-slot"></div>

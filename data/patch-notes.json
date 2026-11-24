@@ -1,12 +1,16 @@
 [
   {
-    "id": "2026-11-23-v27-idiomas-barra-lateral-dicas",
-    "date": "23/11/2026",
-    "title": "v2.7 — Tradução Completa (PT / EN / ES), Seletor Rápido de Idioma e Melhorias de Interface",
+    "id": "2026-11-24-v27-idiomas-recuperacao-codigo",
+    "date": "24/11/2026 às 03:05",
+    "title": "v2.7 — Tradução Completa (PT / EN / ES), Recuperação Assistida de Senha e Melhorias de Interface",
     "items": [
       {
         "tag": "Novo",
         "text": "Seletor rápido de idioma (PT / EN / ES) adicionado no topo da tela, ao lado de Tutorial, com tradução completa da interface (incluindo tela inicial, ferramentas, modais, tutorial e novidades) e detecção automática conforme sua região."
+      },
+      {
+        "tag": "Novo",
+        "text": "Recuperação assistida de senha para contas sem pergunta de segurança: agora você pode solicitar um código único de redefinição (REC-XXXX-XXXX, válido por 24h) pela tela de login ou em Configurações → Conta e segurança e criar uma nova senha na aba \"Usar código\"."
       },
       {
         "tag": "Melhoria",
@@ -18,7 +22,7 @@
       },
       {
         "tag": "Correção",
-        "text": "Corrigida a barra de navegação minimizada: agora o botão de tema mostra apenas o ícone e a seta única alterna em 3 níveis (normal, barra minimizada e painel oculto)."
+        "text": "Corrigida a barra de navegação minimizada (botão de tema mostra apenas o ícone e seta única alterna em 3 níveis) e o seletor rápido PT / EN / ES ao alternar para Espanhol."
       }
     ]
   },

@@ -1,0 +1,982 @@
+/* ============================================================================
+ * SATISFACTORY+ — FOLHA DE ESTILOS EXCLUSIVA MOBILE (<= 768px) — v3
+ * Carregada via <link media="(max-width: 768px)"> — ZERO impacto no Desktop!
+ * Cor laranja única permitida: #EA580C
+ * ========================================================================== */
+
+:root {
+  --mob-top-h: 52px;
+  --mob-bot-h: 62px;
+  --mob-safe-top: env(safe-area-inset-top, 0px);
+  --mob-safe-bot: env(safe-area-inset-bottom, 0px);
+}
+
+html, body {
+  width: 100%;
+  max-width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  overflow-x: hidden !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input, select, textarea {
+  font-size: 16px !important;
+}
+
+/* Remove tooltips presos por hover em telas touch */
+.splus-tip,
+.splus-tooltip,
+[data-tip]::after,
+[data-tip]::before {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* ----------------------------------------------------------------------------
+ * 1. CASCA MOBILE: OCULTA ELEMENTOS DESKTOP E EXPANDE WORKSPACE EM TELA CHEIA
+ * -------------------------------------------------------------------------- */
+#main-nav-rail,
+.sidebar-creator-footer,
+#btn-expand-sidebar,
+#top-right-floating-actions {
+  display: none !important;
+}
+
+#app-layout-root {
+  display: block !important;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  overflow: hidden !important;
+  padding-top: calc(var(--mob-top-h) + var(--mob-safe-top)) !important;
+  padding-bottom: calc(var(--mob-bot-h) + var(--mob-safe-bot)) !important;
+  box-sizing: border-box !important;
+  z-index: auto !important;
+}
+
+#spaces-viewport {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  flex: none !important;
+  overflow: hidden !important;
+  touch-action: none;
+}
+
+#map-workspace-view,
+#library-workspace-view,
+#recipes-workspace-view,
+#calculator-workspace-view,
+#projects-workspace-view,
+#reports-workspace-view,
+#ceo-workspace-view {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 12px 24px 12px !important;
+  box-sizing: border-box !important;
+}
+
+#map-workspace-view {
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+#map-workspace-view .interactive-map-stage,
+#map-workspace-view .map-board-wrapper,
+#map-workspace-view .leaflet-container,
+#map-workspace-view #leaflet-map-canvas {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  border-radius: 0 !important;
+  border: none !important;
+  margin: 0 !important;
+}
+
+body.mob-has-subtabs #calculator-workspace-view,
+body.mob-has-subtabs #ceo-workspace-view,
+body.mob-has-subtabs #library-workspace-view,
+body.mob-has-subtabs #recipes-workspace-view {
+  padding-top: 62px !important;
+}
+
+/* ----------------------------------------------------------------------------
+ * 2. TOPBAR ENXUTA: LOGO | IDIOMA + TEMA + TUTORIAL + PATCH + REPORT + USUÁRIO
+ * -------------------------------------------------------------------------- */
+#mob-topbar {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--mob-top-h) + var(--mob-safe-top));
+  padding: var(--mob-safe-top) 8px 0 8px;
+  background: var(--bg-panel, #101117);
+  border-bottom: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
+  z-index: 1050;
+  box-sizing: border-box;
+}
+
+.mob-brand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  padding: 3px;
+  min-width: 40px;
+  min-height: 40px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.mob-brand-btn img {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.mob-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.mob-top-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 36px;
+  min-width: 36px;
+  padding: 0 8px;
+  border-radius: 9px;
+  border: 1px solid var(--border-card, rgba(255, 255, 255, 0.13));
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-main, #ffffff);
+  font-size: 11.5px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  position: relative;
+}
+.mob-top-btn.is-ico {
+  width: 36px;
+  padding: 0;
+}
+.mob-top-btn.is-user-ico {
+  width: 36px;
+  padding: 0;
+  border-color: rgba(234, 88, 12, 0.55);
+}
+.mob-top-btn .mob-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #EA580C;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+
+/* ----------------------------------------------------------------------------
+ * 3. BARRA INFERIOR COM DESLIZE PAGINADO (SNAP DE SEÇÃO EM SEÇÃO)
+ *    Página 1: Produção, Energia, Oficina, Mapa
+ *    Página 2: Receitas, Biblioteca, Calculadora (+ Projetos)
+ *    Página 3 (se staff/CEO): Reports, Painel CEO
+ * -------------------------------------------------------------------------- */
+#mob-bottom-nav {
+  display: flex !important;
+  flex-direction: row;
+  align-items: stretch;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--mob-bot-h) + var(--mob-safe-bot));
+  padding-bottom: var(--mob-safe-bot);
+  background: var(--bg-panel, #101117);
+  border-top: 1px solid var(--border-card, rgba(255, 255, 255, 0.09));
+  z-index: 1050;
+  box-sizing: border-box;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+}
+#mob-bottom-nav::-webkit-scrollbar { display: none; }
+
+.mob-nav-page {
+  flex: 0 0 100vw;
+  width: 100vw;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  box-sizing: border-box;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.mob-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 48px;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--text-secondary, #94a3b8);
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 4px 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mob-nav-item.active {
+  background: #EA580C;
+  color: #ffffff;
+}
+.mob-nav-item svg {
+  width: 19px;
+  height: 19px;
+}
+
+/* ----------------------------------------------------------------------------
+ * 4. SUB-BAR NO TOPO (Chips Calculadora/CEO ou Busca Biblioteca/Receitas)
+ * -------------------------------------------------------------------------- */
+#mob-subtabs-bar {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  position: fixed;
+  top: calc(var(--mob-top-h) + var(--mob-safe-top));
+  left: 0;
+  right: 0;
+  height: 50px;
+  padding: 7px 12px;
+  background: var(--bg-panel, #101117);
+  border-bottom: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  z-index: 1030;
+  box-sizing: border-box;
+}
+#mob-subtabs-bar::-webkit-scrollbar { display: none; }
+#mob-subtabs-bar.hidden { display: none !important; }
+
+.mob-subtab-chip {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-card, rgba(255, 255, 255, 0.14));
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-secondary, #cbd5e1);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mob-subtab-chip.active {
+  background: #EA580C;
+  border-color: #EA580C;
+  color: #ffffff;
+}
+
+.mob-top-search-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-card, rgba(255, 255, 255, 0.16));
+  background: rgba(148, 163, 184, 0.09);
+  color: var(--text-main, #ffffff);
+  font-size: 16px !important;
+  outline: none;
+}
+.mob-top-search-input:focus {
+  border-color: #EA580C;
+}
+
+/* ----------------------------------------------------------------------------
+ * 5. SIDEBAR COMO BOTTOM SHEET INTERATIVA (#left-sidebar ACIMA DO BACKDROP!)
+ * -------------------------------------------------------------------------- */
+#mob-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(2px);
+  z-index: 1120;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+#mob-sheet-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#left-sidebar {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: calc(var(--mob-top-h) + var(--mob-safe-top)) !important;
+  bottom: calc(var(--mob-bot-h) + var(--mob-safe-bot)) !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  min-width: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  border: none !important;
+  background: var(--bg-panel, #101117) !important;
+  z-index: 1180 !important;
+  transform: translateY(105%) !important;
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  box-shadow: none !important;
+  padding-bottom: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none;
+}
+#left-sidebar.mob-sheet-open {
+  transform: translateY(0) !important;
+  pointer-events: auto !important;
+}
+
+.mob-sheet-handle-bar {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 8px 14px;
+  border-bottom: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
+  flex-shrink: 0;
+}
+.mob-sheet-pill {
+  width: 40px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.4);
+  margin: 0 auto;
+}
+.mob-sheet-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--text-main, #fff);
+}
+.mob-sheet-close {
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--border-card, rgba(255, 255, 255, 0.12));
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-main, #fff);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#sidebar-action-section {
+  padding: 10px 12px !important;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
+}
+#sidebar-action-section .sidebar-action-row,
+#sidebar-action-section .action-btn-row,
+#sidebar-action-section > div {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+#sidebar-action-section button {
+  flex: 1 1 auto !important;
+  min-height: 44px !important;
+  padding: 0 12px !important;
+  font-size: 13px !important;
+  box-sizing: border-box !important;
+}
+#sidebar-action-section button:disabled {
+  opacity: 0.55 !important;
+}
+
+#left-sidebar-content {
+  flex: 1 1 auto !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px !important;
+}
+
+.prod-cat-grid,
+.cat-cards-grid,
+.ds-cat-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+
+/* ----------------------------------------------------------------------------
+ * 6. MENU DO USUÁRIO VINDO DE CIMA (TOP-DOWN DROPDOWN)
+ * -------------------------------------------------------------------------- */
+#mob-user-dropdown {
+  position: fixed;
+  top: calc(var(--mob-top-h) + var(--mob-safe-top) + 6px);
+  right: 8px;
+  width: min(295px, calc(100vw - 16px));
+  max-height: 75dvh;
+  background: var(--bg-panel, #101117);
+  border: 1px solid var(--border-card, rgba(255, 255, 255, 0.16));
+  border-radius: 14px;
+  z-index: 1260;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transform: translateY(-12px) scale(0.97);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+#mob-user-dropdown.open {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+.mob-dd-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 8px;
+  border-bottom: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-main, #ffffff);
+}
+.mob-more-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-card, rgba(255, 255, 255, 0.1));
+  background: rgba(148, 163, 184, 0.07);
+  color: var(--text-main, #ffffff);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.mob-more-tile.is-accent {
+  background: #EA580C;
+  border-color: #EA580C;
+  color: #ffffff;
+}
+.mob-credit-note {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-secondary, #94a3b8);
+  padding-top: 4px;
+}
+
+/* ----------------------------------------------------------------------------
+ * 7. ABA RETRÁTIL LITERALMENTE COLADA NA BORDA DIREITA (right: 0, ZERO MARGEM!)
+ * -------------------------------------------------------------------------- */
+#mob-hud-edge-tab {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  position: fixed !important;
+  right: 0 !important;
+  left: auto !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 24px !important;
+  height: 66px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 12px 0 0 12px !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  border-right: none !important;
+  background: #EA580C !important;
+  color: #ffffff !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+  cursor: pointer;
+  z-index: 1040 !important;
+  box-shadow: -4px 0 14px rgba(0, 0, 0, 0.35);
+}
+#mob-hud-edge-tab.hidden { display: none !important; }
+
+/* Fechada por padrão no mobile — zero botões ou caixa sobrando! */
+body #spaces-hud-controls.spaces-hud-controls.hud-vertical-icons:not(.mob-hud-open),
+body #spaces-hud-controls.spaces-hud-controls:not(.mob-hud-open) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+/* Aberta: literalmente colada na borda direita (right: 0, border-right: none) */
+body #spaces-hud-controls.spaces-hud-controls.hud-vertical-icons.mob-hud-open {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  position: fixed !important;
+  right: 0 !important;
+  left: auto !important;
+  top: 50% !important;
+  bottom: auto !important;
+  transform: translateY(-50%) !important;
+  margin: 0 !important;
+  padding: 6px !important;
+  gap: 5px !important;
+  border-radius: 12px 0 0 12px !important;
+  border-right: none !important;
+  max-height: 64dvh !important;
+  overflow-y: auto !important;
+  z-index: 1200 !important;
+  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.5) !important;
+}
+#mob-hud-close-btn {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 100% !important;
+  height: 28px !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  background: #EA580C !important;
+  color: #ffffff !important;
+  font-size: 15px !important;
+  font-weight: 900 !important;
+  cursor: pointer;
+}
+
+/* ----------------------------------------------------------------------------
+ * 8. BARRA DE STATUS VERTICAL COLADA NA BORDA ESQUERDA (left: 0, ZERO MARGEM!)
+ * -------------------------------------------------------------------------- */
+#mob-status-edge-tab {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  position: fixed !important;
+  left: 0 !important;
+  right: auto !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 24px !important;
+  height: 66px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 12px 12px 0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  border-left: none !important;
+  background: var(--bg-panel, #171922) !important;
+  color: #EA580C !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+  cursor: pointer;
+  z-index: 1040 !important;
+  box-shadow: 4px 0 14px rgba(0, 0, 0, 0.35);
+}
+#mob-status-edge-tab.hidden { display: none !important; }
+
+/* Fechada por padrão no mobile! */
+#factory-status-footer.factory-status-footer {
+  display: none !important;
+}
+/* Aberta: painel vertical colado na lateral esquerda (left: 0) */
+#factory-status-footer.factory-status-footer.mob-status-open {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+  position: fixed !important;
+  left: 0 !important;
+  right: auto !important;
+  top: 50% !important;
+  bottom: auto !important;
+  transform: translateY(-50%) !important;
+  margin: 0 !important;
+  width: min(84vw, 300px) !important;
+  max-width: 84vw !important;
+  max-height: 74dvh !important;
+  height: auto !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  border-radius: 0 14px 14px 0 !important;
+  border-left: none !important;
+  border: 1px solid var(--border-card, rgba(255, 255, 255, 0.14)) !important;
+  background: var(--bg-panel, #101117) !important;
+  padding: 10px !important;
+  z-index: 1200 !important;
+  box-shadow: 8px 0 28px rgba(0, 0, 0, 0.55) !important;
+  box-sizing: border-box !important;
+}
+#factory-status-footer.factory-status-footer.mob-status-open .fs-footer-hover-zone {
+  display: flex !important;
+  flex-direction: column-reverse !important;
+  align-items: stretch !important;
+  width: 100% !important;
+  gap: 8px !important;
+}
+#factory-status-footer.factory-status-footer.mob-status-open .fs-footer-bar {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  flex-wrap: nowrap !important;
+  width: 100% !important;
+  gap: 6px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#factory-status-footer.factory-status-footer.mob-status-open .fs-footer-tab {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  min-height: 38px !important;
+  padding: 7px 11px !important;
+  font-size: 12.5px !important;
+  box-sizing: border-box !important;
+}
+#factory-status-footer.factory-status-footer.mob-status-open .fs-footer-stat-neutral {
+  display: block !important;
+  width: 100% !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  box-sizing: border-box !important;
+}
+#factory-status-footer.factory-status-footer.mob-status-open .fs-footer-drawer {
+  position: static !important;
+  top: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  right: auto !important;
+  transform: none !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  max-height: 34dvh !important;
+  overflow-y: auto !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* ----------------------------------------------------------------------------
+ * 9. CALCULADORA NORMAL (MAIS BAIXA + HISTÓRICO INLINE) E DEMAIS CALCULADORAS
+ * -------------------------------------------------------------------------- */
+#calculator-workspace-view .calc-num-wrap,
+#calculator-workspace-view .calc-num-panel,
+#calculator-workspace-view .calc-numeric-card,
+#calculator-workspace-view .ds-card {
+  margin-top: 8px !important;
+  padding: 10px 12px !important;
+  height: auto !important;
+  min-height: 0 !important;
+}
+#calc-num-expr-input,
+.calc-num-display-input {
+  height: 46px !important;
+  min-height: 46px !important;
+  font-size: 24px !important;
+  padding: 6px 12px !important;
+  margin-bottom: 8px !important;
+}
+.calc-keypad {
+  gap: 6px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  flex: none !important;
+  grid-auto-rows: 42px !important;
+}
+.calc-key {
+  height: 42px !important;
+  min-height: 42px !important;
+  font-size: 16px !important;
+  padding: 0 !important;
+}
+/* Garante que o resultado das outras calculadoras fique 100% visível sem corte */
+.calc-grid-2,
+.calc-two-col,
+.calc-tool-grid,
+.calc-workspace-grid {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+.calc-grid-2 > *,
+.calc-two-col > *,
+.calc-tool-grid > * {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+/* Esconde resultado duplicado abaixo da calculadora normal se já houver inline */
+#calculator-workspace-view .calc-num-result-footer {
+  display: none !important;
+}
+
+/* ----------------------------------------------------------------------------
+ * 10. BIBLIOTECA & RECEITAS: GRID 2 COLUNAS COMPACTO + DETALHE SOBREPOSTO COM X
+ * -------------------------------------------------------------------------- */
+#recipes-workspace-view .lib-items-container,
+#library-workspace-view .lib-items-container {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+#recipes-workspace-view .lib-item-card,
+#recipes-workspace-view .rec-item-card,
+#library-workspace-view .lib-item-card {
+  padding: 10px 8px !important;
+  min-height: 0 !important;
+}
+
+.lib-shell {
+  display: block !important;
+  width: 100% !important;
+}
+/* Detalhe de Biblioteca E Receitas (.lib-side-detail) como overlay tela cheia */
+.lib-side-detail,
+.rec-side-detail {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: calc(var(--mob-bot-h) + var(--mob-safe-bot)) !important;
+  top: calc(var(--mob-top-h) + var(--mob-safe-top) + 50px) !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  height: auto !important;
+  border-radius: 20px 20px 0 0 !important;
+  border-left: none !important;
+  border-top: 1px solid var(--border-card, rgba(255, 255, 255, 0.16)) !important;
+  background: var(--bg-panel, #101117) !important;
+  z-index: 1220 !important;
+  overflow-y: auto !important;
+  padding: 16px 14px calc(24px + var(--mob-safe-bot)) 14px !important;
+  box-shadow: 0 -16px 44px rgba(0, 0, 0, 0.65) !important;
+  box-sizing: border-box !important;
+}
+.mob-detail-close-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border-card, rgba(255, 255, 255, 0.1));
+}
+.mob-detail-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-card, rgba(255, 255, 255, 0.16));
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-main, #ffffff);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* ----------------------------------------------------------------------------
+ * 11. TUTORIAL MOBILE REFORMULADO (TÓPICOS EM 1 COLUNA + PASSO LIMPO + BOTÕES LADO A LADO)
+ * -------------------------------------------------------------------------- */
+#tutorial-modal .modal-dialog {
+  height: 92dvh !important;
+  max-height: 92dvh !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+#tutorial-modal .modal-header {
+  padding: 12px 14px !important;
+  gap: 8px !important;
+}
+#tutorial-modal .modal-header h3 {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 14px !important;
+  flex-wrap: wrap !important;
+}
+#tutorial-modal .tut-v2-groups-wrap {
+  padding: 12px !important;
+  gap: 16px !important;
+}
+#tutorial-modal .tut-v2-ggrid {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 8px !important;
+}
+#tutorial-modal .tut-v2-tcard {
+  width: 100% !important;
+  padding: 12px !important;
+  gap: 12px !important;
+}
+#tutorial-modal .tut-v2-tname {
+  font-size: 14px !important;
+  white-space: normal !important;
+}
+#tutorial-modal .tut-v2-tdesc {
+  font-size: 12px !important;
+  white-space: normal !important;
+}
+
+/* Tela de passo do Tutorial */
+#tutorial-modal .tut-v2-step-layout {
+  display: flex !important;
+  flex-direction: column !important;
+  height: auto !important;
+  overflow-y: auto !important;
+}
+#tutorial-modal .tut-v2-rail {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  border-right: none !important;
+  border-bottom: 1px solid var(--border-card, rgba(255, 255, 255, 0.08)) !important;
+  display: flex !important;
+  flex-direction: row !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  gap: 6px !important;
+  padding: 8px 10px !important;
+  height: auto !important;
+  flex-shrink: 0 !important;
+}
+#tutorial-modal .tut-v2-ri {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  padding: 6px 10px !important;
+  gap: 6px !important;
+  white-space: nowrap !important;
+}
+#tutorial-modal .tut-v2-ri span {
+  font-size: 11.5px !important;
+  white-space: nowrap !important;
+}
+#tutorial-modal .tut-v2-stage {
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 12px !important;
+  gap: 12px !important;
+  overflow-y: auto !important;
+}
+#tutorial-modal .tut-ilus-stage {
+  padding: 10px !important;
+  min-height: 120px !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+#tutorial-modal .ti-row-2 {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 8px !important;
+}
+#tutorial-modal .ti-flow {
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+  justify-content: center !important;
+}
+#tutorial-modal .tut-v2-content {
+  padding: 0 !important;
+}
+#tutorial-modal .modal-footer,
+#tutorial-footer {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  padding: 10px 14px calc(10px + var(--mob-safe-bot)) 14px !important;
+  flex-wrap: nowrap !important;
+}
+#tutorial-modal .modal-footer button,
+#tutorial-footer button {
+  flex: 1 1 0 !important;
+  min-height: 42px !important;
+}
+#tutorial-modal .tut-footer-hint {
+  display: none !important;
+}
+
+/* ----------------------------------------------------------------------------
+ * 12. MODAIS COMO BOTTOM SHEETS + TOASTS ACIMA DA BARRA INFERIOR
+ * -------------------------------------------------------------------------- */
+.modal-backdrop {
+  align-items: flex-end !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  z-index: 1400 !important;
+}
+.modal-dialog {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  max-height: 90dvh !important;
+  margin: 0 !important;
+  border-radius: 20px 20px 0 0 !important;
+  padding-bottom: var(--mob-safe-bot) !important;
+}
+
+.sp-set-layout,
+.sp-set-shell {
+  display: flex !important;
+  flex-direction: column !important;
+  max-height: 76dvh !important;
+}
+.sp-set-nav {
+  flex-direction: row !important;
+  overflow-x: auto !important;
+  width: 100% !important;
+  border-right: none !important;
+  border-bottom: 1px solid var(--border-card) !important;
+}
+
+.ceo-kpi-grid,
+.ceo-grid-2,
+.proj-cards-grid {
+  grid-template-columns: 1fr !important;
+}
+
+.account-toast,
+#account-toast-container,
+.toast-container {
+  bottom: calc(var(--mob-bot-h) + var(--mob-safe-bot) + 12px) !important;
+  left: 12px !important;
+  right: 12px !important;
+  max-width: calc(100vw - 24px) !important;
+  z-index: 1500 !important;
+}
