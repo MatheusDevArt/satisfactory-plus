@@ -437,7 +437,7 @@ function toggleUserDropdown(event) {
  * MODAL DE AUTENTICAÇÃO (ENTRAR / CRIAR CONTA / ALTERAR SENHA)
  * ========================================================================== */
 
-function openAuthModal(tab = 'login', notice = '', afterLoginAction = null) {
+function openAuthModal(tab = 'login', notice = '', afterLoginAction = null, recoveryMode = 'question') {
   AccountState.menuOpen = false;
   updateAuthHeaderUI();
   AccountState.authModal = {
@@ -446,7 +446,9 @@ function openAuthModal(tab = 'login', notice = '', afterLoginAction = null) {
     notice: notice || '',
     error: '',
     loading: false,
-    afterLoginAction
+    afterLoginAction,
+    recoveryMode: ['question', 'request', 'code'].includes(recoveryMode) ? recoveryMode : 'question',
+    recoveryUsername: AccountState.user?.username || ''
   };
   const modal = document.getElementById('auth-modal');
   if (modal) modal.classList.remove('hidden');
@@ -518,17 +520,21 @@ function renderAuthModalBody() {
   }
 
   if (st.tab === 'forgot-password') {
-    if (titleEl) titleEl.textContent = '🛡️ Recuperar Senha (Pergunta de Segurança)';
+    const recMode = st.recoveryMode || 'question';
+    if (titleEl) titleEl.textContent = '🛡️ Recuperar Senha';
     const recQuestion = st.recoveryQuestion || '';
-    const recUser = st.recoveryUsername || '';
+    const recUser = st.recoveryUsername || AccountState.user?.username || '';
+    const isLoggedIn = Boolean(AccountState.user);
     body.innerHTML = `
       <div class="mode-switch-mini">
-        <button type="button" class="mini-pill" onclick="switchAuthTab('login')">← Voltar ao Login</button>
-        <button type="button" class="mini-pill active">Recuperar Senha</button>
+        ${!isLoggedIn ? `<button type="button" class="mini-pill" onclick="switchAuthTab('login')">← Login</button>` : ''}
+        <button type="button" class="mini-pill ${recMode === 'question' ? 'active' : ''}" onclick="setAuthRecoveryMode('question')">Pergunta</button>
+        <button type="button" class="mini-pill ${recMode === 'request' ? 'active' : ''}" onclick="setAuthRecoveryMode('request')">Pedir código</button>
+        <button type="button" class="mini-pill ${recMode === 'code' ? 'active' : ''}" onclick="setAuthRecoveryMode('code')">Usar código</button>
       </div>
       ${st.notice ? `<div class="form-alert info">ℹ️ ${escText(st.notice)}</div>` : ''}
       ${st.error ? `<div class="form-alert error">⚠️ ${escText(st.error)}</div>` : ''}
-      ${!recQuestion ? `
+      ${recMode === 'question' ? (!recQuestion ? `
         <form onsubmit="submitFetchRecoveryQuestion(event)" class="account-form">
           <div class="field-group">
             <label for="rec-username">Nome de usuário</label>
@@ -538,6 +544,9 @@ function renderAuthModalBody() {
           <button type="submit" class="btn-mount-flow ready" ${st.loading ? 'disabled' : ''}>
             ${st.loading ? '⏳ Buscando...' : '🔎 Ver Pergunta de Segurança'}
           </button>
+          <div style="text-align:center;margin-top:6px;">
+            <button type="button" class="btn-inline-link" onclick="setAuthRecoveryMode('request')">Não cadastrou pergunta? Pedir código de reset à equipe</button>
+          </div>
         </form>
       ` : `
         <form onsubmit="submitRecoverPassword(event)" class="account-form">
@@ -569,6 +578,58 @@ function renderAuthModalBody() {
           </div>
           <button type="submit" class="btn-mount-flow ready" ${st.loading ? 'disabled' : ''}>
             ${st.loading ? '⏳ Verificando...' : '🔓 Redefinir Senha e Entrar'}
+          </button>
+        </form>
+      `) : recMode === 'request' ? `
+        <form onsubmit="submitRecoveryHelpRequest(event)" class="account-form">
+          <p style="margin:0;font-size:12.5px;color:var(--text-secondary);line-height:1.5;">
+            Esqueceu sua senha e não cadastrou pergunta de segurança? Envie uma solicitação para a equipe. Após validar, geraremos um <strong>código único (REC-XXXX-XXXX)</strong> válido por 24h para você redefinir sua senha.
+          </p>
+          <div class="field-group">
+            <label for="rec-req-user">Nome de usuário</label>
+            <input id="rec-req-user" type="text" class="sidebar-input" required minlength="3" maxlength="20" value="${escText(recUser)}" ${isLoggedIn ? 'readonly' : ''} placeholder="Seu nome de usuário" />
+          </div>
+          <div class="field-group">
+            <label for="rec-req-contact">Contato para receber o código ${isLoggedIn ? '(opcional — também respondemos nos Reports)' : '(Discord ou e-mail)'}</label>
+            <input id="rec-req-contact" type="text" class="sidebar-input" maxlength="120" ${isLoggedIn ? '' : 'required'} placeholder="Ex.: seu_discord ou seu@email.com" />
+          </div>
+          <div class="field-group">
+            <label for="rec-req-msg">Informações para confirmar sua conta</label>
+            <textarea id="rec-req-msg" class="sidebar-input" rows="3" required minlength="10" maxlength="1500" placeholder="Ex.: nome de algum projeto salvo, quando criou a conta ou detalhes que ajudem a confirmar que a conta é sua..."></textarea>
+          </div>
+          <button type="submit" class="btn-mount-flow ready" ${st.loading ? 'disabled' : ''}>
+            ${st.loading ? '⏳ Enviando pedido...' : '📨 Enviar Pedido à Equipe'}
+          </button>
+        </form>
+      ` : `
+        <form onsubmit="submitResetWithCode(event)" class="account-form">
+          <p style="margin:0;font-size:12.5px;color:var(--text-secondary);line-height:1.5;">
+            Recebeu um código de recuperação da equipe (formato <code>REC-XXXX-XXXX</code>)? Preencha abaixo para definir uma nova senha.
+          </p>
+          <div class="field-group">
+            <label for="rec-code-user">Nome de usuário</label>
+            <input id="rec-code-user" type="text" class="sidebar-input" required minlength="3" maxlength="20" value="${escText(recUser)}" ${isLoggedIn ? 'readonly' : ''} placeholder="Seu nome de usuário" />
+          </div>
+          <div class="field-group">
+            <label for="rec-code-input">Código de reset</label>
+            <input id="rec-code-input" type="text" class="sidebar-input" required minlength="8" maxlength="24" placeholder="REC-XXXX-XXXX" autocomplete="off" style="font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.06em;" />
+          </div>
+          <div class="field-group">
+            <label for="rec-code-pass">Nova senha (mínimo 8 caracteres)</label>
+            <div class="password-field-wrap">
+              <input id="rec-code-pass" type="password" class="sidebar-input" required minlength="8" autocomplete="new-password" />
+              <button type="button" class="btn-toggle-eye" onclick="togglePasswordVisibility('rec-code-pass', this)">👁️</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label for="rec-code-confirm">Confirmar nova senha</label>
+            <div class="password-field-wrap">
+              <input id="rec-code-confirm" type="password" class="sidebar-input" required minlength="8" autocomplete="new-password" />
+              <button type="button" class="btn-toggle-eye" onclick="togglePasswordVisibility('rec-code-confirm', this)">👁️</button>
+            </div>
+          </div>
+          <button type="submit" class="btn-mount-flow ready" ${st.loading ? 'disabled' : ''}>
+            ${st.loading ? '⏳ Validando código...' : '🔓 Redefinir Senha com Código'}
           </button>
         </form>
       `}
@@ -840,6 +901,84 @@ async function submitRecoverPassword(e) {
     updateAuthHeaderUI();
     updateRoleBasedTabs();
     showAccountToast('Senha redefinida com sucesso!', 'success');
+  } catch {
+    AccountState.authModal.loading = false;
+    AccountState.authModal.error = 'Erro de conexão com o servidor.';
+    renderAuthModalBody();
+  }
+}
+
+function setAuthRecoveryMode(mode) {
+  if (!['question', 'request', 'code'].includes(mode)) return;
+  AccountState.authModal.recoveryMode = mode;
+  AccountState.authModal.error = '';
+  AccountState.authModal.notice = '';
+  renderAuthModalBody();
+}
+
+async function submitRecoveryHelpRequest(e) {
+  e.preventDefault();
+  const username = (document.getElementById('rec-req-user')?.value || AccountState.user?.username || '').trim();
+  const contact = (document.getElementById('rec-req-contact')?.value || '').trim();
+  const message = (document.getElementById('rec-req-msg')?.value || '').trim();
+  if (!username || message.length < 10) return;
+  AccountState.authModal.loading = true;
+  AccountState.authModal.error = '';
+  AccountState.authModal.notice = '';
+  renderAuthModalBody();
+  try {
+    const res = await apiFetch('/api/reports?action=recovery-request', {
+      method: 'POST',
+      body: JSON.stringify({ username, contact, message })
+    });
+    AccountState.authModal.loading = false;
+    if (!res.ok) {
+      AccountState.authModal.error = res.data?.error || 'Não foi possível enviar sua solicitação.';
+      renderAuthModalBody();
+      return;
+    }
+    AccountState.authModal.recoveryMode = 'code';
+    AccountState.authModal.recoveryUsername = username;
+    AccountState.authModal.notice = res.data?.message || 'Pedido enviado! Assim que a equipe enviar seu código (REC-XXXX-XXXX), digite-o abaixo.';
+    renderAuthModalBody();
+  } catch {
+    AccountState.authModal.loading = false;
+    AccountState.authModal.error = 'Erro de conexão com o servidor.';
+    renderAuthModalBody();
+  }
+}
+
+async function submitResetWithCode(e) {
+  e.preventDefault();
+  const username = (document.getElementById('rec-code-user')?.value || AccountState.user?.username || '').trim();
+  const resetCode = (document.getElementById('rec-code-input')?.value || '').trim();
+  const newPassword = document.getElementById('rec-code-pass')?.value || '';
+  const confirmPassword = document.getElementById('rec-code-confirm')?.value || '';
+  if (newPassword !== confirmPassword) {
+    AccountState.authModal.error = 'A confirmação da nova senha não confere.';
+    renderAuthModalBody();
+    return;
+  }
+  AccountState.authModal.loading = true;
+  AccountState.authModal.error = '';
+  renderAuthModalBody();
+  try {
+    const res = await apiFetch('/api/auth?action=reset-with-code', {
+      method: 'POST',
+      body: JSON.stringify({ username, resetCode, newPassword, confirmPassword })
+    });
+    if (!res.ok) {
+      AccountState.authModal.loading = false;
+      AccountState.authModal.error = res.data?.error || 'Código inválido ou expirado.';
+      renderAuthModalBody();
+      return;
+    }
+    AccountState.user = res.data.user;
+    try { localStorage.setItem('splus_user_cache', JSON.stringify(res.data.user)); } catch {}
+    closeAuthModal();
+    updateAuthHeaderUI();
+    updateRoleBasedTabs();
+    showAccountToast('Senha redefinida com sucesso! Agora você já pode configurar sua pergunta de segurança.', 'success');
   } catch {
     AccountState.authModal.loading = false;
     AccountState.authModal.error = 'Erro de conexão com o servidor.';
@@ -1198,6 +1337,7 @@ function reportTypeLabel(t) {
   if (t === 'bug') return '🐛 Bug';
   if (t === 'suggestion') return '💡 Sugestão de melhoria';
   if (t === 'rating') return '⭐ Avaliação';
+  if (t === 'recovery') return '🔑 Recuperação';
   return t;
 }
 
@@ -1754,6 +1894,7 @@ function renderAdminReportsWorkspace() {
                 ` : `
                   <button type="button" class="btn-icon-action" ${isSaving ? 'disabled' : ''} onclick="setAdminReportStatus('${escText(r.id)}', 'lido')">Reabrir</button>
                 `}
+                ${r.type === 'recovery' ? `<button type="button" class="btn-icon-action" style="border-color:#EA580C;color:#EA580C;font-weight:700;" ${isSaving ? 'disabled' : ''} onclick="generateAdminResetCode('${escText(r.id)}')">🔑 Gerar código</button>` : ''}
                 <button type="button" class="btn-icon-action" ${isSaving ? 'disabled' : ''} onclick="openAdminReplyBox('${escText(r.id)}')">${r.adminReply ? 'Editar resposta' : 'Responder'}</button>
                 <button type="button" class="btn-icon-action" onclick="translateAdminReport('${escText(r.id)}')">🌐 Traduzir PT</button>
                 <button type="button" class="btn-icon-action" onclick="downloadSingleReportTxt('${escText(r.id)}')">📄 .txt</button>
@@ -1924,6 +2065,72 @@ function downloadReportImages(reportId) {
     a.click();
     a.remove();
   });
+}
+
+async function generateAdminResetCode(reportId) {
+  const ok = await openCustomConfirmModal(
+    'Gerar um código único de redefinição de senha (válido por 24h) para o usuário deste report?',
+    'Gerar código (24h)'
+  );
+  if (!ok) return;
+  AccountState.adminReports.savingId = reportId;
+  renderAdminReportsWorkspace();
+  try {
+    const res = await apiFetch('/api/reports', {
+      method: 'PATCH',
+      body: JSON.stringify({ action: 'generate-reset-code', id: reportId })
+    });
+    AccountState.adminReports.savingId = null;
+    if (!res.ok || !res.data?.code) {
+      showAccountToast(res.data?.error || 'Não foi possível gerar o código de reset.', 'error');
+      renderAdminReportsWorkspace();
+      return;
+    }
+    const code = res.data.code;
+    const uname = res.data.username || 'usuário';
+    const modal = document.getElementById('save-project-modal');
+    const titleEl = document.getElementById('save-project-title');
+    const bodyEl = document.getElementById('save-project-body');
+    if (titleEl) titleEl.textContent = '🔑 Código de Reset Gerado (24h)';
+    if (bodyEl) {
+      bodyEl.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <p style="margin:0;font-size:13px;color:var(--text-secondary);line-height:1.5;">
+            Código único gerado para <strong>${escText(uname)}</strong> (uso único, expira em 24h). Envie este código pelo contato informado pelo usuário ou responda diretamente no report:
+          </p>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input id="generated-reset-code-out" type="text" readonly class="sidebar-input" value="${escText(code)}" style="font-family:var(--font-mono);font-size:17px;font-weight:800;text-align:center;letter-spacing:0.08em;" />
+            <button type="button" class="ds-btn-primary" onclick="navigator.clipboard?.writeText(document.getElementById('generated-reset-code-out').value); showAccountToast('Código copiado!', 'success');">Copiar</button>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="ds-btn-secondary" onclick="sendResetCodeInReportReply('${escText(reportId)}', document.getElementById('generated-reset-code-out').value)">Enviar na resposta do report</button>
+            <button type="button" class="ds-btn-secondary" onclick="closeSaveProjectModal()">Fechar</button>
+          </div>
+        </div>
+      `;
+    }
+    if (modal) modal.classList.remove('hidden');
+    await fetchAdminReports();
+  } catch {
+    AccountState.adminReports.savingId = null;
+    showAccountToast('Erro de conexão ao gerar código.', 'error');
+    renderAdminReportsWorkspace();
+  }
+}
+
+async function sendResetCodeInReportReply(reportId, code) {
+  const replyText = `Seu pedido de recuperação foi aprovado! Use o código ${code} (válido por 24h, uso único) em "Esqueci minha senha → Usar código" para definir sua nova senha.`;
+  const res = await apiFetch('/api/reports', {
+    method: 'PATCH',
+    body: JSON.stringify({ action: 'set-reply', id: reportId, text: replyText })
+  });
+  if (!res.ok) {
+    showAccountToast(res.data?.error || 'Não foi possível enviar a resposta.', 'error');
+    return;
+  }
+  closeSaveProjectModal();
+  showAccountToast('Código enviado na resposta do report!', 'success');
+  await fetchAdminReports();
 }
 
 async function deleteAdminReport(reportId) {

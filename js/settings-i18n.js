@@ -599,7 +599,8 @@ function renderSettingsModalBody() {
           </div>
           <div class="sp-set-acts">
             <button type="submit" class="sp-set-btn sp-set-btn-p">Salvar pergunta</button>
-            <button type="button" class="sp-set-btn" onclick="openAuthModal('forgot-password')">Esqueci minha senha</button>
+            <button type="button" class="sp-set-btn" onclick="closeSettingsModal(); openAuthModal('forgot-password', '', null, 'question')">Esqueci minha senha</button>
+            ${user && !hasRecovery ? `<button type="button" class="sp-set-btn" onclick="closeSettingsModal(); openAuthModal('forgot-password', '', null, 'request')">Pedir código de reset</button>` : ''}
             ${user
               ? `<button type="button" class="sp-set-btn" onclick="openChangePasswordModal()">Alterar senha</button>`
               : `<button type="button" class="sp-set-btn" onclick="openAuthModal('login')">Entrar / Criar conta</button>`}

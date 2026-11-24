@@ -16,6 +16,11 @@ const {
   sendJson,
   readRequestBody,
   getAuthenticatedUser,
+  getUserByUsername,
+  normalizeUsername,
+  getClientIp,
+  hashPassword,
+  isCeoUser,
   isAdminUser,
   detectImageType,
   checkRateLimit,
@@ -23,7 +28,16 @@ const {
   StorageUnavailableError
 } = require('../_lib/store');
 
-const VALID_TYPES = new Set(['bug', 'suggestion', 'rating']);
+const VALID_TYPES = new Set(['bug', 'suggestion', 'rating', 'recovery']);
+const RESET_CODE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function generateReadableResetCode() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.randomBytes(8);
+  let raw = '';
+  for (let i = 0; i < 8; i++) raw += alphabet[bytes[i] % alphabet.length];
+  return `REC-${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
+}
 const VALID_STATUSES = new Set(['novo', 'lido', 'resolvido']);
 const MAX_ADMIN_REPLY_CHARS = 1000;
 const ADMIN_ACTION_LIMIT = 120;
@@ -284,6 +298,7 @@ async function notifyCeoNewReport(rep) {
     suggestion: 'Sugestão de melhoria',
     sugestao: 'Sugestão de melhoria',
     rating: 'Avaliação',
+    recovery: 'Recuperação de conta',
     melhoria: 'Melhoria',
     duvida: 'Dúvida'
   };
@@ -373,12 +388,79 @@ module.exports = async function handler(req, res) {
   }
 
   try {
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const actionParam = String(url.searchParams.get('action') || '').trim().toLowerCase();
+
+    // POST /api/reports?action=recovery-request (Pedido de código de recuperação — logado ou deslogado)
+    if (req.method === 'POST' && actionParam === 'recovery-request') {
+      const ip = getClientIp(req);
+      const rlKey = `recovery_req_ip:${ip}`;
+      const rl = await checkRateLimit(rlKey, 3, 60 * 60 * 1000);
+      if (rl.blocked) {
+        const mins = Math.ceil(rl.retryAfterMs / 60000);
+        return sendJson(res, 429, { error: `Você atingiu o limite de pedidos de recuperação por hora. Aguarde ${mins} minuto(s).` });
+      }
+      const maybeAuth = await getAuthenticatedUser(req, res, false, { allowStatelessFallback: true }).catch(() => null);
+      const body = await readRequestBody(req, 32 * 1024);
+      const rawUsername = maybeAuth?.user?.username || String(body.username || '').trim();
+      const targetLower = normalizeUsername(rawUsername);
+      const contact = String(body.contact || '').trim().slice(0, 120);
+      const details = String(body.message || '').trim().slice(0, 1500);
+      if (!targetLower || !/^[a-z0-9_.-]{3,20}$/.test(targetLower)) {
+        return sendJson(res, 400, { error: 'Informe um nome de usuário válido (3 a 20 caracteres).' });
+      }
+      if (details.length < 10) {
+        return sendJson(res, 400, { error: 'Descreva brevemente sua solicitação (mínimo 10 caracteres) para ajudar a equipe a confirmar sua conta.' });
+      }
+      const targetUser = await getUserByUsername(targetLower, false);
+      if (!targetUser) {
+        await recordRateLimitHit(rlKey, 60 * 60 * 1000);
+        return sendJson(res, 404, { error: 'Não encontramos uma conta cadastrada com este nome de usuário.' });
+      }
+      if (isCeoUser(targetUser)) {
+        return sendJson(res, 403, { error: 'Esta conta não pode ser recuperada por este formulário.' });
+      }
+      await recordRateLimitHit(rlKey, 60 * 60 * 1000);
+      const now = Date.now();
+      const createdAt = new Date(now).toISOString();
+      const expiresAt = new Date(now + REPORT_TTL_MS).toISOString();
+      const reportId = `rep_${now.toString(36)}_${crypto.randomBytes(4).toString('hex')}`;
+      const fullMessage = [
+        maybeAuth?.user ? 'Origem: Usuário logado (sem pergunta de segurança)' : 'Origem: Tela de Login (deslogado)',
+        contact ? `Contato informado: ${contact}` : null,
+        `Detalhes: ${details}`
+      ].filter(Boolean).join('\n');
+      const reportObj = {
+        id: reportId,
+        userId: targetUser.id,
+        username: targetUser.username,
+        recoveryTargetUsername: targetLower,
+        type: 'recovery',
+        title: `Pedido de recuperação de conta (${targetUser.username})`,
+        message: fullMessage,
+        rating: null,
+        techInfo: null,
+        status: 'novo',
+        statusUpdatedAt: null,
+        adminReply: null,
+        userSeenAt: createdAt,
+        images: [],
+        createdAt,
+        expiresAt
+      };
+      await writeJsonBlob(`db/reports/${reportId}.json`, reportObj);
+      await notifyCeoNewReport(reportObj).catch(() => {});
+      return sendJson(res, 201, {
+        ok: true,
+        message: 'Pedido enviado para a equipe! Assim que autorizado, você receberá um código de reset (REC-XXXX-XXXX) válido por 24h.'
+      });
+    }
+
     const auth = await getAuthenticatedUser(req, res, true, { allowStatelessFallback: true });
     if (!auth) {
       return sendJson(res, 401, { error: 'Você precisa entrar na sua conta para acessar os reports.' });
     }
 
-    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const scope = url.searchParams.get('scope') || 'mine';
 
     // GET /api/reports?scope=mine|all
@@ -697,6 +779,41 @@ module.exports = async function handler(req, res) {
         rep.adminReply = null;
         await writeJsonBlob(`db/reports/${id}.json`, rep);
         return sendJson(res, 200, { ok: true, report: formatReportForClient(rep) });
+      }
+
+      if (action === 'generate-reset-code') {
+        const targetLower = normalizeUsername(rep.recoveryTargetUsername || rep.username || '');
+        if (!targetLower) {
+          return sendJson(res, 400, { error: 'Não foi possível identificar o usuário deste report.' });
+        }
+        const targetUser = await getUserByUsername(targetLower, false);
+        if (!targetUser) {
+          return sendJson(res, 404, { error: 'Usuário não encontrado no banco de dados.' });
+        }
+        if (isCeoUser(targetUser)) {
+          return sendJson(res, 403, { error: 'Não é permitido gerar código de reset para a conta CEO.' });
+        }
+        const rawCode = generateReadableResetCode();
+        const normCode = rawCode.replace(/[^A-Z0-9]/g, '');
+        const expiresAt = new Date(Date.now() + RESET_CODE_TTL_MS).toISOString();
+        targetUser.resetCodeHash = hashPassword(normCode);
+        targetUser.resetCodeExpiresAt = expiresAt;
+        targetUser.resetCodeIssuedBy = auth.user.username;
+        await writeJsonBlob(`db/users/${targetLower}.json`, targetUser);
+        if (!rep.status || rep.status === 'novo') {
+          rep.status = 'lido';
+          rep.statusUpdatedAt = nowIso;
+        }
+        rep.resetCodeGeneratedAt = nowIso;
+        rep.resetCodeExpiresAt = expiresAt;
+        await writeJsonBlob(`db/reports/${id}.json`, rep);
+        return sendJson(res, 200, {
+          ok: true,
+          code: rawCode,
+          username: targetUser.username,
+          expiresAt,
+          report: formatReportForClient(rep)
+        });
       }
 
       return sendJson(res, 400, { error: 'Ação inválida.' });

@@ -491,6 +491,66 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    // POST /api/auth?action=reset-with-code (Redefinir senha com código único REC-XXXX-XXXX emitido pela equipe)
+    if (req.method === 'POST' && action === 'reset-with-code') {
+      const body = await readRequestBody(req, 32 * 1024);
+      const username = String(body.username || '').trim();
+      const lower = normalizeUsername(username);
+      const normCode = String(body.resetCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const newPassword = String(body.newPassword || '');
+      const confirmPassword = String(body.confirmPassword || '');
+      const ip = getClientIp(req);
+
+      const rlKey = `reset_code_attempt:${ip}:${lower || 'empty'}`;
+      const rlUserKey = `reset_code_user:${lower || 'empty'}`;
+      const rl = await checkRateLimit(rlKey, 5, 60 * 60 * 1000);
+      const rlUser = lower ? await checkRateLimit(rlUserKey, 8, 60 * 60 * 1000) : { blocked: false, retryAfterMs: 0 };
+      if (rl.blocked || rlUser.blocked) {
+        const retryMs = Math.max(rl.retryAfterMs || 0, rlUser.retryAfterMs || 0);
+        const mins = Math.ceil(retryMs / 60000);
+        return sendJson(res, 429, { error: `Limite de tentativas atingido. Aguarde ${mins} minuto(s).` });
+      }
+
+      if (!lower || normCode.length < 8) {
+        return sendJson(res, 400, { error: 'Informe o nome de usuário e o código de reset (ex.: REC-XXXX-XXXX).' });
+      }
+      const pErr = validatePassword(newPassword);
+      if (pErr) return sendJson(res, 400, { error: pErr });
+      if (newPassword !== confirmPassword) {
+        return sendJson(res, 400, { error: 'A confirmação da nova senha não confere.' });
+      }
+
+      const user = await getUserByUsername(lower, false);
+      const expMs = user?.resetCodeExpiresAt ? new Date(user.resetCodeExpiresAt).getTime() : 0;
+      const notExpired = Boolean(expMs && expMs > Date.now());
+      const validCode = (user && user.resetCodeHash && notExpired)
+        ? verifyPassword(normCode, user.resetCodeHash)
+        : (verifyPassword(normCode, DUMMY_PASSWORD_HASH) && false);
+
+      if (!user || !validCode) {
+        await recordRateLimitHit(rlKey, 60 * 60 * 1000);
+        if (lower) await recordRateLimitHit(rlUserKey, 60 * 60 * 1000);
+        return sendJson(res, 401, { error: 'Código de reset inválido, já utilizado ou expirado.' });
+      }
+
+      await clearRateLimit(rlKey);
+      if (lower) await clearRateLimit(rlUserKey);
+      user.passwordHash = hashPassword(newPassword);
+      user.passwordUpdatedAt = new Date().toISOString();
+      user.sessionVersion = (Number(user.sessionVersion) || 1) + 1;
+      user.resetCodeHash = '';
+      user.resetCodeExpiresAt = '';
+      await writeJsonBlob(`db/users/${user.usernameLower}.json`, user);
+
+      const token = await createSession(user);
+      setSessionCookie(res, token);
+      return sendJson(res, 200, {
+        ok: true,
+        message: 'Senha redefinida com sucesso!',
+        user: sanitizeUser(user)
+      });
+    }
+
     // POST /api/auth?action=delete-account (Exclusão permanente da conta, projetos, reports e sessões)
     if (req.method === 'POST' && action === 'delete-account') {
       const auth = await getAuthenticatedUser(req, res, false, { useCache: false });
