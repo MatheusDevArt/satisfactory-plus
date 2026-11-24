@@ -1,7 +1,8 @@
 /**
  * Satisfactory+ — Motor Global de Tradução Completa (PT-BR / EN-US / ES-ES)
  * Consome data/i18n-bundle.js + nomes oficiais de SATISFACTORY_DATA / LIBRARY / MAP,
- * traduz nós de texto, <option>, placeholders, tooltips laranja (#EA580C) e toasts.
+ * traduz nós de texto (inclusive maiúsculas/compostos/canvas/barra de status),
+ * <option>, placeholders, tooltips laranja (#EA580C) e toasts.
  */
 (function () {
   if (typeof window === 'undefined') return;
@@ -10,13 +11,19 @@
     return String(s || '').replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ').trim();
   }
 
-  // Índice rápido PT -> EN oficial construído a partir dos dados oficiais do jogo
-  const _gameEnIndex = {};
-  let _gameIndexBuilt = false;
+  function isAllUpper(s) {
+    const letters = s.replace(/[^A-Za-zÀ-ÿ]/g, '');
+    return letters.length >= 2 && letters === letters.toUpperCase();
+  }
 
-  function ensureGameIndex() {
-    if (_gameIndexBuilt) return;
-    _gameIndexBuilt = true;
+  const _gameEnIndex = {};
+  const _lowerEn = {};
+  const _lowerEs = {};
+  let _indexesBuilt = false;
+
+  function ensureIndexes() {
+    if (_indexesBuilt) return;
+    _indexesBuilt = true;
     try {
       const gd = window.SATISFACTORY_DATA;
       if (gd && typeof gd === 'object') {
@@ -25,9 +32,15 @@
           if (!obj || typeof obj !== 'object') continue;
           for (const v of Object.values(obj)) {
             if (v && v.name && v.nameEn) {
-              _gameEnIndex[normSpace(v.name)] = normSpace(v.nameEn);
+              const k = normSpace(v.name);
+              const val = normSpace(v.nameEn);
+              _gameEnIndex[k] = val;
+              _lowerEn[k.toLowerCase()] = val;
               if (v.name.startsWith('Alternativa: ')) {
-                _gameEnIndex[normSpace(v.name.slice('Alternativa: '.length))] = normSpace(v.nameEn.replace(/^Alternate:\s*/i, ''));
+                const ck = normSpace(v.name.slice('Alternativa: '.length));
+                const cv = normSpace(v.nameEn.replace(/^Alternate:\s*/i, ''));
+                _gameEnIndex[ck] = cv;
+                _lowerEn[ck.toLowerCase()] = cv;
               }
             }
           }
@@ -38,7 +51,11 @@
         for (const arr of Object.values(lib)) {
           if (!Array.isArray(arr)) continue;
           for (const e of arr) {
-            if (e && e.name && e.nameEn) _gameEnIndex[normSpace(e.name)] = normSpace(e.nameEn);
+            if (e && e.name && e.nameEn) {
+              const k = normSpace(e.name);
+              _gameEnIndex[k] = normSpace(e.nameEn);
+              _lowerEn[k.toLowerCase()] = normSpace(e.nameEn);
+            }
           }
         }
       }
@@ -46,11 +63,42 @@
       if (md && Array.isArray(md.groups)) {
         for (const g of md.groups) {
           for (const c of (g.categories || [])) {
-            if (c && c.title && c.enTitle) _gameEnIndex[normSpace(c.title)] = normSpace(c.enTitle);
+            if (c && c.title && c.enTitle) {
+              const k = normSpace(c.title);
+              _gameEnIndex[k] = normSpace(c.enTitle);
+              _lowerEn[k.toLowerCase()] = normSpace(c.enTitle);
+            }
           }
         }
       }
+      const bundle = window.SPLUS_I18N_BUNDLE;
+      if (bundle?.en) {
+        for (const [k, v] of Object.entries(bundle.en)) {
+          _lowerEn[k.toLowerCase()] = v;
+        }
+      }
+      if (bundle?.es) {
+        for (const [k, v] of Object.entries(bundle.es)) {
+          _lowerEs[k.toLowerCase()] = v;
+        }
+      }
     } catch {}
+  }
+
+  function lookupExact(trimmed, lang) {
+    ensureIndexes();
+    const bundle = window.SPLUS_I18N_BUNDLE;
+    const dict = lang === 'en-US' ? bundle?.en : (lang === 'es-ES' ? bundle?.es : null);
+    if (dict && dict[trimmed]) return dict[trimmed];
+    if (lang === 'en-US' && _gameEnIndex[trimmed]) return _gameEnIndex[trimmed];
+
+    // Case-insensitive lookup (preserva CAIXA ALTA em títulos de canvas como SAÍDA, PRODUÇÃO FINAL)
+    const lowerMap = lang === 'en-US' ? _lowerEn : (lang === 'es-ES' ? _lowerEs : null);
+    if (lowerMap) {
+      const hit = lowerMap[trimmed.toLowerCase()];
+      if (hit) return isAllUpper(trimmed) ? hit.toUpperCase() : hit;
+    }
+    return null;
   }
 
   const PATTERN_MAP = [
@@ -68,58 +116,65 @@
     { re: /^Fase\s+(\d+)\s*[—–-]\s*(.+)$/i, en: 'Phase $1 — $2', es: 'Fase $1 — $2' },
     { re: /^Tier\s+(\d+)\s*\((.+)\)$/i, en: 'Tier $1 ($2)', es: 'Nivel $1 ($2)' },
     { re: /^Alternativa:\s*(.+)$/i, en: 'Alternate: $1', es: 'Alternativa: $1' },
-    { re: /^(.+?)\s*\(Puro\)$/i, en: '$1 (Pure)', es: '$1 (Puro)' },
-    { re: /^(.+?)\s*\(Normal\)$/i, en: '$1 (Normal)', es: '$1 (Normal)' },
-    { re: /^(.+?)\s*\(Impuro\)$/i, en: '$1 (Impure)', es: '$1 (Impuro)' },
-    { re: /^(.+?)\s*\(Alternativa\)$/i, en: '$1 (Alternate)', es: '$1 (Alternativa)' },
-    { re: /^(.+?)\s*\(Padrão\)$/i, en: '$1 (Default)', es: '$1 (Estándar)' }
+    { re: /^N[óo]\s+de\s+(.+)$/i, en: '$1 Node', es: 'Nodo de $1' },
+    { re: /^Esteira\s+v\.(\d+)$/i, en: 'Belt Mk.$1', es: 'Cinta v.$1' },
+    { re: /^Tubula[çc][ãa]o\s+v\.(\d+)$/i, en: 'Pipeline Mk.$1', es: 'Tubería v.$1' },
+    { re: /^(\d+)\s*[x×]\s+(.+)$/i, en: '$1x $2', es: '$1x $2' },
+    { re: /^(.+?)\s+#(\d+)$/i, en: '$1 #$2', es: '$1 #$2' },
+    { re: /^v\.(\d+)$/i, en: 'Mk.$1', es: 'v.$1' },
+    { re: /^([\d.,]+)\s*un\/min$/i, en: '$1 u/min', es: '$1 u/min' },
+    { re: /^([\d.,]+)\s*un$/i, en: '$1 u', es: '$1 u' }
   ];
 
-  function lookupExact(trimmed, lang) {
-    ensureGameIndex();
-    const bundle = window.SPLUS_I18N_BUNDLE;
-    const dict = lang === 'en-US' ? bundle?.en : (lang === 'es-ES' ? bundle?.es : null);
-    if (dict && dict[trimmed]) return dict[trimmed];
-    if (lang === 'en-US' && _gameEnIndex[trimmed]) return _gameEnIndex[trimmed];
-    return null;
-  }
-
-  function translatePiece(trimmed, lang) {
-    if (!trimmed) return trimmed;
+  function translatePiece(trimmed, lang, depth = 0) {
+    if (!trimmed || depth > 4) return trimmed;
     const direct = lookupExact(trimmed, lang);
     if (direct) return direct;
 
-    // Padrões dinâmicos (traduzindo o conteúdo capturado quando necessário)
+    // 1. Emoji / símbolo curto no início (ex: "💎 0 fragmentos", "🗺️ Mapa Real...")
+    const emojiM = trimmed.match(/^([^\wÀ-ÿ]{1,5}\s+)(.+)$/);
+    if (emojiM) {
+      const trRest = translatePiece(emojiM[2].trim(), lang, depth + 1);
+      if (trRest !== emojiM[2].trim()) return emojiM[1] + trRest;
+    }
+
+    // 2. Separadores compostos (" — ", " · ", " • ")
+    for (const sep of [' — ', ' · ', ' • ']) {
+      if (trimmed.includes(sep)) {
+        const parts = trimmed.split(sep);
+        let anyChanged = false;
+        const mapped = parts.map((pt) => {
+          const t = translatePiece(pt.trim(), lang, depth + 1);
+          if (t !== pt.trim()) anyChanged = true;
+          return t;
+        });
+        if (anyChanged) return mapped.join(sep);
+      }
+    }
+
+    // 3. Padrões dinâmicos (Nó de X, Construtor #1, 1x Construtor, Esteira v.1, 0 fragmentos...)
     for (const p of PATTERN_MAP) {
       const m = trimmed.match(p.re);
       if (m) {
         let tpl = lang === 'en-US' ? p.en : p.es;
+        const upper = isAllUpper(trimmed);
         for (let i = 1; i < m.length; i++) {
-          const inner = /^\d+$/.test(m[i]) ? m[i] : (lookupExact(m[i].trim(), lang) || m[i]);
+          const cap = m[i];
+          const inner = /^[\d.,]+$/.test(cap) ? cap : translatePiece(cap.trim(), lang, depth + 1);
           tpl = tpl.replace(`$${i}`, inner);
         }
-        return tpl;
+        return upper ? tpl.toUpperCase() : tpl;
       }
     }
 
-    // Emoji/prefixo curto seguido de texto (ex: "⚡ Montar", "💾 Salvar", "👤 Nome")
-    const emojiM = trimmed.match(/^([^\wÀ-ÿ]{1,4}\s+)(.+)$/);
-    if (emojiM) {
-      const trRest = lookupExact(emojiM[2].trim(), lang);
-      if (trRest) return emojiM[1] + trRest;
-    }
-
-    // Texto composto com separadores " · " ou " • "
-    if (trimmed.includes(' · ') || trimmed.includes(' • ')) {
-      const sep = trimmed.includes(' · ') ? ' · ' : ' • ';
-      const parts = trimmed.split(sep);
-      let anyChanged = false;
-      const mapped = parts.map((pt) => {
-        const t = translatePiece(pt.trim(), lang);
-        if (t !== pt.trim()) anyChanged = true;
-        return t;
-      });
-      if (anyChanged) return mapped.join(sep);
+    // 4. Padrão genérico "Rótulo (Valor)" — cobre barra inferior de status, Esteira v.1 (60/min), purezas, etc.
+    const parenM = trimmed.match(/^(.+?)\s*\(([^()]+)\)$/);
+    if (parenM) {
+      const leftTr = translatePiece(parenM[1].trim(), lang, depth + 1);
+      const rightTr = translatePiece(parenM[2].trim(), lang, depth + 1);
+      if (leftTr !== parenM[1].trim() || rightTr !== parenM[2].trim()) {
+        return `${leftTr} (${rightTr})`;
+      }
     }
 
     return trimmed;
@@ -139,7 +194,6 @@
       return lead + direct + trail;
     }
 
-    // Multilinha: traduzir linha por linha se houver quebras de linha
     if (orig.includes('\n')) {
       const lines = orig.split('\n');
       let changed = false;
@@ -240,7 +294,6 @@
   };
   window.translateSiteText = translateString;
 
-  // Traduzir também toasts dinâmicos
   if (typeof window.showAccountToast === 'function') {
     const origToast = window.showAccountToast;
     window.showAccountToast = function (msg, type) {
@@ -250,9 +303,6 @@
     };
   }
 
-  // ===========================================================================
-  // TOOLTIP LARANJA PERSONALIZADO (#EA580C) — SUBSTITUI TOOLTIP NATIVO
-  // ===========================================================================
   function initCustomOrangeTooltips() {
     if (document.getElementById('splus-orange-tooltip')) return;
     const tipEl = document.createElement('div');

@@ -2902,7 +2902,7 @@ function renderProdMachinesListHtml(pullResult, graph) {
         selected: isExp,
         stageColor: grp.color,
         onClick: `toggleProdMachineRow('${safeRowKey}', ${safeItemId}, ${safeNodeId})`,
-        extraAttrs: row.itemId ? `data-sb-item-id="${row.itemId}"` : ''
+        extraAttrs: `${row.itemId ? `data-sb-item-id="${row.itemId}" ` : ''}data-sb-row-key="${safeRowKey}" data-sb-kind="${row.kind || ''}"`
       });
     }).join('');
 
@@ -6278,8 +6278,23 @@ function selectAndRevealSidebarCard(node) {
     selectorKey = `[data-sb-block-id="${node.blockId}"]`;
   } else if (node.configMeta) {
     const m = node.configMeta;
-    if (m.itemId) selectorKey = `[data-sb-item-id="${m.itemId}"]`;
-    else if (m.configType) selectorKey = `[data-sb-cfg="${m.configType}"]`;
+    if (AppState.mode === 'production' && m.itemId) {
+      // Encontra o card correspondente na lista de máquinas/etapas e expande seu painel de informações
+      const candidates = Array.from(document.querySelectorAll(`#prod-machines-list [data-sb-item-id="${CSS.escape(m.itemId)}"]`));
+      const isExt = node.kind === 'extractor' || m.configType === 'miner' || m.configType === 'extractor';
+      const match = candidates.find((el) => isExt ? el.dataset.sbKind === 'extractor' : el.dataset.sbKind !== 'extractor') || candidates[0];
+      if (match && match.dataset.sbRowKey) {
+        AppState.production.expandedRowKey = match.dataset.sbRowKey;
+        if (typeof renderProdMachinesListOnly === 'function') renderProdMachinesListOnly();
+        selectorKey = `#prod-machines-list [data-sb-row-key="${CSS.escape(match.dataset.sbRowKey)}"]`;
+      } else {
+        selectorKey = `[data-sb-item-id="${CSS.escape(m.itemId)}"]`;
+      }
+    } else if (m.itemId) {
+      selectorKey = `[data-sb-item-id="${CSS.escape(m.itemId)}"]`;
+    } else if (m.configType) {
+      selectorKey = `[data-sb-cfg="${CSS.escape(m.configType)}"]`;
+    }
   }
 
   if (selectorKey) {
@@ -6288,9 +6303,10 @@ function selectAndRevealSidebarCard(node) {
       if (target) {
         document.querySelectorAll('#left-sidebar .sb-card-selected').forEach(el => el.classList.remove('sb-card-selected'));
         target.classList.add('sb-card-selected');
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const detail = target.closest('.ds-stage-section')?.querySelector('.unified-machine-info-card, .umic-card') || target;
+        detail.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-    }, 30);
+    }, 45);
   }
 }
 
