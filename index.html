@@ -47,7 +47,41 @@
       <p class="intro-subtitle home-subtitle">Tudo que você precisa para montar suas fábricas</p>
       <div class="splash-credit">Criado por Matheus Pinheiro</div>
 
-      <button
+      <button type="button" class="home-scroll-cue home-scroll-icon-only" onclick="dismissIntroSplash()" aria-label="Entrar">
+        <span class="home-scroll-mouse" aria-hidden="true">
+          <span class="home-scroll-wheel"></span>
+        </span>
+        <svg class="home-scroll-chevron" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+    </div>
+  </section>
+
+  <div id="app-layout-root" class="app-layout-lr">
+    <!-- BARRA LATERAL DE NAVEGAÇÃO VERTICAL À ESQUERDA (ABAS VERTICAIS + ARTE INDUSTRIAL) -->
+    <nav id="main-nav-rail" class="main-nav-rail" aria-label="Navegação Principal">
+      <div class="nav-rail-top">
+        <button type="button" class="brand-home-trigger nav-rail-brand" onclick="openHomeScreen()" title="Voltar para a tela Home">
+          <img src="./assets/logo-splus.jpg" alt="Satisfactory+" class="brand-logo-img" />
+          <div class="brand-text">
+            <h1>Satisfactory+</h1>
+            <span id="app-version-label" class="brand-subtitle">v2.6</span>
+          </div>
+        </button>
+        <div class="nav-rail-quick-actions">
+          <button
+            type="button"
+            id="btn-theme-toggle"
+            class="btn-header-icon nav-rail-util-btn"
+            onclick="toggleTheme()"
+            title="Alternar entre Modo Claro e Modo Escuro"
+            aria-label="Alternar entre Modo Claro e Modo Escuro"
+          >
+            <svg class="ui-ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            <span class="nav-rail-util-lbl" data-i18n="nav.dark">Escuro</span>
+          </button>
+          <button
             type="button"
             id="btn-collapse-sidebar"
             class="btn-header-icon nav-rail-util-btn"
