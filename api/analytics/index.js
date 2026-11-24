@@ -329,8 +329,8 @@ module.exports = async function handler(req, res) {
         return sendJson(res, 403, { error: 'Acesso restrito exclusivamente ao CEO.' });
       }
 
-      const periodRaw = String(url.searchParams.get('period') || '7d').toLowerCase();
-      const period = ['24h', '7d', '30d', 'all'].includes(periodRaw) ? periodRaw : '7d';
+      const periodRaw = String(url.searchParams.get('period') || '24h').toLowerCase();
+      const period = ['24h', '7d', '30d', 'all'].includes(periodRaw) ? periodRaw : '24h';
 
       const now = Date.now();
       const ms24h = 24 * 60 * 60 * 1000;
@@ -394,13 +394,15 @@ module.exports = async function handler(req, res) {
       const sharedBlobs = await listJsonBlobs('db/shared_projects/').catch(() => []);
       const sharedProjects = sharedBlobs.filter((b) => b.pathname.endsWith('.json')).length;
 
-      // Reports (pendentes, resolvidos e tempo médio até resposta)
+      // Reports (total, hoje, pendentes, resolvidos, remetentes únicos, ranking e tempo médio até resposta)
       const reportBlobs = await listJsonBlobs('db/reports/').catch(() => []);
       let totalReports = 0;
+      let reportsToday = 0;
       let openReports = 0;
       let resolvedReports = 0;
       let respTimeSumMs = 0;
       let respTimeCount = 0;
+      const reportersCount = {};
       for (const b of reportBlobs) {
         if (!b.pathname.endsWith('.json')) continue;
         totalReports++;
@@ -414,6 +416,13 @@ module.exports = async function handler(req, res) {
             openReports++;
           }
           const createdMs = rep.createdAt ? new Date(rep.createdAt).getTime() : 0;
+          if (createdMs && new Date(createdMs).toISOString().slice(0, 10) === todayKey) {
+            reportsToday++;
+          }
+          const authorName = String(rep.username || rep.userId || 'Anônimo').trim();
+          if (authorName) {
+            reportersCount[authorName] = (reportersCount[authorName] || 0) + 1;
+          }
           const respIso = rep.adminReply?.createdAt || rep.resolvedAt || rep.statusUpdatedAt || null;
           const respMs = respIso ? new Date(respIso).getTime() : 0;
           if (createdMs && respMs && respMs > createdMs) {
@@ -422,6 +431,7 @@ module.exports = async function handler(req, res) {
           }
         } catch {}
       }
+      const uniqueReporters = Object.keys(reportersCount).length;
       const avgReportResponseMinutes = respTimeCount > 0 ? Math.round(respTimeSumMs / respTimeCount / 60000) : null;
 
       // Usuários cadastrados (SEMPRE sanitizados — nunca expor hashes!)
@@ -646,6 +656,8 @@ module.exports = async function handler(req, res) {
           openReports,
           resolvedReports,
           totalReports,
+          reportsToday,
+          uniqueReporters,
           avgReportResponseMinutes,
           linesGeneratedPeriod,
           projectsSavedPeriod,
@@ -672,6 +684,7 @@ module.exports = async function handler(req, res) {
         },
         errorSummary: errorTotals,
         recentErrors,
+        topReporters: rankEntries(reportersCount).slice(0, 10),
         onlineList,
         users
       });

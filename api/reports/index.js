@@ -123,6 +123,64 @@ async function loadAllValidReportsAndCleanup() {
   return active;
 }
 
+async function notifyCeoNewReport(rep) {
+  const typeLabels = { bug: 'Bug', sugestao: 'Sugestão', melhoria: 'Melhoria', duvida: 'Dúvida' };
+  const typeLabel = typeLabels[rep.type] || rep.type || 'Report';
+  const subject = `[Satisfactory+] Novo report (${typeLabel}): ${String(rep.title || '').slice(0, 70)}`;
+  const textBody = [
+    `Novo report recebido no Satisfactory+`,
+    `Autor: ${rep.username || 'Usuário'}`,
+    `Tipo: ${typeLabel}`,
+    `Título: ${rep.title || ''}`,
+    `Mensagem: ${rep.message || ''}`,
+    `Data: ${rep.createdAt || new Date().toISOString()}`,
+    `Acesse: https://satisfactory-plus.vercel.app`
+  ].join('\n');
+
+  const tasks = [];
+
+  const resendKey = process.env.RESEND_API_KEY;
+  const toEmail = process.env.CEO_NOTIFY_EMAIL;
+  if (resendKey && toEmail) {
+    const fromEmail = process.env.RESEND_FROM_EMAIL || 'Satisfactory+ <onboarding@resend.dev>';
+    tasks.push(
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: [toEmail],
+          subject,
+          text: textBody
+        })
+      }).catch(() => {})
+    );
+  }
+
+  const webhookUrl = process.env.CEO_NOTIFY_WEBHOOK_URL;
+  if (webhookUrl) {
+    tasks.push(
+      fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: `**${subject}**\nAutor: **${rep.username || 'Usuário'}**\n${String(rep.message || '').slice(0, 300)}`
+        })
+      }).catch(() => {})
+    );
+  }
+
+  if (tasks.length > 0) {
+    await Promise.race([
+      Promise.allSettled(tasks),
+      new Promise((r) => setTimeout(r, 3500))
+    ]);
+  }
+}
+
 module.exports = async function handler(req, res) {
   applySecurityHeaders(req, res);
   if (req.method === 'OPTIONS') return sendJson(res, 200, { ok: true });
@@ -320,6 +378,7 @@ module.exports = async function handler(req, res) {
       };
 
       await writeJsonBlob(`db/reports/${reportId}.json`, reportObj);
+      await notifyCeoNewReport(reportObj).catch(() => {});
       return sendJson(res, 201, { ok: true, report: formatReportForClient(reportObj) });
     }
 

@@ -269,10 +269,20 @@ async function refreshReportIndicators() {
       updateReportUnreadDot();
     }
     if (AccountState.user.role === 'admin') {
+      const prevNew = Number(AccountState.adminReports.newCount) || 0;
+      const hadChecked = Boolean(AccountState.adminReports._notifiedInit);
       const aRes = await apiFetch('/api/reports?scope=all', { method: 'GET' });
       if (aRes.ok) {
-        AccountState.adminReports.newCount = Number(aRes.data.newCount) || 0;
+        const nextNew = Number(aRes.data.newCount) || 0;
+        AccountState.adminReports.newCount = nextNew;
+        AccountState.adminReports._notifiedInit = true;
         updateAdminReportsTabBadge();
+        if (nextNew > 0 && (!hadChecked || nextNew > prevNew)) {
+          const msg = nextNew === 1
+            ? 'Você tem 1 novo report pendente na aba Reports.'
+            : `Você tem ${nextNew} novos reports pendentes na aba Reports.`;
+          showAccountToast(msg, 'info');
+        }
       }
     }
   } catch {
@@ -2761,7 +2771,7 @@ const CeoPanelState = {
   error: '',
   data: null,
   section: 'overview', // overview | geo | users | usage
-  period: '7d', // 24h | 7d | 30d | all
+  period: '24h', // 24h | 7d | 30d | all
   userSearch: '',
   userFilter: 'all' // all | active7d | with_projects
 };
@@ -2898,6 +2908,9 @@ function trackAnalyticsError(errType, msg) {
     setInterval(() => {
       if (document.visibilityState === 'visible') {
         sendSilentAnalyticsPing('heartbeat');
+        if (AccountState.user && AccountState.user.role === 'admin' && typeof refreshReportIndicators === 'function') {
+          refreshReportIndicators();
+        }
       }
     }, 60000);
     document.addEventListener('visibilitychange', () => {
@@ -2988,7 +3001,7 @@ async function loadCeoDashboard() {
   renderCeoWorkspace();
 
   try {
-    const res = await apiFetch(`/api/analytics?action=dashboard&period=${encodeURIComponent(CeoPanelState.period || '7d')}`, { method: 'GET' });
+    const res = await apiFetch(`/api/analytics?action=dashboard&period=${encodeURIComponent(CeoPanelState.period || '24h')}`, { method: 'GET' });
     if (!res.ok) {
       CeoPanelState.error = res.data?.error || 'Não foi possível carregar os dados do painel CEO.';
     } else {
@@ -3057,7 +3070,7 @@ function renderCeoWorkspace() {
   }
 
   const d = CeoPanelState.data || {
-    period: CeoPanelState.period || '7d',
+    period: CeoPanelState.period || '24h',
     kpis: {},
     dailySeries: [], countries: [], brStates: [], modes: [],
     devices: { desktop: 0, mobile: 0, tablet: 0 }, browsers: [], oses: [], screens: [], sources: [],
@@ -3066,7 +3079,7 @@ function renderCeoWorkspace() {
     errorSummary: {}, recentErrors: [], onlineList: [], users: []
   };
   const k = d.kpis || {};
-  const period = d.period || CeoPanelState.period || '7d';
+  const period = d.period || CeoPanelState.period || '24h';
   const periodLabelMap = { '24h': '24h', '7d': '7d', '30d': '30d', all: 'Tudo' };
   const modeLabelMap = { production: 'Produção', power: 'Energia', free: 'Oficina', map: 'Mapa', recipes: 'Receitas', library: 'Biblioteca', calculator: 'Calculadora', projects: 'Projetos', reports: 'Reports', ceo: 'Painel CEO' };
   const modesNamed = (d.modes || []).filter((m) => m.code !== 'ceo').map((m) => ({ ...m, name: modeLabelMap[m.code] || m.code }));
@@ -3167,11 +3180,16 @@ function renderCeoWorkspace() {
             <button type="button" class="ds-btn-secondary" style="padding:4px 10px;font-size:11px;" onclick="switchMode('reports')">Abrir Reports</button>
           </div>
           <div class="ceo-reports-stats">
+            <div class="ceo-mini-stat"><span>Total recebidos</span><strong>${k.totalReports || 0}</strong></div>
+            <div class="ceo-mini-stat"><span>Enviados hoje</span><strong>${k.reportsToday || 0}</strong></div>
             <div class="ceo-mini-stat"><span>Pendentes</span><strong>${k.openReports || 0}</strong></div>
             <div class="ceo-mini-stat"><span>Resolvidos</span><strong>${k.resolvedReports || 0}</strong></div>
-            <div class="ceo-mini-stat"><span>Tempo médio de resposta</span><strong>${formatDurationMinutes(k.avgReportResponseMinutes)}</strong></div>
+            <div class="ceo-mini-stat"><span>Pessoas diferentes</span><strong>${k.uniqueReporters || 0}</strong></div>
+            <div class="ceo-mini-stat"><span>Tempo médio resp.</span><strong>${formatDurationMinutes(k.avgReportResponseMinutes)}</strong></div>
           </div>
           ${(k.openReports || 0) === 0 ? '<div class="ceo-empty-compact">Não há reportes a serem resolvidos.</div>' : ''}
+          <div class="ceo-card-head" style="margin-top:4px;"><h4>Quem mais enviou reports</h4><span>Por usuário</span></div>
+          ${renderCeoRankList(d.topReporters, 'Nenhum report registrado ainda.', '#EA580C')}
         </div>
       </div>
 

@@ -11,3 +11,4 @@ Sempre que houver uma atualização relevante na ferramenta (nova funcionalidade
 2. Escrever em **português do Brasil**, linguagem simples voltada para o usuário final (sem jargão técnico interno).
 3. Nunca inventar mudanças que não foram implementadas.
 4. A interface exibe automaticamente apenas as **7 entradas mais recentes** e mostra o card de novidade uma única vez para cada novo `id`.
+5. **Nunca anunciar mudanças exclusivas do CEO/admin:** qualquer configuração, painel, alerta, notificação ou ajuste exclusivo do fundador/CEO não deve ser mencionado em `data/patch-notes.json`.
