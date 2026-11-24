@@ -1313,6 +1313,7 @@ function renderReportModalBody() {
                 </div>
                 ${r.title ? `<strong class="report-card-title">${escText(r.title)}</strong>` : ''}
                 <p class="report-card-msg">${escText(r.message)}</p>
+            <div id="report-trans-${escText(r.id)}" class="report-tech-box hidden"></div>
                 ${(r.images && r.images.length > 0) ? `
                   <div class="report-thumbs-grid">
                     ${r.images.map((img) => `
@@ -1416,6 +1417,44 @@ async function markAllAdminReportsRead() {
   } finally {
     AccountState.adminReports.loading = false;
     renderAdminReportsWorkspace();
+  }
+}
+
+const _adminReportTranslations = {};
+async function translateAdminReport(reportId) {
+  const box = document.getElementById(`report-trans-${reportId}`);
+  if (!box) return;
+  if (!box.classList.contains('hidden') && _adminReportTranslations[reportId]) {
+    box.classList.add('hidden');
+    return;
+  }
+  if (_adminReportTranslations[reportId]) {
+    const tr = _adminReportTranslations[reportId];
+    box.innerHTML = `<strong>Tradução (PT-BR):</strong> ${tr.titlePt ? `<em>${escText(tr.titlePt)}</em> — ` : ''}${escText(tr.messagePt)}`;
+    box.classList.remove('hidden');
+    return;
+  }
+  const rep = (AccountState.adminReports.items || []).find((x) => x.id === reportId);
+  if (!rep) return;
+  box.innerHTML = '<strong>Traduzindo para português...</strong>';
+  box.classList.remove('hidden');
+  try {
+    const res = await apiFetch('/api/reports?action=translate', {
+      method: 'POST',
+      body: JSON.stringify({ title: rep.title || '', message: rep.message || '' })
+    });
+    if (!res.ok) {
+      box.innerHTML = '<strong>Erro:</strong> Não foi possível traduzir agora.';
+      return;
+    }
+    _adminReportTranslations[reportId] = {
+      titlePt: res.data?.titlePt || '',
+      messagePt: res.data?.messagePt || ''
+    };
+    const tr = _adminReportTranslations[reportId];
+    box.innerHTML = `<strong>Tradução (PT-BR):</strong> ${tr.titlePt ? `<em>${escText(tr.titlePt)}</em> — ` : ''}${escText(tr.messagePt)}`;
+  } catch {
+    box.innerHTML = '<strong>Erro:</strong> Falha de conexão ao traduzir.';
   }
 }
 
@@ -1710,6 +1749,7 @@ function renderAdminReportsWorkspace() {
                   <button type="button" class="btn-icon-action" ${isSaving ? 'disabled' : ''} onclick="setAdminReportStatus('${escText(r.id)}', 'lido')">Reabrir</button>
                 `}
                 <button type="button" class="btn-icon-action" ${isSaving ? 'disabled' : ''} onclick="openAdminReplyBox('${escText(r.id)}')">${r.adminReply ? 'Editar resposta' : 'Responder'}</button>
+                <button type="button" class="btn-icon-action" onclick="translateAdminReport('${escText(r.id)}')">🌐 Traduzir PT</button>
                 <button type="button" class="btn-icon-action" onclick="downloadSingleReportTxt('${escText(r.id)}')">📄 .txt</button>
                 ${(r.images && r.images.length > 0) ? `<button type="button" class="btn-icon-action" onclick="downloadReportImages('${escText(r.id)}')">🖼️ Imagens</button>` : ''}
                 <button type="button" class="btn-icon-danger" onclick="deleteAdminReport('${escText(r.id)}')" title="Apagar definitivamente">${isHistory ? 'Apagar definitivamente' : '🗑️'}</button>
@@ -2975,7 +3015,8 @@ function renderCeoMode(sidebarEl, emptyOverlay) {
         <div style="display:flex;flex-direction:column;gap:8px;">
           <button type="button" class="ds-btn-primary" style="width:100%;" onclick="loadCeoDashboard()">${CeoPanelState.loading ? 'Atualizando...' : 'Atualizar dados agora'}</button>
           <button type="button" class="ds-btn-secondary" style="width:100%;" onclick="exportCeoReportCsv()">Exportar Usuários (.CSV)</button>
-          <button type="button" class="ds-btn-secondary" style="width:100%;" onclick="exportCeoReportJson()">Exportar Relatório (.JSON)</button>
+          <button type="button" class="ds-btn-secondary" style="width:100%;" onclick="exportCeoBusinessReport()">Relatório Executivo (.HTML)</button>
+          <button type="button" class="ds-btn-secondary" style="width:100%;" onclick="exportCeoReportJson()">Dados Brutos (.JSON)</button>
         </div>
       `
     })}
@@ -3126,7 +3167,7 @@ function renderCeoWorkspace() {
         <div class="ceo-kpi-card">
           <span class="ceo-kpi-lbl">Visitas (${periodLabelMap[period]})</span>
           <strong class="ceo-kpi-val">${visitsMain}</strong>
-          <small>Hoje: ${k.visitsToday || 0} · 7d: ${k.visits7d || 0} · ${renderCeoDeltaBadge(k.visitsDelta, period) || `Total: ${k.visitsTotal || 0}`}</small>
+          <small>Novas: <strong>${k.newVisitsPeriod || 0}</strong> · Recorrentes: <strong>${k.returningVisitsPeriod || 0}</strong> · ${renderCeoDeltaBadge(k.visitsDelta, period) || `Total: ${k.visitsTotal || 0}`}</small>
         </div>
         <div class="ceo-kpi-card">
           <span class="ceo-kpi-lbl">Visitantes únicos (${periodLabelMap[period]})</span>
@@ -3475,6 +3516,138 @@ function exportCeoReportJson() {
   const a = document.createElement('a');
   a.href = url;
   a.download = `satisfactory-plus-ceo-analytics-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportCeoBusinessReport() {
+  const d = CeoPanelState.data;
+  if (!d) {
+    showAccountToast('Carregue os dados antes de gerar o relatório.', 'error');
+    return;
+  }
+  const k = d.kpis || {};
+  const periodMap = { '24h': 'Últimas 24 horas', '7d': 'Últimos 7 dias', '30d': 'Últimos 30 dias', all: 'Todo o período' };
+  const periodLbl = periodMap[d.period || '24h'] || 'Últimas 24 horas';
+  const totalV = d.period === 'all' ? (k.visitsTotal || 0) : (k.visitsPeriod || 0);
+  const newV = Number(k.newVisitsPeriod) || 0;
+  const retV = Number(k.returningVisitsPeriod) || 0;
+  const retPct = totalV > 0 ? Math.round((retV / totalV) * 100) : 0;
+  const topCountry = (d.countries && d.countries[0]) ? `${d.countries[0].name} (${d.countries[0].count})` : 'Sem dados';
+  const topState = (d.brStates && d.brStates[0]) ? `${d.brStates[0].name} (${d.brStates[0].count})` : 'Sem dados';
+  const topSource = (d.sources && d.sources[0]) ? `${d.sources[0].name} (${d.sources[0].count})` : 'Sem dados';
+  const topMode = (d.modes && d.modes[0]) ? `${d.modes[0].name || d.modes[0].code} (${d.modes[0].count})` : 'Sem dados';
+  const topItem = (d.itemsGenerated && d.itemsGenerated[0]) ? `${d.itemsGenerated[0].name} (${d.itemsGenerated[0].count})` : 'Sem dados';
+  const errSum = d.errorSummary || {};
+  const totalErrors = Object.values(errSum).reduce((a, b) => a + (Number(b) || 0), 0);
+
+  // Análise executiva automática
+  const insights = [];
+  if (totalV === 0) {
+    insights.push('Ainda não houve visitas registradas neste período selecionado.');
+  } else {
+    insights.push(`Foram registradas ${totalV} visitas únicas no período (${newV} novas e ${retV} recorrentes — taxa de retorno de ${retPct}%).`);
+  }
+  if (k.visitsDelta !== null && k.visitsDelta !== undefined) {
+    if (k.visitsDelta > 0) insights.push(`O tráfego cresceu em +${k.visitsDelta} visita(s) em relação ao período anterior.`);
+    else if (k.visitsDelta < 0) insights.push(`O tráfego teve queda de ${Math.abs(k.visitsDelta)} visita(s) em relação ao período anterior.`);
+    else insights.push('O volume de visitas permaneceu estável em relação ao período anterior.');
+  }
+  insights.push(`Base atual de ${k.totalUsers || 0} usuários cadastrados, com ${k.activeUsers7d || 0} ativos nos últimos 7 dias (${k.engagementRate7d || 0}% de engajamento) e média de ${k.avgProjectsPerUser || 0} projeto(s) por usuário.`);
+  if ((k.openReports || 0) > 0) {
+    insights.push(`Atenção: há ${k.openReports} report(s) pendente(s) aguardando resposta/resolução.`);
+  } else {
+    insights.push('Excelente: não há reportes pendentes no momento.');
+  }
+  if (totalErrors > 0) {
+    insights.push(`Foram registrados ${totalErrors} erro(s) no período — vale revisar o bloco Erros e Falhas na aba Uso & Performance.`);
+  } else {
+    insights.push('Estabilidade saudável: nenhum erro registrado neste período.');
+  }
+
+  const f = d.funnel || { visited: 0, registered: 0, generatedLine: 0, savedProject: 0 };
+  const htmlDoc = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<title>Relatório Executivo — Satisfactory+ (${new Date().toISOString().slice(0, 10)})</title>
+<style>
+  body { font-family: Inter, system-ui, -apple-system, sans-serif; background: #101117; color: #f1f5f9; margin: 0; padding: 32px; line-height: 1.5; }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #EA580C; padding-bottom: 16px; margin-bottom: 24px; }
+  h1 { margin: 0; font-size: 24px; }
+  .badge { background: #EA580C; color: #fff; padding: 3px 9px; border-radius: 6px; font-size: 11px; font-weight: 800; }
+  .meta { color: #94a3b8; font-size: 13px; margin-top: 4px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+  .card { background: #181a22; border: 1px solid #2b2f3d; border-radius: 12px; padding: 14px 16px; }
+  .card span { display: block; font-size: 11.5px; color: #94a3b8; font-weight: 600; }
+  .card strong { display: block; font-size: 26px; margin-top: 4px; color: #ffffff; }
+  .card small { font-size: 11.5px; color: #cbd5e1; }
+  .sec { background: #181a22; border: 1px solid #2b2f3d; border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+  .sec h2 { margin: 0 0 10px; font-size: 16px; color: #EA580C; }
+  ul { margin: 0; padding-left: 18px; }
+  li { margin-bottom: 6px; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2b2f3d; }
+  th { color: #94a3b8; font-size: 11px; text-transform: uppercase; }
+  @media print { body { background: #fff; color: #111; } .card, .sec { background: #fff; border-color: #ddd; } .card strong { color: #111; } }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <div>
+        <span class="badge">RELATÓRIO EXECUTIVO · CEO</span>
+        <h1 style="margin-top:8px;">Satisfactory+ — Resumo do Negócio</h1>
+        <div class="meta">Período: ${escText(periodLbl)} · Gerado em ${fmtDateBR(d.generatedAt || new Date().toISOString())}</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card"><span>Visitas Únicas (${escText(periodLbl)})</span><strong>${totalV}</strong><small>${newV} novas · ${retV} recorrentes</small></div>
+      <div class="card"><span>Usuários Cadastrados</span><strong>${k.totalUsers || 0}</strong><small>${k.activeUsers7d || 0} ativos (7d) · ${k.engagementRate7d || 0}% engajamento</small></div>
+      <div class="card"><span>Projetos na Nuvem</span><strong>${k.totalProjects || 0}</strong><small>${k.sharedProjects || 0} compartilhados · ${k.avgProjectsPerUser || 0}/usuário</small></div>
+      <div class="card"><span>Linhas Geradas</span><strong>${k.linesGeneratedPeriod || 0}</strong><small>Usos da Calculadora: ${k.calcUsesTotalPeriod || 0}</small></div>
+      <div class="card"><span>Reports</span><strong>${k.totalReports || 0}</strong><small>${k.openReports || 0} pendentes · ${k.resolvedReports || 0} resolvidos · ${k.reportsToday || 0} hoje</small></div>
+      <div class="card"><span>Erros Registrados</span><strong>${totalErrors}</strong><small>Online agora: ${k.onlineNow || 0}</small></div>
+    </div>
+
+    <div class="sec">
+      <h2>Análise Executiva</h2>
+      <ul>${insights.map((s) => `<li>${escText(s)}</li>`).join('')}</ul>
+    </div>
+
+    <div class="sec">
+      <h2>Destaques de Audiência e Uso</h2>
+      <table>
+        <tbody>
+          <tr><th>Principal País</th><td>${escText(topCountry)}</td></tr>
+          <tr><th>Principal Estado (BR)</th><td>${escText(topState)}</td></tr>
+          <tr><th>Principal Origem de Tráfego</th><td>${escText(topSource)}</td></tr>
+          <tr><th>Aba Mais Usada</th><td>${escText(topMode)}</td></tr>
+          <tr><th>Item / Receita Mais Gerado</th><td>${escText(topItem)}</td></tr>
+          <tr><th>Funil (Visitou → Conta → Linha → Projeto)</th><td>${f.visited} → ${f.registered} → ${f.generatedLine} → ${f.savedProject}</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="sec">
+      <h2>Quem Mais Enviou Reports</h2>
+      ${(d.topReporters || []).length === 0
+        ? '<p style="margin:0;color:#94a3b8;">Nenhum report registrado.</p>'
+        : `<table><thead><tr><th>Usuário</th><th>Reports enviados</th></tr></thead><tbody>${d.topReporters.map((r) => `<tr><td>${escText(r.name)}</td><td>${r.count}</td></tr>`).join('')}</tbody></table>`}
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const blob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `satisfactory-plus-relatorio-executivo-${new Date().toISOString().slice(0, 10)}.html`;
   document.body.appendChild(a);
   a.click();
   a.remove();

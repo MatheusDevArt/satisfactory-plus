@@ -129,6 +129,8 @@ function createEmptyDayDoc(dateKey) {
   return {
     date: dateKey,
     visits: 0,
+    newVisits: 0,
+    returningVisits: 0,
     uniqueIds: [],
     countries: {},
     brStates: {},
@@ -259,25 +261,52 @@ module.exports = async function handler(req, res) {
           const lang = ['pt-BR', 'en-US', 'es-ES'].includes(ev.lang) ? ev.lang : 'pt-BR';
 
           if (eventType === 'visit') {
-            dayDoc.visits = (Number(dayDoc.visits) || 0) + 1;
-            if (!dayDoc.uniqueIds.includes(visitorId) && dayDoc.uniqueIds.length < 10000) {
-              dayDoc.uniqueIds.push(visitorId);
-            }
-            dayDoc.countries[country] = (Number(dayDoc.countries[country]) || 0) + 1;
-            if (country === 'BR' && region) {
-              dayDoc.brStates[region] = (Number(dayDoc.brStates[region]) || 0) + 1;
-            }
-            dayDoc.devices[uaInfo.device] = (Number(dayDoc.devices[uaInfo.device]) || 0) + 1;
-            dayDoc.browsers[uaInfo.browser] = (Number(dayDoc.browsers[uaInfo.browser]) || 0) + 1;
-            dayDoc.oses[uaInfo.os] = (Number(dayDoc.oses[uaInfo.os]) || 0) + 1;
-            const scr = normalizeScreenBucket(ev.screenW);
-            if (scr) dayDoc.screens[scr] = (Number(dayDoc.screens[scr]) || 0) + 1;
-            const src = classifyTrafficSource(ev.referrer, ev.utmSource);
-            dayDoc.sources[src] = (Number(dayDoc.sources[src]) || 0) + 1;
-            dayDoc.themes[theme] = (Number(dayDoc.themes[theme]) || 0) + 1;
-            dayDoc.langs[lang] = (Number(dayDoc.langs[lang]) || 0) + 1;
-            if (mode !== 'ceo') {
-              dayDoc.modes[mode] = (Number(dayDoc.modes[mode]) || 0) + 1;
+            // Conta no máximo 1 visita por pessoa (visitorId) por dia
+            const alreadyVisitedToday = dayDoc.uniqueIds.includes(visitorId);
+            if (!alreadyVisitedToday) {
+              if (dayDoc.uniqueIds.length < 10000) {
+                dayDoc.uniqueIds.push(visitorId);
+              }
+              dayDoc.visits = dayDoc.uniqueIds.length;
+
+              // Classifica como visita nova (primeira vez no site) ou recorrente (já visitou em outro dia)
+              try {
+                const knownPath = 'db/analytics/known_visitors.json';
+                const knownMap = (await readJsonBlob(knownPath, false)) || {};
+                const firstDay = knownMap[visitorId];
+                if (!firstDay) {
+                  knownMap[visitorId] = dayKey;
+                  dayDoc.newVisits = (Number(dayDoc.newVisits) || 0) + 1;
+                  const keys = Object.keys(knownMap);
+                  if (keys.length > 50000) {
+                    keys.slice(0, keys.length - 45000).forEach((k) => delete knownMap[k]);
+                  }
+                  await writeJsonBlob(knownPath, knownMap).catch(() => {});
+                } else if (firstDay < dayKey) {
+                  dayDoc.returningVisits = (Number(dayDoc.returningVisits) || 0) + 1;
+                } else {
+                  dayDoc.newVisits = (Number(dayDoc.newVisits) || 0) + 1;
+                }
+              } catch {
+                dayDoc.newVisits = (Number(dayDoc.newVisits) || 0) + 1;
+              }
+
+              dayDoc.countries[country] = (Number(dayDoc.countries[country]) || 0) + 1;
+              if (country === 'BR' && region) {
+                dayDoc.brStates[region] = (Number(dayDoc.brStates[region]) || 0) + 1;
+              }
+              dayDoc.devices[uaInfo.device] = (Number(dayDoc.devices[uaInfo.device]) || 0) + 1;
+              dayDoc.browsers[uaInfo.browser] = (Number(dayDoc.browsers[uaInfo.browser]) || 0) + 1;
+              dayDoc.oses[uaInfo.os] = (Number(dayDoc.oses[uaInfo.os]) || 0) + 1;
+              const scr = normalizeScreenBucket(ev.screenW);
+              if (scr) dayDoc.screens[scr] = (Number(dayDoc.screens[scr]) || 0) + 1;
+              const src = classifyTrafficSource(ev.referrer, ev.utmSource);
+              dayDoc.sources[src] = (Number(dayDoc.sources[src]) || 0) + 1;
+              dayDoc.themes[theme] = (Number(dayDoc.themes[theme]) || 0) + 1;
+              dayDoc.langs[lang] = (Number(dayDoc.langs[lang]) || 0) + 1;
+              if (mode !== 'ceo') {
+                dayDoc.modes[mode] = (Number(dayDoc.modes[mode]) || 0) + 1;
+              }
             }
           } else if (eventType === 'mode_switch') {
             if (mode !== 'ceo') {
@@ -524,6 +553,10 @@ module.exports = async function handler(req, res) {
       let visitsTotal = 0;
       let visitsPeriod = 0;
       let visitsPrevPeriod = 0;
+      let newVisitsPeriod = 0;
+      let returningVisitsPeriod = 0;
+      let newVisitsToday = 0;
+      let returningVisitsToday = 0;
 
       const uniqueTodaySet = new Set();
       const unique7dSet = new Set();
@@ -568,11 +601,18 @@ module.exports = async function handler(req, res) {
           const d = isRecent ? await readJsonBlob(b.pathname, false) : await fetchJsonFromBlobUrl(b.url);
           if (!d || !d.date) continue;
           dayDocsMap[d.date] = d;
-          const v = Number(d.visits) || 0;
+          const uLen = Math.max(Array.isArray(d.uniqueIds) ? d.uniqueIds.length : 0, Number(d.uniqueCount) || 0);
+          const v = uLen > 0 ? uLen : (Number(d.visits) || 0);
+          const nv = Number(d.newVisits) || 0;
+          const rv = Number(d.returningVisits) || 0;
+          const effNew = (nv === 0 && rv === 0 && v > 0) ? v : nv;
+          const effRet = rv;
           visitsTotal += v;
 
           if (keysToday.has(d.date)) {
             visitsToday += v;
+            newVisitsToday += effNew;
+            returningVisitsToday += effRet;
             (d.uniqueIds || []).forEach((id) => uniqueTodaySet.add(id));
           }
           if (keys7d.has(d.date)) {
@@ -592,6 +632,8 @@ module.exports = async function handler(req, res) {
           const inPeriod = !currKeys || currKeys.has(d.date);
           if (inPeriod) {
             visitsPeriod += v;
+            newVisitsPeriod += effNew;
+            returningVisitsPeriod += effRet;
             (d.uniqueIds || []).forEach((id) => uniquePeriodSet.add(id));
             addMap(countryTotals, d.countries);
             addMap(brStateTotals, d.brStates);
@@ -627,7 +669,7 @@ module.exports = async function handler(req, res) {
         dailySeries.push({
           date: dk,
           label: `${dk.slice(8, 10)}/${dk.slice(5, 7)}`,
-          visits: Number(dDoc?.visits) || 0,
+          visits: Math.max(Array.isArray(dDoc?.uniqueIds) ? dDoc.uniqueIds.length : 0, Number(dDoc?.uniqueCount) || 0) || (Number(dDoc?.visits) || 0),
           unique: Math.max(Array.isArray(dDoc?.uniqueIds) ? dDoc.uniqueIds.length : 0, Number(dDoc?.uniqueCount) || 0),
           newUsers: newUsersByDay[dk] || 0
         });
@@ -666,6 +708,10 @@ module.exports = async function handler(req, res) {
           visits30d,
           visitsTotal,
           visitsPeriod,
+          newVisitsPeriod,
+          returningVisitsPeriod,
+          newVisitsToday,
+          returningVisitsToday,
           visitsDelta: period === 'all' ? null : (visitsPeriod - visitsPrevPeriod),
           uniqueToday: uniqueTodaySet.size,
           unique7d: unique7dSet.size,

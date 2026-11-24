@@ -123,6 +123,31 @@ async function loadAllValidReportsAndCleanup() {
   return active;
 }
 
+async function translateTextToPt(text) {
+  const clean = String(text || '').trim().slice(0, 2500);
+  if (!clean) return '';
+  try {
+    const u = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=pt&dt=t&q=${encodeURIComponent(clean)}`;
+    const r = await fetch(u, { headers: { 'User-Agent': 'SatisfactoryPlus/1.0' } });
+    if (r.ok) {
+      const data = await r.json();
+      if (Array.isArray(data) && Array.isArray(data[0])) {
+        const joined = data[0].map((seg) => (Array.isArray(seg) ? seg[0] : '')).join('');
+        if (joined) return joined;
+      }
+    }
+  } catch {}
+  try {
+    const u2 = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(clean.slice(0, 500))}&langpair=autodetect|pt-BR`;
+    const r2 = await fetch(u2);
+    if (r2.ok) {
+      const d2 = await r2.json();
+      if (d2?.responseData?.translatedText) return String(d2.responseData.translatedText);
+    }
+  } catch {}
+  return clean;
+}
+
 async function notifyCeoNewReport(rep) {
   const typeLabels = { bug: 'Bug', sugestao: 'Sugestão', melhoria: 'Melhoria', duvida: 'Dúvida' };
   const typeLabel = typeLabels[rep.type] || rep.type || 'Report';
@@ -247,6 +272,17 @@ module.exports = async function handler(req, res) {
           maxImageQuotaBytes: MAX_USER_IMAGE_QUOTA_BYTES
         }
       });
+    }
+
+    // POST /api/reports?action=translate (Exclusivo CEO: traduz report estrangeiro para PT-BR)
+    if (req.method === 'POST' && String(url.searchParams.get('action') || '').toLowerCase() === 'translate') {
+      if (auth.user.role !== 'admin') {
+        return sendJson(res, 403, { error: 'Apenas o CEO pode traduzir reports.' });
+      }
+      const body = await readRequestBody(req, 32 * 1024);
+      const titlePt = body.title ? await translateTextToPt(body.title) : '';
+      const messagePt = body.message ? await translateTextToPt(body.message) : '';
+      return sendJson(res, 200, { ok: true, titlePt, messagePt });
     }
 
     // POST /api/reports (Criar novo report)

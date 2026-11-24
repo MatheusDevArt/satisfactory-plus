@@ -467,9 +467,7 @@ function toggleShowAllMachines() {
   const btn = document.getElementById('btn-toggle-expand');
   if (btn) {
     btn.classList.toggle('active', AppState.showAllMachines);
-    btn.title = AppState.showAllMachines
-      ? 'Todas as Máquinas: SIM'
-      : 'Todas as Máquinas: NÃO';
+    btn.setAttribute('data-tip', 'Mostrar todas as máquinas');
   }
   renderAll(false);
 }
@@ -480,9 +478,7 @@ function toggle3DView() {
   const viewport = document.getElementById('spaces-viewport');
   if (btn) {
     btn.classList.toggle('active', AppState.canvas.is3DView);
-    btn.title = AppState.canvas.is3DView
-      ? 'Visão 3D em Andares: SIM'
-      : 'Visão 3D em Andares: NÃO';
+    btn.setAttribute('data-tip', 'Visão 3D');
   }
   if (viewport) {
     viewport.classList.toggle('view-3d', AppState.canvas.is3DView);
@@ -501,7 +497,7 @@ function syncOrientationButtons() {
     BT: { deg: 270, label: 'Baixo → Cima' }
   }[orient] || { deg: 0, label: 'Esquerda → Direita' };
   if (ico) ico.style.transform = `rotate(${cfg.deg}deg)`;
-  if (btn) btn.title = `Direção do fluxo: ${cfg.label} (clique para alternar)`;
+  if (btn) btn.setAttribute('data-tip', 'Alterar direção da linha');
 }
 
 function cycleFlowOrientation() {

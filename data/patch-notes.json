@@ -1,13 +1,48 @@
 [
   {
+    "id": "2026-11-23-v27-idiomas-barra-lateral-dicas",
+    "date": "23/11/2026",
+    "title": "v2.7 — Tradução Completa (PT / EN / ES), Seletor Rápido de Idioma e Melhorias de Interface",
+    "items": [
+      {
+        "tag": "Novo",
+        "text": "Seletor rápido de idioma (PT / EN / ES) adicionado no topo da tela, ao lado de Tutorial, com tradução completa da interface (incluindo tela inicial, ferramentas, modais, tutorial e novidades) e detecção automática conforme sua região."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "A direção da linha de produção agora fica em um botão único na barra vertical à direita: clique para alternar suavemente entre direita, baixo, esquerda e cima."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Novas dicas visuais em laranja ao passar o mouse sobre os ícones da barra direita, topo e navegação, com textos curtos e diretos."
+      },
+      {
+        "tag": "Correção",
+        "text": "Corrigida a barra de navegação minimizada: agora o botão de tema mostra apenas o ícone e a seta única alterna em 3 níveis (normal, barra minimizada e painel oculto)."
+      }
+    ]
+  },
+  {
     "id": "2026-11-23-v26-seguranca-estabilidade-pan-mouse",
     "date": "23/11/2026",
     "title": "v2.6 — Blindagem de Segurança, Estabilidade da Nuvem e Pan com Botão do Meio",
     "items": [
-      { "tag": "Novo", "text": "Agora você também pode mover a câmera do canvas arrastando com o botão do meio do mouse (clique do scroll) em Produção, Energia e Oficina, além do Espaço + Arrastar." },
-      { "tag": "Melhoria", "text": "Blindagem completa de segurança em contas, sessões, projetos compartilhados, anexos e cabeçalhos HTTP, além de novo motor matemático seguro na Calculadora." },
-      { "tag": "Melhoria", "text": "Mais estabilidade e velocidade nas operações de nuvem (Projetos e Reports), com proteção contra oscilações de rede e timeout automático." },
-      { "tag": "Correção", "text": "Corrigidas as imagens do Carrinho de Fábrica™ e Carrinho Dourado de Fábrica™ nas abas Receitas e Biblioteca, além de ajustes finos de acessibilidade e padronização visual." }
+      {
+        "tag": "Novo",
+        "text": "Agora você também pode mover a câmera do canvas arrastando com o botão do meio do mouse (clique do scroll) em Produção, Energia e Oficina, além do Espaço + Arrastar."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Blindagem completa de segurança em contas, sessões, projetos compartilhados, anexos e cabeçalhos HTTP, além de novo motor matemático seguro na Calculadora."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Mais estabilidade e velocidade nas operações de nuvem (Projetos e Reports), com proteção contra oscilações de rede e timeout automático."
+      },
+      {
+        "tag": "Correção",
+        "text": "Corrigidas as imagens do Carrinho de Fábrica™ e Carrinho Dourado de Fábrica™ nas abas Receitas e Biblioteca, além de ajustes finos de acessibilidade e padronização visual."
+      }
     ]
   },
   {
@@ -15,12 +50,30 @@
     "date": "23/11/2026",
     "title": "v2.5 — Nova Barra de Navegação Principal, Configurações (i18n + Recuperação), Áreas de Etapa Dinâmicas e Auditoria Completa de Energia",
     "items": [
-      { "tag": "Novo", "text": "Nova barra lateral principal esquerda (#main-nav-rail) com abas agrupadas, arte industrial e botão de Configurações com suporte a Português, Inglês e Espanhol, recuperação de conta sem e-mail (pergunta de segurança com hash SHA-256), perfil opcional e preferências unificadas." },
-      { "tag": "Novo", "text": "Áreas de etapa dinâmicas no canvas que englobam máquinas e logística (divisores, unificadores, junções e elevadores), recalculam em tempo real ao arrastar e movem toda a etapa ao arrastar a aba de título." },
-      { "tag": "Novo", "text": "Distribuição automática de andares (3D) por etapas inteiras sem quebrar etapas ao meio, com conversão automática de esteiras entre andares em Elevadores de Esteira (v.1 a v.6) e bombas em tubulações." },
-      { "tag": "Melhoria", "text": "Cards quadrados compactos (3 por linha) com imagem preenchendo o card por etapa, cor neutra global #101117, scrollbar fina de 6px, todos os campos numéricos em formato NumberStepper (‹ valor ›), resultados da Calculadora em card próprio à direita com rolagem interna e card Informações da Máquina unificado entre Produção e Oficina." },
-      { "tag": "Melhoria", "text": "Cores diversificadas por item/fluido em todas as esteiras e tubulações, setas ancoradas pela frente ao centro geométrico das portas com 1 conexão por porta e barra de status inferior completa também na aba Energia." },
-      { "tag": "Correção", "text": "Auditoria completa da aba Energia e Produção: removido o limite de 24/60 cards no modo \"Mostrar todas as máquinas\" (suportando 34x, 54x, 68x, 144x+ cards individuais), propagação de fluxo bottom-up conservativa (soma das saídas = entrada), valor digitado pelo usuário preservado (250 = 250), overclock reduzindo geradores (135 → 54 em 250%), isolamento de estado ao trocar modo/combustível, Junção de Tubulação com 4 portas azuis e atualização imediata do tier do Elevador de Esteira." }
+      {
+        "tag": "Novo",
+        "text": "Nova barra lateral principal esquerda (#main-nav-rail) com abas agrupadas, arte industrial e botão de Configurações com suporte a Português, Inglês e Espanhol, recuperação de conta sem e-mail (pergunta de segurança com hash SHA-256), perfil opcional e preferências unificadas."
+      },
+      {
+        "tag": "Novo",
+        "text": "Áreas de etapa dinâmicas no canvas que englobam máquinas e logística (divisores, unificadores, junções e elevadores), recalculam em tempo real ao arrastar e movem toda a etapa ao arrastar a aba de título."
+      },
+      {
+        "tag": "Novo",
+        "text": "Distribuição automática de andares (3D) por etapas inteiras sem quebrar etapas ao meio, com conversão automática de esteiras entre andares em Elevadores de Esteira (v.1 a v.6) e bombas em tubulações."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Cards quadrados compactos (3 por linha) com imagem preenchendo o card por etapa, cor neutra global #101117, scrollbar fina de 6px, todos os campos numéricos em formato NumberStepper (‹ valor ›), resultados da Calculadora em card próprio à direita com rolagem interna e card Informações da Máquina unificado entre Produção e Oficina."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Cores diversificadas por item/fluido em todas as esteiras e tubulações, setas ancoradas pela frente ao centro geométrico das portas com 1 conexão por porta e barra de status inferior completa também na aba Energia."
+      },
+      {
+        "tag": "Correção",
+        "text": "Auditoria completa da aba Energia e Produção: removido o limite de 24/60 cards no modo \"Mostrar todas as máquinas\" (suportando 34x, 54x, 68x, 144x+ cards individuais), propagação de fluxo bottom-up conservativa (soma das saídas = entrada), valor digitado pelo usuário preservado (250 = 250), overclock reduzindo geradores (135 → 54 em 250%), isolamento de estado ao trocar modo/combustível, Junção de Tubulação com 4 portas azuis e atualização imediata do tier do Elevador de Esteira."
+      }
     ]
   },
   {
@@ -28,11 +81,26 @@
     "date": "21/11/2026",
     "title": "Identidade visual unificada, barras laterais para fábricas grandes e Tutorial passo a passo",
     "items": [
-      { "tag": "Melhoria", "text": "Criado um sistema visual único (cards com etiqueta laranja #EA580C, listas com ícone à esquerda e chips de filtro) aplicado em Produção, Oficina, Biblioteca, Receitas, Calculadora, Projetos e Reports." },
-      { "tag": "Melhoria", "text": "Os três modais seletores (Escolher Produto Final, Adicionar Máquina e Escolher Receita) agora compartilham o mesmo tamanho ampliado, cabeçalho, busca, filtros e cards com ícones maiores à esquerda." },
-      { "tag": "Melhoria", "text": "Em Produção, o card Máquinas por Tipo organiza Extração, Máquinas de produção, Esteiras, Divisores/Unificadores, Conexões/Tubos e Energia em grupos recolhíveis com busca fixa e foco direto no espaço." },
-      { "tag": "Melhoria", "text": "Na Oficina, a área de adição ficou compacta com busca, botão + Adicionar e 4 atalhos rápidos, além de lista agrupada por tipo pronta para 100+ blocos." },
-      { "tag": "Novo", "text": "Tutorial refeito do zero com 11 tópicos (incluindo Projetos e Reportar separados) e 42 passos com prints reais exclusivos destacados em laranja." }
+      {
+        "tag": "Melhoria",
+        "text": "Criado um sistema visual único (cards com etiqueta laranja #EA580C, listas com ícone à esquerda e chips de filtro) aplicado em Produção, Oficina, Biblioteca, Receitas, Calculadora, Projetos e Reports."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Os três modais seletores (Escolher Produto Final, Adicionar Máquina e Escolher Receita) agora compartilham o mesmo tamanho ampliado, cabeçalho, busca, filtros e cards com ícones maiores à esquerda."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Em Produção, o card Máquinas por Tipo organiza Extração, Máquinas de produção, Esteiras, Divisores/Unificadores, Conexões/Tubos e Energia em grupos recolhíveis com busca fixa e foco direto no espaço."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Na Oficina, a área de adição ficou compacta com busca, botão + Adicionar e 4 atalhos rápidos, além de lista agrupada por tipo pronta para 100+ blocos."
+      },
+      {
+        "tag": "Novo",
+        "text": "Tutorial refeito do zero com 11 tópicos (incluindo Projetos e Reportar separados) e 42 passos com prints reais exclusivos destacados em laranja."
+      }
     ]
   },
   {
@@ -40,11 +108,26 @@
     "date": "21/11/2026",
     "title": "Seletores ampliados padronizados, barra lateral compacta, correção de máquina/receita e Tutorial completo",
     "items": [
-      { "tag": "Correção", "text": "Corrigido o bug na Oficina onde escolher uma receita podia exibir o card como Construtor com entradas/saídas de outra máquina (ex.: Refinaria); agora a máquina correta é sempre aplicada automaticamente." },
-      { "tag": "Melhoria", "text": "Todos os seletores sobrepostos (Produção, Oficina, Máquinas, Receitas e Calculadora) foram ampliados e padronizados com cards horizontais (ícone à esquerda e nome à direita) divididos por categorias." },
-      { "tag": "Melhoria", "text": "Botões Montar/Adicionar, Salvar e Limpar compactados na mesma linha; blocos da Oficina com ícone à esquerda e texto à direita; Nº de Máquinas e seletor de Andar (3D) com setas ‹ › dividindo a mesma linha." },
-      { "tag": "Melhoria", "text": "Etapas em Produção e Oficina agora ficam agrupadas e classificadas por tipo de máquina na barra lateral." },
-      { "tag": "Novo", "text": "Tutorial atualizado com cards de tópicos para cada aba, explicações didáticas passo a passo e 20 prints reais dedicados (incluindo Energia, Mapa, Receitas, Biblioteca, Calculadora e aba Projetos)." }
+      {
+        "tag": "Correção",
+        "text": "Corrigido o bug na Oficina onde escolher uma receita podia exibir o card como Construtor com entradas/saídas de outra máquina (ex.: Refinaria); agora a máquina correta é sempre aplicada automaticamente."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Todos os seletores sobrepostos (Produção, Oficina, Máquinas, Receitas e Calculadora) foram ampliados e padronizados com cards horizontais (ícone à esquerda e nome à direita) divididos por categorias."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Botões Montar/Adicionar, Salvar e Limpar compactados na mesma linha; blocos da Oficina com ícone à esquerda e texto à direita; Nº de Máquinas e seletor de Andar (3D) com setas ‹ › dividindo a mesma linha."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Etapas em Produção e Oficina agora ficam agrupadas e classificadas por tipo de máquina na barra lateral."
+      },
+      {
+        "tag": "Novo",
+        "text": "Tutorial atualizado com cards de tópicos para cada aba, explicações didáticas passo a passo e 20 prints reais dedicados (incluindo Energia, Mapa, Receitas, Biblioteca, Calculadora e aba Projetos)."
+      }
     ]
   },
   {
@@ -52,13 +135,34 @@
     "date": "21/11/2026",
     "title": "Aba Oficina, Portas nas bordas, Calculadora reformulada e Tutorial por tópicos",
     "items": [
-      { "tag": "Novo", "text": "Aba Livre renomeada para Oficina com o mesmo visual da Produção, lista compacta expansível, duplicação no card e no botão direito, atalhos (Ctrl+C/V, Shift+clique, Backspace, Espaço+arrastar, seleção por retângulo, Ctrl+Z/Y) e botão global de Overclock (150%, 200%, 250%)." },
-      { "tag": "Novo", "text": "Portas circulares nas bordas de todos os cards (laranja #EA580C para esteiras e azul para tubulações), conexões ligadas ao centro exato das portas e bloqueio com aviso \"Quantidade de conexão excedida\"." },
-      { "tag": "Novo", "text": "Seletor de receitas pesquisável com ícones reais em Produção, Oficina e Calculadora, além de seleção de produtos por categoria da Biblioteca em Produção." },
-      { "tag": "Novo", "text": "Calculadora reformulada em português: Calculadora normal em primeiro (visor escuro e teclado físico), Recursos (com overclock por tipo de máquina, sem extratores), Produção, Energia, Logística (da linha atual ou avulsa), Triturador SUPIMPA (todos os itens trituráveis) e Elevador Espacial (5 fases 1.0 com progresso)." },
-      { "tag": "Novo", "text": "Tutorial reorganizado em grade de tópicos com todos os 14 prints reais regerados." },
-      { "tag": "Melhoria", "text": "Overclock padronizado de 100% a 250% (Fragmentos de Energia), selo de quantidade no canto superior direito, barra de status com energia neutra e logística/armazenamento agrupados também no modo resumido." },
-      { "tag": "Correção", "text": "Restaurados os 15 itens de Logística e Armazenamento no banco de dados e corrigida a integração de Reports e Projetos com Upstash Redis e botão \"Tentar de novo\"." }
+      {
+        "tag": "Novo",
+        "text": "Aba Livre renomeada para Oficina com o mesmo visual da Produção, lista compacta expansível, duplicação no card e no botão direito, atalhos (Ctrl+C/V, Shift+clique, Backspace, Espaço+arrastar, seleção por retângulo, Ctrl+Z/Y) e botão global de Overclock (150%, 200%, 250%)."
+      },
+      {
+        "tag": "Novo",
+        "text": "Portas circulares nas bordas de todos os cards (laranja #EA580C para esteiras e azul para tubulações), conexões ligadas ao centro exato das portas e bloqueio com aviso \"Quantidade de conexão excedida\"."
+      },
+      {
+        "tag": "Novo",
+        "text": "Seletor de receitas pesquisável com ícones reais em Produção, Oficina e Calculadora, além de seleção de produtos por categoria da Biblioteca em Produção."
+      },
+      {
+        "tag": "Novo",
+        "text": "Calculadora reformulada em português: Calculadora normal em primeiro (visor escuro e teclado físico), Recursos (com overclock por tipo de máquina, sem extratores), Produção, Energia, Logística (da linha atual ou avulsa), Triturador SUPIMPA (todos os itens trituráveis) e Elevador Espacial (5 fases 1.0 com progresso)."
+      },
+      {
+        "tag": "Novo",
+        "text": "Tutorial reorganizado em grade de tópicos com todos os 14 prints reais regerados."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Overclock padronizado de 100% a 250% (Fragmentos de Energia), selo de quantidade no canto superior direito, barra de status com energia neutra e logística/armazenamento agrupados também no modo resumido."
+      },
+      {
+        "tag": "Correção",
+        "text": "Restaurados os 15 itens de Logística e Armazenamento no banco de dados e corrigida a integração de Reports e Projetos com Upstash Redis e botão \"Tentar de novo\"."
+      }
     ]
   },
   {
@@ -66,13 +170,34 @@
     "date": "20/11/2026",
     "title": "Nova Calculadora S+, Slider de Overclock, correção de Login e melhorias visuais",
     "items": [
-      { "tag": "Novo", "text": "Nova aba Calculadora em 2 colunas com 8 ferramentas reais do jogo: Máquinas para X/min (com divisão fracionária), Clock & Overclock (com Somersloop), Energia completa, Esteiras & Tubos, Armazenamento, Materiais de construção, Triturador SUPIMPA e Calculadora Numérica com teclado físico e histórico fixável." },
-      { "tag": "Novo", "text": "Componente unificado de Overclock (slider de 1% a 250% com botões −/+, atalhos 100/150/200/250% e indicador de Power Shards) aplicado em todo o site." },
-      { "tag": "Melhoria", "text": "Itens selecionados padronizados em todo o site com fundo laranja #EA580C sólido e texto branco, painel de status sempre fixo na base (incluindo Energia) e lista vertical na barra lateral da aba Livre." },
-      { "tag": "Melhoria", "text": "Feedback de conexão no Modo Livre exibe borda verde ou vermelha apenas no card sob o cursor e notificação centralizada \"Conexão incompatível\"." },
-      { "tag": "Melhoria", "text": "Reports atualizados: status \"Resolvido\", separação entre Ativos e Histórico para administradores, reabertura e exclusão." },
-      { "tag": "Correção", "text": "Corrigido o clique em \"Montar Linha de Produção\" e \"Montar Linha de Energia\" após editar campos na barra lateral." },
-      { "tag": "Correção", "text": "Autenticação migrada para sessão assinada com cache e distinção de indisponibilidade (503), eliminando desconexões indevidas e erros internos no login." }
+      {
+        "tag": "Novo",
+        "text": "Nova aba Calculadora em 2 colunas com 8 ferramentas reais do jogo: Máquinas para X/min (com divisão fracionária), Clock & Overclock (com Somersloop), Energia completa, Esteiras & Tubos, Armazenamento, Materiais de construção, Triturador SUPIMPA e Calculadora Numérica com teclado físico e histórico fixável."
+      },
+      {
+        "tag": "Novo",
+        "text": "Componente unificado de Overclock (slider de 1% a 250% com botões −/+, atalhos 100/150/200/250% e indicador de Power Shards) aplicado em todo o site."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Itens selecionados padronizados em todo o site com fundo laranja #EA580C sólido e texto branco, painel de status sempre fixo na base (incluindo Energia) e lista vertical na barra lateral da aba Livre."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Feedback de conexão no Modo Livre exibe borda verde ou vermelha apenas no card sob o cursor e notificação centralizada \"Conexão incompatível\"."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Reports atualizados: status \"Resolvido\", separação entre Ativos e Histórico para administradores, reabertura e exclusão."
+      },
+      {
+        "tag": "Correção",
+        "text": "Corrigido o clique em \"Montar Linha de Produção\" e \"Montar Linha de Energia\" após editar campos na barra lateral."
+      },
+      {
+        "tag": "Correção",
+        "text": "Autenticação migrada para sessão assinada com cache e distinção de indisponibilidade (503), eliminando desconexões indevidas e erros internos no login."
+      }
     ]
   },
   {
@@ -80,11 +205,26 @@
     "date": "20/11/2026",
     "title": "Home com vídeo animado, validação de conexões no Modo Livre e filtros atualizados",
     "items": [
-      { "tag": "Novo", "text": "Tela inicial (Home) agora exibe o vídeo animado em loop com os textos abaixo da logo e ícone de rolagem animado." },
-      { "tag": "Novo", "text": "Validação de conexões no Modo Livre bloqueando ligações incompatíveis (mineradora em mineradora, sólido em tubulação/fluido e receitas incompatíveis) com aviso imediato." },
-      { "tag": "Melhoria", "text": "Filtro Máquinas lista todas as máquinas do jogo, filtro exclusivo Receitas reúne padrão e ALT, e os filtros agora aparecem direto na barra lateral do Modo Livre." },
-      { "tag": "Melhoria", "text": "Tamanho fixo e responsivo no modal de seleção de itens/máquinas sem redimensionar pelo conteúdo." },
-      { "tag": "Correção", "text": "Corrigida a imagem da Tubulação cruzada (Pipeline Junction) no modal de logística." }
+      {
+        "tag": "Novo",
+        "text": "Tela inicial (Home) agora exibe o vídeo animado em loop com os textos abaixo da logo e ícone de rolagem animado."
+      },
+      {
+        "tag": "Novo",
+        "text": "Validação de conexões no Modo Livre bloqueando ligações incompatíveis (mineradora em mineradora, sólido em tubulação/fluido e receitas incompatíveis) com aviso imediato."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Filtro Máquinas lista todas as máquinas do jogo, filtro exclusivo Receitas reúne padrão e ALT, e os filtros agora aparecem direto na barra lateral do Modo Livre."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Tamanho fixo e responsivo no modal de seleção de itens/máquinas sem redimensionar pelo conteúdo."
+      },
+      {
+        "tag": "Correção",
+        "text": "Corrigida a imagem da Tubulação cruzada (Pipeline Junction) no modal de logística."
+      }
     ]
   },
   {
@@ -92,12 +232,30 @@
     "date": "20/11/2026",
     "title": "Nova Home, aba Receitas reformulada, barra vertical compacta e busca corrigida",
     "items": [
-      { "tag": "Novo", "text": "Nova tela inicial (Home) com novo fundo, logo industrial S+ e saída com rolagem suave." },
-      { "tag": "Novo", "text": "Aba Receitas reformulada no padrão da Biblioteca: filtros consistentes (Todos, Com alternativas, Evento FICSMAS), categorias com ícones reais, chips de máquinas com múltipla seleção, modos grade/lista/tabela, comparador de receitas com custo em recursos brutos, subprodutos indexados e favoritos." },
-      { "tag": "Novo", "text": "Aba Produção agora oferece 3 caminhos iniciais: Recursos, Máquinas e Produtos." },
-      { "tag": "Melhoria", "text": "Barra vertical de ações à direita reduzida apenas para ícones SVG individuais em preto acinzentado." },
-      { "tag": "Melhoria", "text": "Filtros por categoria no modal Adicionar Máquina (Máquinas, Produtos, Logística, Armazenamento, Destinos, Extratores, Energia, ALT)." },
-      { "tag": "Correção", "text": "Corrigida a perda de foco ao digitar na busca de itens, cintilação das esteiras em zoom distante e cadeias longas de divisores no modo agrupado." }
+      {
+        "tag": "Novo",
+        "text": "Nova tela inicial (Home) com novo fundo, logo industrial S+ e saída com rolagem suave."
+      },
+      {
+        "tag": "Novo",
+        "text": "Aba Receitas reformulada no padrão da Biblioteca: filtros consistentes (Todos, Com alternativas, Evento FICSMAS), categorias com ícones reais, chips de máquinas com múltipla seleção, modos grade/lista/tabela, comparador de receitas com custo em recursos brutos, subprodutos indexados e favoritos."
+      },
+      {
+        "tag": "Novo",
+        "text": "Aba Produção agora oferece 3 caminhos iniciais: Recursos, Máquinas e Produtos."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Barra vertical de ações à direita reduzida apenas para ícones SVG individuais em preto acinzentado."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Filtros por categoria no modal Adicionar Máquina (Máquinas, Produtos, Logística, Armazenamento, Destinos, Extratores, Energia, ALT)."
+      },
+      {
+        "tag": "Correção",
+        "text": "Corrigida a perda de foco ao digitar na busca de itens, cintilação das esteiras em zoom distante e cadeias longas de divisores no modo agrupado."
+      }
     ]
   },
   {
@@ -105,13 +263,34 @@
     "date": "19/11/2026",
     "title": "4 direções de linha, nova Biblioteca, respostas em Reports e correções de esteiras",
     "items": [
-      { "tag": "Novo", "text": "Direção da linha em 4 sentidos (Esquerda → Direita, Direita → Esquerda, Cima → Baixo e Baixo → Cima) no topo da área de trabalho." },
-      { "tag": "Novo", "text": "Botão Editar no Livre para levar fábricas prontas ao Modo Livre e opção Inserir Divisor no meio ao clicar em qualquer esteira ou tubo." },
-      { "tag": "Novo", "text": "Biblioteca reformulada com subcategorias expansíveis, ícones reais do jogo, cores por categoria, busca em português/inglês sem acento, painel lateral com receitas clicáveis, favoritos e recentes." },
-      { "tag": "Novo", "text": "Status (Novo, Lido, Feito) e respostas da equipe visíveis diretamente em Meus reports, com aviso discreto quando há atualização." },
-      { "tag": "Melhoria", "text": "Resumo da fábrica e barra de ferramentas unificados à direita, botão Limpar padronizado com Desfazer e tema claro/escuro salvo na conta." },
-      { "tag": "Melhoria", "text": "Identidade visual padronizada na cor laranja única #EA580C." },
-      { "tag": "Correção", "text": "Corrigidas esteiras que ficavam invisíveis entre máquinas ou ao ligar ao Produto Final, além de contêineres, divisores inteligentes e destinos finais no Modo Livre." }
+      {
+        "tag": "Novo",
+        "text": "Direção da linha em 4 sentidos (Esquerda → Direita, Direita → Esquerda, Cima → Baixo e Baixo → Cima) no topo da área de trabalho."
+      },
+      {
+        "tag": "Novo",
+        "text": "Botão Editar no Livre para levar fábricas prontas ao Modo Livre e opção Inserir Divisor no meio ao clicar em qualquer esteira ou tubo."
+      },
+      {
+        "tag": "Novo",
+        "text": "Biblioteca reformulada com subcategorias expansíveis, ícones reais do jogo, cores por categoria, busca em português/inglês sem acento, painel lateral com receitas clicáveis, favoritos e recentes."
+      },
+      {
+        "tag": "Novo",
+        "text": "Status (Novo, Lido, Feito) e respostas da equipe visíveis diretamente em Meus reports, com aviso discreto quando há atualização."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Resumo da fábrica e barra de ferramentas unificados à direita, botão Limpar padronizado com Desfazer e tema claro/escuro salvo na conta."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Identidade visual padronizada na cor laranja única #EA580C."
+      },
+      {
+        "tag": "Correção",
+        "text": "Corrigidas esteiras que ficavam invisíveis entre máquinas ou ao ligar ao Produto Final, além de contêineres, divisores inteligentes e destinos finais no Modo Livre."
+      }
     ]
   },
   {
@@ -119,11 +298,26 @@
     "date": "19/11/2026",
     "title": "Nova tela Home, rodapé de status, filtros rápidos e laranja #FF6B00",
     "items": [
-      { "tag": "Novo", "text": "Nova tela Home na abertura (e ao clicar na logo) com esteiras animadas para Descubra, Planeje e Crie." },
-      { "tag": "Novo", "text": "Filtros rápidos no modal Adicionar Máquina para escolher logística, contêineres, extratores, geradores e máquinas sem precisar rolar." },
-      { "tag": "Melhoria", "text": "Resumo da linha de produção movido para um rodapé recolhível na parte inferior, deixando o painel lateral mais limpo." },
-      { "tag": "Melhoria", "text": "Cor laranja #FF6B00 padronizada no card do produto final e no site, mapa integrado ao fundo dos spaces e detalhes da Biblioteca ampliados." },
-      { "tag": "Correção", "text": "Abas do status agora abrem e fecham corretamente ao clicar, emblemas das esteiras não se movem no hover e adição de itens/contêineres pelo botão direito corrigida." }
+      {
+        "tag": "Novo",
+        "text": "Nova tela Home na abertura (e ao clicar na logo) com esteiras animadas para Descubra, Planeje e Crie."
+      },
+      {
+        "tag": "Novo",
+        "text": "Filtros rápidos no modal Adicionar Máquina para escolher logística, contêineres, extratores, geradores e máquinas sem precisar rolar."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Resumo da linha de produção movido para um rodapé recolhível na parte inferior, deixando o painel lateral mais limpo."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Cor laranja #FF6B00 padronizada no card do produto final e no site, mapa integrado ao fundo dos spaces e detalhes da Biblioteca ampliados."
+      },
+      {
+        "tag": "Correção",
+        "text": "Abas do status agora abrem e fecham corretamente ao clicar, emblemas das esteiras não se movem no hover e adição de itens/contêineres pelo botão direito corrigida."
+      }
     ]
   },
   {
@@ -131,12 +325,30 @@
     "date": "19/11/2026",
     "title": "Resumo da fábrica, contêineres, esteiras corrigidas e fluxo Esquerda → Direita",
     "items": [
-      { "tag": "Novo", "text": "Novo painel Resumo da Fábrica com energia recomendada (e folga %), entradas, saídas, faltas, excesso, construções e materiais usados." },
-      { "tag": "Novo", "text": "Contêineres, tanques de fluido, divisores inteligente/programável, bombas de tubo, Triturador SUPIMPA, Depósito Dimensional e Elevador Espacial no modo Livre." },
-      { "tag": "Novo", "text": "Modal Adicionar Máquina completo ao puxar uma esteira no modo Livre, com busca e filtro automático pelo item." },
-      { "tag": "Novo", "text": "Modo de card compacto opcional na barra inferior para fábricas grandes." },
-      { "tag": "Melhoria", "text": "Orientação padrão alterada para Esquerda → Direita, card do produto final inteiro em laranja e remoção das sombras laranja." },
-      { "tag": "Correção", "text": "Arrasto de cards voltou a ser fluido a 60 fps e esteiras agora encostam exatamente nas portas sem pontas soltas." }
+      {
+        "tag": "Novo",
+        "text": "Novo painel Resumo da Fábrica com energia recomendada (e folga %), entradas, saídas, faltas, excesso, construções e materiais usados."
+      },
+      {
+        "tag": "Novo",
+        "text": "Contêineres, tanques de fluido, divisores inteligente/programável, bombas de tubo, Triturador SUPIMPA, Depósito Dimensional e Elevador Espacial no modo Livre."
+      },
+      {
+        "tag": "Novo",
+        "text": "Modal Adicionar Máquina completo ao puxar uma esteira no modo Livre, com busca e filtro automático pelo item."
+      },
+      {
+        "tag": "Novo",
+        "text": "Modo de card compacto opcional na barra inferior para fábricas grandes."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Orientação padrão alterada para Esquerda → Direita, card do produto final inteiro em laranja e remoção das sombras laranja."
+      },
+      {
+        "tag": "Correção",
+        "text": "Arrasto de cards voltou a ser fluido a 60 fps e esteiras agora encostam exatamente nas portas sem pontas soltas."
+      }
     ]
   },
   {
@@ -144,11 +356,26 @@
     "date": "18/11/2026",
     "title": "Dados oficiais do jogo, mapa sem bordas e Patch notes",
     "items": [
-      { "tag": "Novo", "text": "Nova seção Patch notes no topo da tela para acompanhar todas as novidades." },
-      { "tag": "Melhoria", "text": "Dados de itens, receitas, máquinas, energia, esteiras e tubos sincronizados com os arquivos oficiais do jogo." },
-      { "tag": "Melhoria", "text": "Valores padrão reais ao escolher qualquer item, máquina ou gerador — sem números de exemplo." },
-      { "tag": "Melhoria", "text": "Tutorial com altura fixa em todos os passos para facilitar a navegação." },
-      { "tag": "Correção", "text": "Mapa interativo agora preenche toda a tela sem tarjas pretas nas laterais." }
+      {
+        "tag": "Novo",
+        "text": "Nova seção Patch notes no topo da tela para acompanhar todas as novidades."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Dados de itens, receitas, máquinas, energia, esteiras e tubos sincronizados com os arquivos oficiais do jogo."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Valores padrão reais ao escolher qualquer item, máquina ou gerador — sem números de exemplo."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Tutorial com altura fixa em todos os passos para facilitar a navegação."
+      },
+      {
+        "tag": "Correção",
+        "text": "Mapa interativo agora preenche toda a tela sem tarjas pretas nas laterais."
+      }
     ]
   },
   {
@@ -156,8 +383,14 @@
     "date": "18/11/2026",
     "title": "Novo Tutorial interativo com imagens reais",
     "items": [
-      { "tag": "Novo", "text": "Tutorial reformulado com prints reais da interface, marcadores numerados e ampliação ao clicar." },
-      { "tag": "Novo", "text": "Índice rápido para pular para qualquer tópico, glossário de termos e navegação pelas setas do teclado." }
+      {
+        "tag": "Novo",
+        "text": "Tutorial reformulado com prints reais da interface, marcadores numerados e ampliação ao clicar."
+      },
+      {
+        "tag": "Novo",
+        "text": "Índice rápido para pular para qualquer tópico, glossário de termos e navegação pelas setas do teclado."
+      }
     ]
   },
   {
@@ -165,9 +398,18 @@
     "date": "18/11/2026",
     "title": "Contas, Projetos salvos na nuvem e Reportar",
     "items": [
-      { "tag": "Novo", "text": "Crie uma conta com usuário e senha para salvar suas fábricas na aba Projetos e reabrir quando quiser." },
-      { "tag": "Novo", "text": "Botão Reportar no topo para enviar bugs, sugestões ou avaliações com imagens." },
-      { "tag": "Melhoria", "text": "Login persistente que mantém sua conta conectada ao reabrir o navegador." }
+      {
+        "tag": "Novo",
+        "text": "Crie uma conta com usuário e senha para salvar suas fábricas na aba Projetos e reabrir quando quiser."
+      },
+      {
+        "tag": "Novo",
+        "text": "Botão Reportar no topo para enviar bugs, sugestões ou avaliações com imagens."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Login persistente que mantém sua conta conectada ao reabrir o navegador."
+      }
     ]
   },
   {
@@ -175,9 +417,18 @@
     "date": "18/11/2026",
     "title": "Produto final em laranja, Excesso e nova linha",
     "items": [
-      { "tag": "Novo", "text": "Destaque laranja com etiqueta PRODUTO FINAL no objetivo da linha de produção." },
-      { "tag": "Novo", "text": "Botão Gerar nova linha de produção ao lado de cada item em excesso para reaproveitar subprodutos." },
-      { "tag": "Melhoria", "text": "Cards de Nós de recurso simplificados mostrando apenas o recurso e a taxa extraída por minuto." }
+      {
+        "tag": "Novo",
+        "text": "Destaque laranja com etiqueta PRODUTO FINAL no objetivo da linha de produção."
+      },
+      {
+        "tag": "Novo",
+        "text": "Botão Gerar nova linha de produção ao lado de cada item em excesso para reaproveitar subprodutos."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Cards de Nós de recurso simplificados mostrando apenas o recurso e a taxa extraída por minuto."
+      }
     ]
   },
   {
@@ -185,9 +436,18 @@
     "date": "18/11/2026",
     "title": "Arrasto fluido e layout compacto em colunas",
     "items": [
-      { "tag": "Correção", "text": "Corrigido o travamento ao arrastar cards na área de trabalho." },
-      { "tag": "Melhoria", "text": "Layout compacto em colunas com conectores curtos clicáveis em linhas muito longas." },
-      { "tag": "Melhoria", "text": "Etiquetas das esteiras centralizadas no meio de cada ligação com versão e vazão." }
+      {
+        "tag": "Correção",
+        "text": "Corrigido o travamento ao arrastar cards na área de trabalho."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Layout compacto em colunas com conectores curtos clicáveis em linhas muito longas."
+      },
+      {
+        "tag": "Melhoria",
+        "text": "Etiquetas das esteiras centralizadas no meio de cada ligação com versão e vazão."
+      }
     ]
   },
   {
@@ -195,8 +455,14 @@
     "date": "16/11/2026",
     "title": "Modo Livre, divisores e diagnóstico da fábrica",
     "items": [
-      { "tag": "Novo", "text": "Aba Livre para posicionar máquinas manualmente e puxar conexões de esteiras e tubos." },
-      { "tag": "Novo", "text": "Blocos de Divisor, Unificador e Junção de Tubo com diagnóstico automático de gargalos." }
+      {
+        "tag": "Novo",
+        "text": "Aba Livre para posicionar máquinas manualmente e puxar conexões de esteiras e tubos."
+      },
+      {
+        "tag": "Novo",
+        "text": "Blocos de Divisor, Unificador e Junção de Tubo com diagnóstico automático de gargalos."
+      }
     ]
   },
   {
@@ -204,7 +470,10 @@
     "date": "15/11/2026",
     "title": "Lançamento do Satisfactory+ 1.0+",
     "items": [
-      { "tag": "Novo", "text": "Planejador visual de Produção, Energia, Mapa interativo, Receitas, Biblioteca e Calculadora em português." }
+      {
+        "tag": "Novo",
+        "text": "Planejador visual de Produção, Energia, Mapa interativo, Receitas, Biblioteca e Calculadora em português."
+      }
     ]
   }
 ]
