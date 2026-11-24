@@ -353,7 +353,10 @@ function toggleTheme() {
  * ========================================================================== */
 
 function switchMode(mode) {
-  if ((mode === 'ceo' || mode === 'reports') && !(typeof AccountState === 'object' && AccountState.user && AccountState.user.role === 'admin')) {
+  if (mode === 'ceo' && !(typeof AccountState === 'object' && AccountState.user && AccountState.user.role === 'ceo')) {
+    mode = 'production';
+  }
+  if (mode === 'reports' && !(typeof AccountState === 'object' && AccountState.user && (AccountState.user.role === 'ceo' || AccountState.user.role === 'admin'))) {
     mode = 'production';
   }
   AppState.mode = mode;

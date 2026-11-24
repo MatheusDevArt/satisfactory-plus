@@ -16,6 +16,7 @@ const {
   sendJson,
   readRequestBody,
   getAuthenticatedUser,
+  isAdminUser,
   detectImageType,
   checkRateLimit,
   recordRateLimitHit,
@@ -228,7 +229,7 @@ module.exports = async function handler(req, res) {
       const allActive = await loadAllValidReportsAndCleanup();
 
       if (scope === 'all') {
-        if (auth.user.role !== 'admin') {
+        if (!isAdminUser(auth.user)) {
           return sendJson(res, 403, { error: 'Acesso negado. Apenas administradores podem visualizar todos os reports.' });
         }
         const formatted = allActive.map((x) => formatReportForClient(x.rep));
@@ -276,7 +277,7 @@ module.exports = async function handler(req, res) {
 
     // POST /api/reports?action=translate (Exclusivo CEO: traduz report estrangeiro para PT-BR)
     if (req.method === 'POST' && String(url.searchParams.get('action') || '').toLowerCase() === 'translate') {
-      if (auth.user.role !== 'admin') {
+      if (!isAdminUser(auth.user)) {
         return sendJson(res, 403, { error: 'Apenas o CEO pode traduzir reports.' });
       }
       const body = await readRequestBody(req, 32 * 1024);
@@ -441,7 +442,7 @@ module.exports = async function handler(req, res) {
       }
 
       // Demais ações são estritamente de administrador
-      if (auth.user.role !== 'admin') {
+      if (!isAdminUser(auth.user)) {
         return sendJson(res, 403, { error: 'Acesso negado. Apenas administradores podem executar esta ação.' });
       }
 
@@ -546,7 +547,7 @@ module.exports = async function handler(req, res) {
 
     // DELETE /api/reports?id=rep_xxx (Somente admin)
     if (req.method === 'DELETE') {
-      if (auth.user.role !== 'admin') {
+      if (!isAdminUser(auth.user)) {
         return sendJson(res, 403, { error: 'Acesso negado. Apenas administradores podem excluir reports.' });
       }
       const id = String(url.searchParams.get('id') || '').trim();

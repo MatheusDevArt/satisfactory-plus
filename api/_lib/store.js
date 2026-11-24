@@ -571,13 +571,10 @@ function getReservedAdminUsernameLower() {
 }
 
 const EXTRA_ADMIN_USERNAMES = new Set(
-  [
-    'darkblood1331',
-    ...String(process.env.EXTRA_ADMIN_USERNAMES || '')
-      .split(',')
-      .map((s) => normalizeUsername(s))
-      .filter(Boolean)
-  ]
+  String(process.env.EXTRA_ADMIN_USERNAMES || '')
+    .split(',')
+    .map((s) => normalizeUsername(s))
+    .filter(Boolean)
 );
 
 function isReservedAdminUsernameLower(username) {
@@ -586,10 +583,24 @@ function isReservedAdminUsernameLower(username) {
   return lower === getReservedAdminUsernameLower() || EXTRA_ADMIN_USERNAMES.has(lower);
 }
 
-function isAdminUser(user) {
+function isCeoUser(user) {
   if (!user) return false;
   const lower = normalizeUsername(user.usernameLower || user.username || '');
-  return user.role === 'admin' || EXTRA_ADMIN_USERNAMES.has(lower);
+  return Boolean(lower && lower === getReservedAdminUsernameLower());
+}
+
+function isAdminUser(user) {
+  if (!user) return false;
+  if (isCeoUser(user)) return true;
+  const lower = normalizeUsername(user.usernameLower || user.username || '');
+  return user.role === 'admin' || user.role === 'ceo' || EXTRA_ADMIN_USERNAMES.has(lower);
+}
+
+function resolveUserRole(user) {
+  if (!user) return 'user';
+  if (isCeoUser(user)) return 'ceo';
+  if (isAdminUser(user)) return 'admin';
+  return 'user';
 }
 
 function normalizeSecurityAnswer(answer) {
@@ -608,7 +619,7 @@ function sanitizeUser(user) {
   return {
     id: user.id,
     username: user.username,
-    role: isAdminUser(user) ? 'admin' : 'user',
+    role: resolveUserRole(user),
     createdAt: user.createdAt,
     securityQuestion: user.securityQuestion ? String(user.securityQuestion).slice(0, 140) : '',
     hasSecurityRecovery: Boolean(user.securityQuestion && user.securityAnswerHash),
@@ -701,7 +712,7 @@ async function createSession(user) {
     uid: user.id,
     u: user.username,
     ul: user.usernameLower || normalizeUsername(user.username),
-    r: isAdminUser(user) ? 'admin' : 'user',
+    r: resolveUserRole(user),
     sv: Number(user.sessionVersion) || 1,
     iat: now,
     exp: now + SESSION_TTL_MS
@@ -747,7 +758,7 @@ async function getAuthenticatedUser(req, res, renew = true, options = {}) {
             id: payload.uid,
             username: payload.u,
             usernameLower: payload.ul,
-            role: isAdminUser({ usernameLower: payload.ul, role: payload.r }) ? 'admin' : 'user',
+            role: resolveUserRole({ usernameLower: payload.ul, role: payload.r }),
             sessionVersion: payload.sv || 1,
             preferences: {}
           },
@@ -768,7 +779,7 @@ async function getAuthenticatedUser(req, res, renew = true, options = {}) {
       if (res) clearSessionCookie(res);
       return null;
     }
-    if (isAdminUser(user)) user.role = 'admin';
+    user.role = resolveUserRole(user);
     return { user, session: payload, storageDegraded: false };
   }
 
@@ -790,7 +801,7 @@ async function getAuthenticatedUser(req, res, renew = true, options = {}) {
     if (res) clearSessionCookie(res);
     return null;
   }
-  if (isAdminUser(user)) user.role = 'admin';
+  user.role = resolveUserRole(user);
 
   // Migra imediatamente para cookie assinado stateless e remove blob legado
   if (res) {
@@ -1029,6 +1040,9 @@ module.exports = {
   validatePassword,
   getReservedAdminUsernameLower,
   isReservedAdminUsernameLower,
+  isCeoUser,
+  isAdminUser,
+  resolveUserRole,
   sanitizeUser,
   ensureAdminSeeded,
   getUserByUsername,

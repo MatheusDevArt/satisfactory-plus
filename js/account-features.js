@@ -237,7 +237,7 @@ function updateAdminReportsTabBadge() {
   if (!repTab) return;
   const existing = repTab.querySelector('.admin-new-badge');
   const count = Number(AccountState.adminReports.newCount) || 0;
-  if (count > 0 && AccountState.user && AccountState.user.role === 'admin') {
+  if (count > 0 && AccountState.user && (AccountState.user.role === 'ceo' || AccountState.user.role === 'admin')) {
     if (existing) {
       existing.textContent = String(count);
     } else {
@@ -268,7 +268,7 @@ async function refreshReportIndicators() {
       AccountState.reportModal.unreadCount = Number(res.data.unreadCount) || 0;
       updateReportUnreadDot();
     }
-    if (AccountState.user.role === 'admin') {
+    if (AccountState.user.role === 'ceo' || AccountState.user.role === 'admin') {
       const prevNew = Number(AccountState.adminReports.newCount) || 0;
       const hadChecked = Boolean(AccountState.adminReports._notifiedInit);
       const aRes = await apiFetch('/api/reports?scope=all', { method: 'GET' });
@@ -369,16 +369,20 @@ function updateRoleBasedTabs() {
   const repTab = document.getElementById('tab-reports');
   const ceoTab = document.getElementById('tab-ceo');
   const isLogged = Boolean(AccountState.user);
-  const isCeo = Boolean(AccountState.user && AccountState.user.role === 'admin');
+  const isCeo = Boolean(AccountState.user && AccountState.user.role === 'ceo');
+  const isStaff = Boolean(AccountState.user && (AccountState.user.role === 'ceo' || AccountState.user.role === 'admin'));
 
   if (projTab) projTab.classList.toggle('hidden', !isLogged);
-  if (repTab) repTab.classList.toggle('hidden', !isCeo);
+  if (repTab) repTab.classList.toggle('hidden', !isStaff);
   if (ceoTab) ceoTab.classList.toggle('hidden', !isCeo);
 
   if (!isLogged && AppState.mode === 'projects') {
     switchMode('production');
   }
-  if (!isCeo && (AppState.mode === 'reports' || AppState.mode === 'ceo')) {
+  if (!isStaff && AppState.mode === 'reports') {
+    switchMode('production');
+  }
+  if (!isCeo && AppState.mode === 'ceo') {
     switchMode('production');
   }
 }
@@ -398,7 +402,9 @@ function updateAuthHeaderUI() {
   }
 
   const uName = escText(AccountState.user.username);
-  const ceoBadge = AccountState.user.role === 'admin' ? '<span class="user-role-tag ceo-role-tag">CEO</span>' : '';
+  const ceoBadge = AccountState.user.role === 'ceo'
+    ? '<span class="user-role-tag ceo-role-tag">CEO</span>'
+    : (AccountState.user.role === 'admin' ? '<span class="user-role-tag">ADMIN</span>' : '');
   slot.innerHTML = `
     <div class="user-menu-wrap">
       <button type="button" class="btn-top-action btn-user-pill" onclick="toggleUserDropdown(event)">
@@ -410,7 +416,7 @@ function updateAuthHeaderUI() {
       ${AccountState.menuOpen ? `
         <div class="user-dropdown-menu">
           <div class="user-dropdown-head">Conectado como <strong>${uName}</strong> ${ceoBadge}</div>
-          ${AccountState.user.role === 'admin' ? `<button type="button" class="context-menu-item" onclick="AccountState.menuOpen=false;updateAuthHeaderUI();switchMode('ceo');">Painel CEO</button>` : ''}
+          ${AccountState.user.role === 'ceo' ? `<button type="button" class="context-menu-item" onclick="AccountState.menuOpen=false;updateAuthHeaderUI();switchMode('ceo');">Painel CEO</button>` : ''}
           <button type="button" class="context-menu-item" onclick="if(typeof openSettingsModal==='function'){AccountState.menuOpen=false;updateAuthHeaderUI();openSettingsModal();}">Configurações &amp; Conta</button>
           <button type="button" class="context-menu-item" onclick="openChangePasswordModal()">Alterar senha</button>
           <div class="context-menu-divider"></div>
@@ -2948,7 +2954,7 @@ function trackAnalyticsError(errType, msg) {
     setInterval(() => {
       if (document.visibilityState === 'visible') {
         sendSilentAnalyticsPing('heartbeat');
-        if (AccountState.user && AccountState.user.role === 'admin' && typeof refreshReportIndicators === 'function') {
+        if (AccountState.user && (AccountState.user.role === 'ceo' || AccountState.user.role === 'admin') && typeof refreshReportIndicators === 'function') {
           refreshReportIndicators();
         }
       }
@@ -2977,7 +2983,7 @@ function trackAnalyticsError(errType, msg) {
 })();
 
 function renderCeoMode(sidebarEl, emptyOverlay) {
-  if (!AccountState.user || AccountState.user.role !== 'admin') {
+  if (!AccountState.user || AccountState.user.role !== 'ceo') {
     if (typeof switchMode === 'function') switchMode('production');
     return;
   }
@@ -3037,7 +3043,7 @@ function setCeoPeriod(period) {
 }
 
 async function resetCeoAnalyticsData() {
-  if (!AccountState.user || AccountState.user.role !== 'admin') return;
+  if (!AccountState.user || AccountState.user.role !== 'ceo') return;
   const ok = await openCustomConfirmModal(
     'Tem certeza que deseja zerar todas as visitas, sessões online, geolocalização, funil e logs de erro do Painel CEO? As contas cadastradas e projetos dos usuários NÃO serão apagados.',
     'Zerar métricas'
@@ -3053,8 +3059,28 @@ async function resetCeoAnalyticsData() {
   await loadCeoDashboard();
 }
 
+async function toggleCeoUserAdminRole(username, nextRole) {
+  if (!AccountState.user || AccountState.user.role !== 'ceo') return;
+  const isPromote = nextRole === 'admin';
+  const msg = isPromote
+    ? `Conceder o cargo de Admin para "${username}"? Admins podem visualizar e responder Reports, mas NÃO têm acesso ao Painel CEO.`
+    : `Remover o cargo de Admin de "${username}"? A conta continuará funcionando normalmente como usuário comum.`;
+  const ok = await openCustomConfirmModal(msg, isPromote ? 'Dar Admin' : 'Remover Admin');
+  if (!ok) return;
+  const res = await apiFetch('/api/analytics?action=set-role', {
+    method: 'POST',
+    body: JSON.stringify({ username, role: nextRole })
+  });
+  if (!res.ok) {
+    showAccountToast(res.data?.error || 'Não foi possível alterar o cargo do usuário.', 'error');
+    return;
+  }
+  showAccountToast(isPromote ? `Cargo Admin concedido para ${username}.` : `Cargo Admin removido de ${username}.`, 'success');
+  await loadCeoDashboard();
+}
+
 async function loadCeoDashboard() {
-  if (!AccountState.user || AccountState.user.role !== 'admin') return;
+  if (!AccountState.user || AccountState.user.role !== 'ceo') return;
   CeoPanelState.loading = true;
   CeoPanelState.error = '';
   renderCeoWorkspace();
@@ -3118,7 +3144,7 @@ function formatDurationMinutes(mins) {
 function renderCeoWorkspace() {
   const view = document.getElementById('ceo-workspace-view');
   if (!view) return;
-  if (!AccountState.user || AccountState.user.role !== 'admin') {
+  if (!AccountState.user || AccountState.user.role !== 'ceo') {
     view.innerHTML = '';
     return;
   }
@@ -3228,7 +3254,7 @@ function renderCeoWorkspace() {
                   <div class="ceo-online-row">
                     <div>
                       <strong>${o.username ? escText(o.username) : 'Visitante'}</strong>
-                      ${o.role === 'admin' ? '<span class="user-role-tag ceo-role-tag">CEO</span>' : ''}
+                      ${o.role === 'ceo' ? '<span class="user-role-tag ceo-role-tag">CEO</span>' : (o.role === 'admin' ? '<span class="user-role-tag">ADMIN</span>' : '')}
                       <small>${escText(o.countryName)}${o.regionName ? ` · ${escText(o.regionName)}` : ''}</small>
                     </div>
                     <span class="ceo-mode-pill">${escText(modeLabelMap[o.mode] || o.mode)}</span>
@@ -3427,6 +3453,7 @@ function renderCeoWorkspace() {
         if (!ts || now - ts > ms7d) return false;
       }
       if (flt === 'with_projects' && (Number(u.projectsCount) || 0) <= 0) return false;
+      if (flt === 'admins' && u.role !== 'admin' && u.role !== 'ceo') return false;
       if (q) {
         const hay = `${u.username} ${u.countryName} ${u.regionName} ${u.lang}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -3443,6 +3470,7 @@ function renderCeoWorkspace() {
               <option value="all" ${flt === 'all' ? 'selected' : ''}>Todos os usuários</option>
               <option value="active7d" ${flt === 'active7d' ? 'selected' : ''}>Ativos nos últimos 7d</option>
               <option value="with_projects" ${flt === 'with_projects' ? 'selected' : ''}>Com projetos salvos</option>
+              <option value="admins" ${flt === 'admins' ? 'selected' : ''}>CEO & Admins</option>
             </select>
             <input type="search" class="sidebar-input" style="width:220px;" placeholder="Buscar usuário, país, UF..." value="${escText(CeoPanelState.userSearch)}" oninput="CeoPanelState.userSearch=this.value;renderCeoWorkspace();" />
           </div>
@@ -3458,16 +3486,17 @@ function renderCeoWorkspace() {
                 <th>Projetos</th>
                 <th>Recuperação</th>
                 <th>Idioma / Tema</th>
+                <th>Cargo / Gerir</th>
               </tr>
             </thead>
             <tbody>
               ${filteredUsers.length === 0
-                ? '<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:20px;">Nenhum usuário encontrado.</td></tr>'
+                ? '<tr><td colspan="8" style="text-align:center;color:var(--text-secondary);padding:20px;">Nenhum usuário encontrado.</td></tr>'
                 : filteredUsers.map((u) => `
                   <tr>
                     <td>
                       <strong>${escText(u.username)}</strong>
-                      ${u.role === 'ceo' ? '<span class="user-role-tag ceo-role-tag">CEO</span>' : ''}
+                      ${u.role === 'ceo' ? '<span class="user-role-tag ceo-role-tag">CEO</span>' : (u.role === 'admin' ? '<span class="user-role-tag">ADMIN</span>' : '')}
                     </td>
                     <td>${escText(u.countryName)}${u.regionName ? ` · <small>${escText(u.regionName)}</small>` : ''}</td>
                     <td>${u.createdAt ? fmtDateBR(u.createdAt) : '—'}</td>
@@ -3475,6 +3504,13 @@ function renderCeoWorkspace() {
                     <td style="font-family:var(--font-mono);font-weight:700;">${u.projectsCount || 0}</td>
                     <td>${u.hasSecurityRecovery ? '<span style="color:#10b981;font-weight:700;">Ativa</span>' : '<span style="color:var(--text-secondary);">Pendente</span>'}</td>
                     <td><small>${escText(u.lang)} · ${escText(u.theme)}</small></td>
+                    <td>
+                      ${u.role === 'ceo'
+                        ? '<span style="font-size:11.5px;color:var(--text-secondary);font-weight:600;">Exclusivo</span>'
+                        : (u.role === 'admin'
+                          ? `<button type="button" class="ds-btn-secondary" style="padding:4px 10px;font-size:11.5px;border-color:rgba(239,68,68,0.45);color:#f87171;" onclick="toggleCeoUserAdminRole('${escText(u.username)}', 'user')">Remover Admin</button>`
+                          : `<button type="button" class="ds-btn-secondary" style="padding:4px 10px;font-size:11.5px;" onclick="toggleCeoUserAdminRole('${escText(u.username)}', 'admin')">Dar Admin</button>`)}
+                    </td>
                   </tr>
                 `).join('')}
             </tbody>

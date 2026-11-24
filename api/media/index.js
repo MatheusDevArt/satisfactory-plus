@@ -4,6 +4,7 @@ const {
   fetchBlobUrl,
   applySecurityHeaders,
   getAuthenticatedUser,
+  isAdminUser,
   readJsonBlob
 } = require('../_lib/store');
 
@@ -52,7 +53,7 @@ module.exports = async function handler(req, res) {
     }
 
     // Verifica propriedade do report (CEO/admin pode ver qualquer anexo; usuário comum apenas os próprios)
-    if (auth.user.role !== 'admin') {
+    if (!isAdminUser(auth.user)) {
       const rep = await readJsonBlob(`db/reports/${reportId}.json`).catch(() => null);
       if (!rep || rep.userId !== auth.user.id) {
         res.statusCode = 403;

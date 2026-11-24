@@ -11,6 +11,10 @@ const {
   sendJson,
   readRequestBody,
   getAuthenticatedUser,
+  getUserByUsername,
+  normalizeUsername,
+  isCeoUser,
+  resolveUserRole,
   checkRateLimit,
   recordRateLimitHit,
   StorageUnavailableError
@@ -45,11 +49,23 @@ async function performAnalyticsReset(resetBy = 'system', epochTag = ANALYTICS_RE
 }
 
 async function ensureAnalyticsEpoch() {
-  const meta = await readJsonBlob(ANALYTICS_META_PATH, false).catch(() => null);
-  if (meta && meta.epochApplied === ANALYTICS_RESET_EPOCH && meta.resetAt) {
-    return meta;
+  let meta = await readJsonBlob(ANALYTICS_META_PATH, false).catch(() => null);
+  if (!meta || meta.epochApplied !== ANALYTICS_RESET_EPOCH || !meta.resetAt) {
+    meta = await performAnalyticsReset('auto-epoch', ANALYTICS_RESET_EPOCH);
   }
-  return await performAnalyticsReset('auto-epoch', ANALYTICS_RESET_EPOCH);
+  if (!meta.demotedDarkblood1331) {
+    try {
+      const legacyUser = await getUserByUsername('darkblood1331', false);
+      if (legacyUser && legacyUser.role === 'admin') {
+        legacyUser.role = 'user';
+        legacyUser.sessionVersion = (Number(legacyUser.sessionVersion) || 1) + 1;
+        await writeJsonBlob('db/users/darkblood1331.json', legacyUser);
+      }
+    } catch {}
+    meta = { ...meta, demotedDarkblood1331: true };
+    await writeJsonBlob(ANALYTICS_META_PATH, meta).catch(() => {});
+  }
+  return meta;
 }
 
 const COUNTRY_NAMES = {
@@ -415,7 +431,7 @@ module.exports = async function handler(req, res) {
       if (!auth || !auth.user) {
         return sendJson(res, 401, { error: 'Autenticação necessária.' });
       }
-      if (auth.user.role !== 'admin') {
+      if (!isCeoUser(auth.user)) {
         return sendJson(res, 403, { error: 'Acesso restrito exclusivamente ao CEO.' });
       }
       const meta = await performAnalyticsReset(auth.user.username || 'CEO', ANALYTICS_RESET_EPOCH);
@@ -423,14 +439,49 @@ module.exports = async function handler(req, res) {
     }
 
     // -------------------------------------------------------------------------
-    // 2. GET /api/analytics?action=dashboard (EXCLUSIVO CEO — role === 'admin')
+    // 1.6. POST /api/analytics?action=set-role (Gerir cargo de usuário — EXCLUSIVO CEO)
+    // -------------------------------------------------------------------------
+    if (req.method === 'POST' && action === 'set-role') {
+      if (!verifyCsrf(req)) return sendJson(res, 403, { error: 'CSRF inválido.' });
+      const auth = await getAuthenticatedUser(req, res, false);
+      if (!auth || !auth.user) {
+        return sendJson(res, 401, { error: 'Autenticação necessária.' });
+      }
+      if (!isCeoUser(auth.user)) {
+        return sendJson(res, 403, { error: 'Acesso restrito exclusivamente ao CEO.' });
+      }
+      const body = await readRequestBody(req, 8 * 1024);
+      const targetLower = normalizeUsername(body.username || '');
+      const nextRole = String(body.role || '').trim().toLowerCase();
+      if (!targetLower || !['user', 'admin'].includes(nextRole)) {
+        return sendJson(res, 400, { error: 'Parâmetros inválidos. Cargo permitido: user ou admin.' });
+      }
+      const targetUser = await getUserByUsername(targetLower, false);
+      if (!targetUser) {
+        return sendJson(res, 404, { error: 'Usuário não encontrado.' });
+      }
+      if (isCeoUser(targetUser)) {
+        return sendJson(res, 403, { error: 'O cargo exclusivo de CEO não pode ser alterado.' });
+      }
+      const prevRole = resolveUserRole(targetUser);
+      targetUser.role = nextRole;
+      if (prevRole === 'admin' && nextRole === 'user') {
+        targetUser.sessionVersion = (Number(targetUser.sessionVersion) || 1) + 1;
+      }
+      targetUser.roleUpdatedAt = new Date().toISOString();
+      await writeJsonBlob(`db/users/${targetLower}.json`, targetUser);
+      return sendJson(res, 200, { ok: true, username: targetUser.username, role: resolveUserRole(targetUser) });
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. GET /api/analytics?action=dashboard (EXCLUSIVO CEO)
     // -------------------------------------------------------------------------
     if (req.method === 'GET' && action === 'dashboard') {
       const auth = await getAuthenticatedUser(req, res, false);
       if (!auth || !auth.user) {
         return sendJson(res, 401, { error: 'Autenticação necessária.' });
       }
-      if (auth.user.role !== 'admin') {
+      if (!isCeoUser(auth.user)) {
         return sendJson(res, 403, { error: 'Acesso restrito exclusivamente ao CEO.' });
       }
 
@@ -590,7 +641,7 @@ module.exports = async function handler(req, res) {
           users.push({
             id: u.id,
             username: u.username,
-            role: u.role === 'admin' ? 'ceo' : 'user',
+            role: resolveUserRole(u),
             createdAt: u.createdAt || null,
             lastSeenAt: u.lastSeenAt || u.lastLoginAt || u.createdAt || null,
             country: cCode,
