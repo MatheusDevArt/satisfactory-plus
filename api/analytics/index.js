@@ -46,6 +46,16 @@ function getUtcDateKey(offsetDays = 0, baseMs = Date.now()) {
   return dt.toISOString().slice(0, 10);
 }
 
+const PT_LANG_COUNTRIES = new Set(['BR', 'PT', 'AO', 'MZ', 'CV', 'GW', 'ST', 'TL', 'MO']);
+const ES_LANG_COUNTRIES = new Set(['AR', 'ES', 'MX', 'CO', 'CL', 'PE', 'VE', 'EC', 'GT', 'CU', 'BO', 'DO', 'HN', 'PY', 'SV', 'NI', 'CR', 'PA', 'UY', 'PR', 'GQ']);
+
+function suggestLangFromCountry(country) {
+  if (!country || country === 'LOCAL' || country === 'UNKNOWN') return null;
+  if (PT_LANG_COUNTRIES.has(country)) return 'pt-BR';
+  if (ES_LANG_COUNTRIES.has(country)) return 'es-ES';
+  return 'en-US';
+}
+
 function getGeoFromReq(req) {
   const rawCountry = String(req.headers['x-vercel-ip-country'] || '').trim().toUpperCase();
   const rawRegion = String(req.headers['x-vercel-ip-country-region'] || '').trim().toUpperCase();
@@ -153,6 +163,18 @@ module.exports = async function handler(req, res) {
   const action = String(url.searchParams.get('action') || '').trim().toLowerCase();
 
   try {
+    // -------------------------------------------------------------------------
+    // 0. GET /api/analytics?action=geo (Detecção leve de idioma por país — LGPD)
+    // -------------------------------------------------------------------------
+    if (req.method === 'GET' && action === 'geo') {
+      const { country } = getGeoFromReq(req);
+      return sendJson(res, 200, {
+        ok: true,
+        country,
+        suggestedLang: suggestLangFromCountry(country)
+      });
+    }
+
     // -------------------------------------------------------------------------
     // 1. POST /api/analytics?action=ping (Telemetria silenciosa em lote)
     // -------------------------------------------------------------------------

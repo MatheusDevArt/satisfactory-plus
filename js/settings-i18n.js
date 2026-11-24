@@ -8,6 +8,7 @@
 const SPLUS_PREFS_STORAGE_KEY = 'splus_user_prefs_v25';
 const SPLUS_LOCAL_RECOVERY_KEY = 'splus_local_recovery_v25';
 const SPLUS_LOCAL_RL_KEY = 'splus_recovery_rl_v25';
+const SPLUS_LANG_MANUAL_KEY = 'splus_lang_manual_v1';
 
 const SECURITY_QUESTIONS_LIST = [
   'Qual foi a primeira fábrica ou item que você automatizou no Satisfactory?',
@@ -157,10 +158,29 @@ function tI18n(key, fallback = '') {
   return dict[key] || I18N_DICT['pt-BR'][key] || fallback || key;
 }
 
+function detectBrowserSuggestedLang() {
+  try {
+    const list = Array.isArray(navigator.languages) && navigator.languages.length > 0
+      ? navigator.languages
+      : [navigator.language || ''];
+    for (const raw of list) {
+      const lc = String(raw || '').toLowerCase();
+      if (lc.startsWith('pt')) return 'pt-BR';
+      if (lc.startsWith('es')) return 'es-ES';
+      if (lc.startsWith('en')) return 'en-US';
+    }
+  } catch {}
+  return 'en-US';
+}
+
 function loadLocalUserPrefs() {
   try {
     const raw = localStorage.getItem(SPLUS_PREFS_STORAGE_KEY);
-    if (!raw) return JSON.parse(JSON.stringify(DEFAULT_USER_PREFS));
+    if (!raw) {
+      const base = JSON.parse(JSON.stringify(DEFAULT_USER_PREFS));
+      base.lang = detectBrowserSuggestedLang();
+      return base;
+    }
     const parsed = JSON.parse(raw);
     return {
       ...DEFAULT_USER_PREFS,
@@ -273,6 +293,7 @@ function applyI18nToDOM() {
 
 function setAppLanguage(lang) {
   if (!['pt-BR', 'en-US', 'es-ES'].includes(lang)) return;
+  try { localStorage.setItem(SPLUS_LANG_MANUAL_KEY, '1'); } catch {}
   saveUserPrefs({ lang });
   if (SettingsState.isOpen) {
     renderSettingsModalBody();
@@ -854,3 +875,35 @@ async function confirmDeleteAccountPermanent() {
     showToast('Conta e dados excluídos permanentemente.');
   }
 }
+
+async function autoDetectGeoLanguage() {
+  try {
+    if (localStorage.getItem(SPLUS_LANG_MANUAL_KEY) === '1') return;
+    if (sessionStorage.getItem('splus_geo_lang_done') === '1') return;
+    sessionStorage.setItem('splus_geo_lang_done', '1');
+    const res = await fetch('/api/analytics?action=geo', { method: 'GET', credentials: 'same-origin' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const suggested = data?.suggestedLang;
+    if (!['pt-BR', 'en-US', 'es-ES'].includes(suggested)) return;
+    if (localStorage.getItem(SPLUS_LANG_MANUAL_KEY) === '1') return;
+    if (SettingsState.prefs?.lang !== suggested) {
+      saveUserPrefs({ lang: suggested }, false);
+      if (SettingsState.isOpen && typeof renderSettingsModalBody === 'function') {
+        renderSettingsModalBody();
+      }
+      if (typeof renderLeftSidebar === 'function' && typeof AppState === 'object') {
+        try { renderLeftSidebar(); } catch {}
+      }
+    }
+  } catch {}
+}
+
+(function initGeoLanguageDetection() {
+  if (typeof window === 'undefined') return;
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', () => autoDetectGeoLanguage());
+  } else {
+    autoDetectGeoLanguage();
+  }
+})();
