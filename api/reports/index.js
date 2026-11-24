@@ -149,6 +149,135 @@ async function translateTextToPt(text) {
   return clean;
 }
 
+function escapeHtmlEmail(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatBrDateTime(isoStr) {
+  const dt = isoStr ? new Date(isoStr) : new Date();
+  if (Number.isNaN(dt.getTime())) return { full: 'agora', comma: 'agora' };
+  const datePart = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  }).format(dt);
+  const timePart = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(dt);
+  return {
+    full: `${datePart} às ${timePart}`,
+    comma: `${datePart}, ${timePart}`
+  };
+}
+
+function buildReportEmailHtml({ title, author, typeLabel, message, dateFull, dateComma, imagesCount }) {
+  const safeTitle = escapeHtmlEmail(title || `Novo report (${typeLabel})`);
+  const safeAuthor = escapeHtmlEmail(author || 'Usuário');
+  const safeType = escapeHtmlEmail(typeLabel || 'Report');
+  const safeMsg = escapeHtmlEmail(message || '').replace(/\r?\n/g, '<br>');
+  const safePreheader = escapeHtmlEmail(`${typeLabel} de ${author}: ${title || message.slice(0, 80)}`);
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Novo report no Satisfactory+</title>
+</head>
+<body style="margin:0;padding:0;background:#0a0b0f;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${safePreheader}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a0b0f" style="background:#0a0b0f;">
+<tr><td align="center" style="padding:32px 16px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;font-family:Arial,Helvetica,sans-serif;">
+
+<tr><td style="padding:0 4px 18px;font-size:20px;font-weight:700;color:#ffffff;">
+<span style="color:#EA580C;">&#9632;</span>&nbsp;Satisfactory<span style="color:#EA580C;">+</span>
+</td></tr>
+
+<tr><td bgcolor="#101117" style="background:#101117;border:1px solid #23252e;border-radius:16px;overflow:hidden;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+<tr><td bgcolor="#EA580C" style="background:#EA580C;height:4px;font-size:0;line-height:0;">&nbsp;</td></tr>
+
+<tr><td style="padding:28px 28px 6px;">
+<span style="display:inline-block;background:#EA580C;color:#ffffff;font-size:11px;font-weight:700;letter-spacing:1px;padding:5px 10px;border-radius:6px;">NOVO REPORT</span>
+<h1 style="margin:16px 0 6px;font-size:24px;line-height:1.3;color:#ffffff;font-weight:700;">${safeTitle}</h1>
+<p style="margin:0;font-size:14px;color:#9ca3af;">Enviado por <strong style="color:#ffffff;">${safeAuthor}</strong> em ${escapeHtmlEmail(dateFull)}</p>
+</td></tr>
+
+<tr><td style="padding:22px 28px 6px;">
+<div style="font-size:11px;font-weight:700;letter-spacing:1px;color:#EA580C;padding-bottom:8px;">MENSAGEM</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td bgcolor="#171922" style="background:#171922;border-left:3px solid #EA580C;border-radius:0 10px 10px 0;padding:16px 18px;font-size:15px;line-height:1.6;color:#d4d4d8;">
+${safeMsg}
+</td></tr>
+</table>
+</td></tr>
+
+<tr><td style="padding:18px 28px 6px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td width="50%" valign="top" style="padding:0 6px 12px 0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#171922" style="background:#171922;border-radius:10px;padding:12px 14px;">
+<div style="font-size:11px;letter-spacing:1px;color:#9ca3af;">TIPO</div>
+<div style="font-size:15px;font-weight:700;color:#ffffff;padding-top:4px;">${safeType}</div>
+</td></tr></table>
+</td>
+<td width="50%" valign="top" style="padding:0 0 12px 6px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#171922" style="background:#171922;border-radius:10px;padding:12px 14px;">
+<div style="font-size:11px;letter-spacing:1px;color:#9ca3af;">AUTOR</div>
+<div style="font-size:15px;font-weight:700;color:#ffffff;padding-top:4px;">${safeAuthor}</div>
+</td></tr></table>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top" style="padding:0 6px 0 0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#171922" style="background:#171922;border-radius:10px;padding:12px 14px;">
+<div style="font-size:11px;letter-spacing:1px;color:#9ca3af;">DATA</div>
+<div style="font-size:15px;font-weight:700;color:#ffffff;padding-top:4px;">${escapeHtmlEmail(dateComma)}</div>
+</td></tr></table>
+</td>
+<td width="50%" valign="top" style="padding:0 0 0 6px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#171922" style="background:#171922;border-radius:10px;padding:12px 14px;">
+<div style="font-size:11px;letter-spacing:1px;color:#9ca3af;">IMAGENS ANEXADAS</div>
+<div style="font-size:15px;font-weight:700;color:#ffffff;padding-top:4px;">${Number(imagesCount) || 0}</div>
+</td></tr></table>
+</td>
+</tr>
+</table>
+</td></tr>
+
+<tr><td align="center" style="padding:24px 28px 30px;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+<td bgcolor="#EA580C" style="background:#EA580C;border-radius:10px;">
+<a href="https://satisfactory-plus.vercel.app" style="display:inline-block;padding:14px 28px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;">Abrir painel de reports</a>
+</td></tr></table>
+</td></tr>
+
+</table>
+</td></tr>
+
+<tr><td align="center" style="padding:20px 8px 0;font-size:12px;line-height:1.6;color:#6b7280;">
+Você recebeu este e-mail porque é o administrador do Satisfactory+.<br>
+<a href="https://satisfactory-plus.vercel.app" style="color:#9ca3af;text-decoration:underline;">satisfactory-plus.vercel.app</a>
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
 async function notifyCeoNewReport(rep) {
   const typeLabels = {
     bug: 'Bug',
@@ -158,20 +287,37 @@ async function notifyCeoNewReport(rep) {
     melhoria: 'Melhoria',
     duvida: 'Dúvida'
   };
-  const typeLabel = typeLabels[rep.type] || rep.type || 'Report';
-  const ratingLine = (rep.type === 'rating' && rep.rating) ? `Nota: ${'★'.repeat(rep.rating)}${'☆'.repeat(5 - rep.rating)} (${rep.rating}/5)` : '';
-  const subject = `[Satisfactory+] Novo report (${typeLabel})${rep.title ? `: ${String(rep.title).slice(0, 70)}` : ''}`;
+  const baseTypeLabel = typeLabels[rep.type] || rep.type || 'Report';
+  const typeLabel = (rep.type === 'rating' && rep.rating)
+    ? `${baseTypeLabel} (${'★'.repeat(rep.rating)}${'☆'.repeat(5 - rep.rating)} ${rep.rating}/5)`
+    : baseTypeLabel;
+  const author = rep.username || 'Usuário';
+  const title = String(rep.title || '').trim() || `Novo report (${baseTypeLabel})`;
+  const message = String(rep.message || '');
+  const imagesCount = Array.isArray(rep.images) ? rep.images.length : 0;
+  const dates = formatBrDateTime(rep.createdAt);
+
+  const subject = `[Satisfactory+] Novo report (${baseTypeLabel})${rep.title ? `: ${String(rep.title).slice(0, 70)}` : ''}`;
   const textBody = [
     `Novo report recebido no Satisfactory+`,
-    `Autor: ${rep.username || 'Usuário'}`,
+    `Autor: ${author}`,
     `Tipo: ${typeLabel}`,
-    ratingLine,
-    rep.title ? `Título: ${rep.title}` : '',
-    `Mensagem: ${rep.message || ''}`,
-    (rep.images && rep.images.length > 0) ? `Anexos: ${rep.images.length} imagem(ns)` : '',
-    `Data: ${rep.createdAt || new Date().toISOString()}`,
+    `Título: ${title}`,
+    `Mensagem: ${message}`,
+    `Imagens anexadas: ${imagesCount}`,
+    `Data: ${dates.full}`,
     `Acesse: https://satisfactory-plus.vercel.app`
-  ].filter(Boolean).join('\n');
+  ].join('\n');
+
+  const htmlBody = buildReportEmailHtml({
+    title,
+    author,
+    typeLabel,
+    message,
+    dateFull: dates.full,
+    dateComma: dates.comma,
+    imagesCount
+  });
 
   const tasks = [];
 
@@ -190,6 +336,7 @@ async function notifyCeoNewReport(rep) {
           from: fromEmail,
           to: [toEmail],
           subject,
+          html: htmlBody,
           text: textBody
         })
       }).catch(() => {})
