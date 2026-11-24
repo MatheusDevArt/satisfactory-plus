@@ -3068,7 +3068,7 @@ function renderCeoWorkspace() {
   const k = d.kpis || {};
   const period = d.period || CeoPanelState.period || '7d';
   const periodLabelMap = { '24h': '24h', '7d': '7d', '30d': '30d', all: 'Tudo' };
-  const modeLabelMap = { production: 'Produção', power: 'Energia', free: 'Oficina', map: 'Mapa', recipes: 'Receitas', library: 'Biblioteca', calculator: 'Calculadora', projects: 'Projetos', reports: 'Reports' };
+  const modeLabelMap = { production: 'Produção', power: 'Energia', free: 'Oficina', map: 'Mapa', recipes: 'Receitas', library: 'Biblioteca', calculator: 'Calculadora', projects: 'Projetos', reports: 'Reports', ceo: 'Painel CEO' };
   const modesNamed = (d.modes || []).filter((m) => m.code !== 'ceo').map((m) => ({ ...m, name: modeLabelMap[m.code] || m.code }));
 
   const hasChartData = (d.dailySeries || []).some((pt) => (Number(pt.visits) || 0) > 0);

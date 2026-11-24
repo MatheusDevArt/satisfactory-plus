@@ -196,7 +196,14 @@ module.exports = async function handler(req, res) {
       for (const [k, v] of Object.entries(onlineMap)) {
         if (v && Number(v.ts) >= cutoff) pruned[k] = v;
       }
-      pruned[sessionId] = {
+      const onlineKey = auth?.user?.usernameLower ? `u:${auth.user.usernameLower}` : `v:${visitorId}`;
+      // Remove entradas legadas duplicadas do mesmo usuário/visitante
+      for (const [k, v] of Object.entries(pruned)) {
+        if (!v) continue;
+        if (auth?.user?.username && v.username === auth.user.username) delete pruned[k];
+        else if (!auth?.user?.username && v.vid && v.vid === visitorId) delete pruned[k];
+      }
+      pruned[onlineKey] = {
         ts: now,
         vid: visitorId,
         country,
@@ -347,8 +354,16 @@ module.exports = async function handler(req, res) {
       // Online agora (leitura fresca, sem cache)
       const onlineMap = (await readJsonBlob('db/analytics/online.json', false)) || {};
       const cutoff = now - 5 * 60 * 1000;
-      const onlineList = Object.entries(onlineMap)
-        .filter(([, v]) => v && Number(v.ts) >= cutoff)
+      const dedupOnline = new Map();
+      for (const [id, v] of Object.entries(onlineMap)) {
+        if (!v || Number(v.ts) < cutoff) continue;
+        const dk = v.username ? `u:${String(v.username).toLowerCase()}` : (v.vid ? `v:${v.vid}` : id);
+        const prev = dedupOnline.get(dk);
+        if (!prev || Number(v.ts) > Number(prev[1].ts)) {
+          dedupOnline.set(dk, [id, v]);
+        }
+      }
+      const onlineList = Array.from(dedupOnline.values())
         .map(([id, v]) => ({
           id: id.slice(0, 8),
           username: v.username || null,
