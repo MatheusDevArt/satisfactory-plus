@@ -331,8 +331,9 @@ function applyTheme(theme, options = {}) {
   const btn = document.getElementById('btn-theme-toggle');
   if (btn) {
     btn.innerHTML = next === 'light'
-      ? '<svg class="ui-ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg><span>Escuro</span>'
-      : '<svg class="ui-ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg><span>Claro</span>';
+      ? '<svg class="ui-ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg><span class="nav-rail-util-lbl" data-i18n="nav.dark">Escuro</span>'
+      : '<svg class="ui-ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg><span class="nav-rail-util-lbl" data-i18n="nav.light">Claro</span>';
+    if (typeof applyI18nToDOM === 'function') applyI18nToDOM();
   }
   if (options.saveAccount && typeof saveAccountPreferences === 'function') {
     saveAccountPreferences({ theme: next });
@@ -410,12 +411,30 @@ function switchMode(mode) {
   renderAll(true);
 }
 
-function toggleSidebarCollapse() {
-  AppState.sidebarCollapsed = !AppState.sidebarCollapsed;
+function syncCollapseButtonState() {
+  const btn = document.getElementById('btn-collapse-sidebar');
+  if (!btn) return;
+  const navCollapsed = Boolean(typeof SettingsState === 'object' && SettingsState.prefs?.navRailCollapsed);
+  const sideCollapsed = Boolean(AppState.sidebarCollapsed);
+  if (sideCollapsed) {
+    btn.textContent = '▶';
+    btn.title = 'Expandir barra de navegação e painel';
+  } else if (navCollapsed) {
+    btn.textContent = '◀';
+    btn.title = 'Ocultar painel de controle';
+  } else {
+    btn.textContent = '◀';
+    btn.title = 'Minimizar barra de navegação';
+  }
+}
+
+function setSidebarCollapsed(collapsed) {
+  AppState.sidebarCollapsed = Boolean(collapsed);
   const sidebar = document.getElementById('left-sidebar');
   const expandBtn = document.getElementById('btn-expand-sidebar');
   if (sidebar) sidebar.classList.toggle('collapsed', AppState.sidebarCollapsed);
   if (expandBtn) expandBtn.classList.toggle('hidden', !AppState.sidebarCollapsed);
+  syncCollapseButtonState();
   setTimeout(() => {
     if (AppState.mode === 'map' && typeof syncLeafletMapCover === 'function') {
       syncLeafletMapCover(false);
@@ -423,6 +442,24 @@ function toggleSidebarCollapse() {
       fitCanvasToScreen();
     }
   }, 210);
+}
+
+function toggleSidebarCollapse() {
+  setSidebarCollapsed(!AppState.sidebarCollapsed);
+}
+
+function cycleNavSidebarCollapse() {
+  const navCollapsed = Boolean(typeof SettingsState === 'object' && SettingsState.prefs?.navRailCollapsed);
+  const sideCollapsed = Boolean(AppState.sidebarCollapsed);
+  if (!navCollapsed && !sideCollapsed) {
+    if (typeof saveUserPrefs === 'function') saveUserPrefs({ navRailCollapsed: true });
+    syncCollapseButtonState();
+  } else if (navCollapsed && !sideCollapsed) {
+    setSidebarCollapsed(true);
+  } else {
+    if (typeof saveUserPrefs === 'function') saveUserPrefs({ navRailCollapsed: false });
+    setSidebarCollapsed(false);
+  }
 }
 
 function toggleShowAllMachines() {

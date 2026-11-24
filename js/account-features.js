@@ -138,6 +138,7 @@ async function apiFetch(url, options = {}) {
   } catch {
     data = {};
   }
+  const wasLoggedIn = Boolean(AccountState.user);
   if (res.status === 401 && AccountState.user) {
     // Sessão expirou no servidor sem perder o estado atual do usuário na tela
     AccountState.user = null;
@@ -146,6 +147,22 @@ async function apiFetch(url, options = {}) {
     updateRoleBasedTabs();
     if (!silent401) {
       openAuthModal('login', 'Sua sessão expirou. Entre novamente para continuar — seu trabalho atual não foi perdido.');
+    }
+  }
+  if (!String(url).includes('/api/analytics') && typeof trackAnalyticsError === 'function') {
+    if (res.status === 401 && wasLoggedIn) {
+      trackAnalyticsError('auth_session_expired', 'Sessão expirada');
+    } else if (String(url).includes('/api/auth') && res.status === 401) {
+      trackAnalyticsError('auth_login_fail', data?.error || 'Falha de autenticação');
+    } else if (String(url).includes('/api/auth') && res.status >= 500) {
+      trackAnalyticsError('auth_server_error', data?.error || 'Erro interno no servidor de autenticação');
+    } else if (!res.ok && res.status !== 401) {
+      trackAnalyticsError('api_error', `HTTP ${res.status}: ${data?.error || 'Falha na requisição'}`);
+    }
+  }
+  if (String(url) === '/api/projects' && String(fetchOpts.method || '').toUpperCase() === 'POST' && res.ok) {
+    if (typeof trackAnalyticsEvent === 'function') {
+      trackAnalyticsEvent('project_saved', {});
     }
   }
   return { ok: res.ok, status: res.status, data };
@@ -2744,9 +2761,23 @@ const CeoPanelState = {
   error: '',
   data: null,
   section: 'overview', // overview | geo | users | usage
+  period: '7d', // 24h | 7d | 30d | all
   userSearch: '',
   userFilter: 'all' // all | active7d | with_projects
 };
+
+function getAnalyticsVisitorId() {
+  try {
+    let vid = localStorage.getItem('splus_vid');
+    if (!vid) {
+      vid = `v_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem('splus_vid', vid);
+    }
+    return vid;
+  } catch {
+    return `v_${Date.now().toString(36)}`;
+  }
+}
 
 function getAnalyticsSessionId() {
   try {
@@ -2761,17 +2792,48 @@ function getAnalyticsSessionId() {
   }
 }
 
-function sendSilentAnalyticsPing(eventType = 'heartbeat', modeOverride = null) {
+function buildAnalyticsBasePayload(eventType, extra = {}) {
+  const w = window.screen?.width || window.innerWidth || 1280;
+  const device = w <= 640 ? 'mobile' : (w <= 1024 ? 'tablet' : 'desktop');
+  let utmSource = '';
+  try { utmSource = new URLSearchParams(window.location.search).get('utm_source') || ''; } catch {}
+  return {
+    event: eventType,
+    vid: getAnalyticsVisitorId(),
+    sid: getAnalyticsSessionId(),
+    mode: extra.mode || (typeof AppState === 'object' ? AppState.mode : 'production') || 'production',
+    theme: (typeof AppState === 'object' && AppState.theme === 'light') ? 'light' : 'dark',
+    lang: (typeof SettingsState === 'object' && SettingsState.prefs?.lang) ? SettingsState.prefs.lang : 'pt-BR',
+    device,
+    screenW: w,
+    referrer: document.referrer || '',
+    utmSource,
+    ...extra
+  };
+}
+
+const _analyticsQueue = [];
+let _analyticsFlushTimer = null;
+let _lastPingSentTs = 0;
+
+function flushAnalyticsQueue(useBeacon = false) {
+  if (_analyticsFlushTimer) {
+    clearTimeout(_analyticsFlushTimer);
+    _analyticsFlushTimer = null;
+  }
+  if (_analyticsQueue.length === 0) return;
+  const batch = _analyticsQueue.splice(0, 30);
+  const bodyStr = JSON.stringify({ events: batch });
+  _lastPingSentTs = Date.now();
+
+  if (useBeacon && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+    try {
+      const blob = new Blob([bodyStr], { type: 'application/json' });
+      if (navigator.sendBeacon('/api/analytics?action=ping', blob)) return;
+    } catch {}
+  }
+
   try {
-    const isMobile = window.innerWidth <= 820;
-    const payload = {
-      event: eventType,
-      sid: getAnalyticsSessionId(),
-      mode: modeOverride || (typeof AppState === 'object' ? AppState.mode : 'production') || 'production',
-      theme: (typeof AppState === 'object' && AppState.theme === 'light') ? 'light' : 'dark',
-      lang: (typeof SettingsState === 'object' && SettingsState.prefs?.lang) ? SettingsState.prefs.lang : 'pt-BR',
-      device: isMobile ? 'mobile' : 'desktop'
-    };
     fetch('/api/analytics?action=ping', {
       method: 'POST',
       credentials: 'same-origin',
@@ -2779,31 +2841,86 @@ function sendSilentAnalyticsPing(eventType = 'heartbeat', modeOverride = null) {
         'Content-Type': 'application/json',
         'X-Requested-With': 'SatisfactoryPlus'
       },
-      body: JSON.stringify(payload),
+      body: bodyStr,
       keepalive: true
     }).catch(() => {});
   } catch {}
 }
 
+function trackAnalyticsEvent(eventType, extra = {}, immediate = false) {
+  try {
+    _analyticsQueue.push(buildAnalyticsBasePayload(eventType, extra));
+    if (immediate || _analyticsQueue.length >= 10) {
+      flushAnalyticsQueue(false);
+    } else if (!_analyticsFlushTimer) {
+      _analyticsFlushTimer = setTimeout(() => flushAnalyticsQueue(false), 2500);
+    }
+  } catch {}
+}
+
+function sendSilentAnalyticsPing(eventType = 'heartbeat', modeOverride = null) {
+  trackAnalyticsEvent(eventType, modeOverride ? { mode: modeOverride } : {}, true);
+}
+
 let _lastModePingTs = 0;
 function trackAnalyticsModeSwitch(mode) {
-  if (mode === 'ceo') return;
+  if (mode === 'ceo') {
+    sendSilentAnalyticsPing('heartbeat', 'ceo');
+    return;
+  }
   const now = Date.now();
-  if (now - _lastModePingTs < 1500) return;
+  if (now - _lastModePingTs < 1200) return;
   _lastModePingTs = now;
-  sendSilentAnalyticsPing('mode_switch', mode);
+  trackAnalyticsEvent('mode_switch', { mode }, false);
+}
+
+let _errTrackWindowStart = 0;
+let _errTrackCount = 0;
+function trackAnalyticsError(errType, msg) {
+  const now = Date.now();
+  if (now - _errTrackWindowStart > 60000) {
+    _errTrackWindowStart = now;
+    _errTrackCount = 0;
+  }
+  if (_errTrackCount >= 5) return;
+  _errTrackCount++;
+  const cleanMsg = String(msg || 'Erro')
+    .replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '[email]')
+    .replace(/(password|senha|token|secret|hash|answer|resposta)\s*[:=]\s*[^\s,;]+/gi, '$1=[redacted]')
+    .slice(0, 140);
+  trackAnalyticsEvent('error', { errType, msg: cleanMsg }, false);
 }
 
 (function initSilentTelemetry() {
   if (typeof window === 'undefined') return;
-  window.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => sendSilentAnalyticsPing('visit'), 1200);
+  const startTelemetry = () => {
+    setTimeout(() => sendSilentAnalyticsPing('visit'), 600);
     setInterval(() => {
       if (document.visibilityState === 'visible') {
         sendSilentAnalyticsPing('heartbeat');
       }
-    }, 120000);
-  });
+    }, 60000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        flushAnalyticsQueue(true);
+      } else if (Date.now() - _lastPingSentTs > 45000) {
+        sendSilentAnalyticsPing('heartbeat');
+      }
+    });
+    window.addEventListener('pagehide', () => flushAnalyticsQueue(true));
+    window.addEventListener('error', (ev) => {
+      trackAnalyticsError('frontend_error', ev?.message || 'Erro de script no navegador');
+    });
+    window.addEventListener('unhandledrejection', (ev) => {
+      const reason = ev?.reason?.message || String(ev?.reason || 'Promise rejeitada');
+      trackAnalyticsError('frontend_error', reason);
+    });
+  };
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', startTelemetry);
+  } else {
+    startTelemetry();
+  }
 })();
 
 function renderCeoMode(sidebarEl, emptyOverlay) {
@@ -2843,7 +2960,7 @@ function renderCeoMode(sidebarEl, emptyOverlay) {
       title: 'Relatórios & Atualização',
       bodyHtml: `
         <div style="display:flex;flex-direction:column;gap:8px;">
-          <button type="button" class="ds-btn-primary" style="width:100%;" onclick="loadCeoDashboard()">Atualizar dados agora</button>
+          <button type="button" class="ds-btn-primary" style="width:100%;" onclick="loadCeoDashboard()">${CeoPanelState.loading ? 'Atualizando...' : 'Atualizar dados agora'}</button>
           <button type="button" class="ds-btn-secondary" style="width:100%;" onclick="exportCeoReportCsv()">Exportar Usuários (.CSV)</button>
           <button type="button" class="ds-btn-secondary" style="width:100%;" onclick="exportCeoReportJson()">Exportar Relatório (.JSON)</button>
         </div>
@@ -2858,6 +2975,12 @@ function renderCeoMode(sidebarEl, emptyOverlay) {
   }
 }
 
+function setCeoPeriod(period) {
+  if (!['24h', '7d', '30d', 'all'].includes(period)) return;
+  CeoPanelState.period = period;
+  loadCeoDashboard();
+}
+
 async function loadCeoDashboard() {
   if (!AccountState.user || AccountState.user.role !== 'admin') return;
   CeoPanelState.loading = true;
@@ -2865,7 +2988,7 @@ async function loadCeoDashboard() {
   renderCeoWorkspace();
 
   try {
-    const res = await apiFetch('/api/analytics?action=dashboard', { method: 'GET' });
+    const res = await apiFetch(`/api/analytics?action=dashboard&period=${encodeURIComponent(CeoPanelState.period || '7d')}`, { method: 'GET' });
     if (!res.ok) {
       CeoPanelState.error = res.data?.error || 'Não foi possível carregar os dados do painel CEO.';
     } else {
@@ -2881,7 +3004,7 @@ async function loadCeoDashboard() {
 
 function renderCeoRankList(items, emptyMsg, barColor = '#EA580C') {
   if (!Array.isArray(items) || items.length === 0) {
-    return `<div class="ceo-empty-note">${escText(emptyMsg)}</div>`;
+    return `<div class="ceo-empty-compact">${escText(emptyMsg)}</div>`;
   }
   const total = items.reduce((a, b) => a + (Number(b.count) || 0), 0) || 1;
   const max = Math.max(...items.map((x) => Number(x.count) || 0), 1);
@@ -2902,6 +3025,24 @@ function renderCeoRankList(items, emptyMsg, barColor = '#EA580C') {
   </div>`;
 }
 
+function renderCeoDeltaBadge(delta, period) {
+  if (period === 'all' || delta === null || delta === undefined) return '';
+  const n = Number(delta) || 0;
+  const compLabel = period === '24h' ? 'vs. ontem' : (period === '7d' ? 'vs. 7d ant.' : 'vs. 30d ant.');
+  if (n > 0) return `<span class="ceo-delta is-up">↑ ${n} ${compLabel}</span>`;
+  if (n < 0) return `<span class="ceo-delta is-down">↓ ${Math.abs(n)} ${compLabel}</span>`;
+  return `<span class="ceo-delta is-flat">— igual ${compLabel}</span>`;
+}
+
+function formatDurationMinutes(mins) {
+  if (mins === null || mins === undefined) return '—';
+  const m = Number(mins);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem > 0 ? `${h}h ${rem}m` : `${h}h`;
+}
+
 function renderCeoWorkspace() {
   const view = document.getElementById('ceo-workspace-view');
   if (!view) return;
@@ -2916,33 +3057,47 @@ function renderCeoWorkspace() {
   }
 
   const d = CeoPanelState.data || {
-    kpis: { onlineNow: 0, totalUsers: 0, newUsers24h: 0, newUsers7d: 0, newUsers30d: 0, activeUsers7d: 0, engagementRate7d: 0, visitsToday: 0, visits7d: 0, visits30d: 0, visitsTotal: 0, uniqueToday: 0, unique7d: 0, unique30d: 0, totalProjects: 0, sharedProjects: 0, avgProjectsPerUser: 0, openReports: 0, totalReports: 0 },
-    dailySeries: [], countries: [], brStates: [], modes: [], devices: { desktop: 0, mobile: 0 }, themes: { dark: 0, light: 0 }, langs: [], onlineList: [], users: []
+    period: CeoPanelState.period || '7d',
+    kpis: {},
+    dailySeries: [], countries: [], brStates: [], modes: [],
+    devices: { desktop: 0, mobile: 0, tablet: 0 }, browsers: [], oses: [], screens: [], sources: [],
+    themes: { dark: 0, light: 0 }, langs: [], calcUses: [], itemsGenerated: [],
+    funnel: { visited: 0, registered: 0, generatedLine: 0, savedProject: 0 },
+    errorSummary: {}, recentErrors: [], onlineList: [], users: []
   };
   const k = d.kpis || {};
+  const period = d.period || CeoPanelState.period || '7d';
+  const periodLabelMap = { '24h': '24h', '7d': '7d', '30d': '30d', all: 'Tudo' };
   const modeLabelMap = { production: 'Produção', power: 'Energia', free: 'Oficina', map: 'Mapa', recipes: 'Receitas', library: 'Biblioteca', calculator: 'Calculadora', projects: 'Projetos', reports: 'Reports' };
-  const modesNamed = (d.modes || []).map((m) => ({ ...m, name: modeLabelMap[m.code] || m.code }));
+  const modesNamed = (d.modes || []).filter((m) => m.code !== 'ceo').map((m) => ({ ...m, name: modeLabelMap[m.code] || m.code }));
 
+  const hasChartData = (d.dailySeries || []).some((pt) => (Number(pt.visits) || 0) > 0);
   const maxDailyVisits = Math.max(1, ...(d.dailySeries || []).map((x) => Number(x.visits) || 0));
-  const chartHtml = `
-    <div class="ceo-chart-wrap">
-      ${(d.dailySeries || []).map((pt) => {
-        const h = Math.max(4, Math.round(((Number(pt.visits) || 0) / maxDailyVisits) * 120));
-        return `
-          <div class="ceo-chart-col" title="${pt.date}: ${pt.visits} visitas · ${pt.unique} únicos · ${pt.newUsers} novos cadastros">
-            <span class="ceo-chart-num">${pt.visits || ''}</span>
-            <div class="ceo-chart-bar-box"><i style="height:${h}px;"></i></div>
-            <span class="ceo-chart-lbl">${escText(pt.label || (pt.date ? `${pt.date.slice(8, 10)}/${pt.date.slice(5, 7)}` : ''))}</span>
-          </div>
-        `;
-      }).join('')}
-    </div>
-  `;
+  const chartHtml = hasChartData
+    ? `
+      <div class="ceo-chart-wrap">
+        ${(d.dailySeries || []).map((pt) => {
+          const h = Math.max(4, Math.round(((Number(pt.visits) || 0) / maxDailyVisits) * 120));
+          return `
+            <div class="ceo-chart-col" title="${pt.date}: ${pt.visits} visitas · ${pt.unique} únicos · ${pt.newUsers} novos cadastros">
+              <span class="ceo-chart-num">${pt.visits || ''}</span>
+              <div class="ceo-chart-bar-box"><i style="height:${h}px;"></i></div>
+              <span class="ceo-chart-lbl">${escText(pt.label || (pt.date ? `${pt.date.slice(8, 10)}/${pt.date.slice(5, 7)}` : ''))}</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `
+    : '<div class="ceo-empty-compact">Nenhuma visita registrada nos últimos 14 dias.</div>';
 
   const sec = CeoPanelState.section || 'overview';
   let bodyHtml = '';
 
   if (sec === 'overview') {
+    const visitsMain = period === 'all' ? (k.visitsTotal || 0) : (k.visitsPeriod || 0);
+    const uniqueMain = period === 'all' ? (k.unique30d || 0) : (k.uniquePeriod || 0);
+    const usersMain = period === 'all' ? (k.totalUsers || 0) : (k.newUsersPeriod || 0);
+
     bodyHtml = `
       <div class="ceo-kpi-grid">
         <div class="ceo-kpi-card is-online">
@@ -2953,17 +3108,17 @@ function renderCeoWorkspace() {
         <div class="ceo-kpi-card">
           <span class="ceo-kpi-lbl">Usuários cadastrados</span>
           <strong class="ceo-kpi-val">${k.totalUsers || 0}</strong>
-          <small>+${k.newUsers24h || 0} (24h) · +${k.newUsers7d || 0} (7d) · +${k.newUsers30d || 0} (30d)</small>
+          <small>+${usersMain} (${periodLabelMap[period]}) · ${renderCeoDeltaBadge(k.newUsersDelta, period) || `+${k.newUsers7d || 0} (7d)`}</small>
         </div>
         <div class="ceo-kpi-card">
-          <span class="ceo-kpi-lbl">Visitas no site</span>
-          <strong class="ceo-kpi-val">${k.visitsTotal || 0}</strong>
-          <small>Hoje: ${k.visitsToday || 0} · 7d: ${k.visits7d || 0} · 30d: ${k.visits30d || 0}</small>
+          <span class="ceo-kpi-lbl">Visitas (${periodLabelMap[period]})</span>
+          <strong class="ceo-kpi-val">${visitsMain}</strong>
+          <small>Hoje: ${k.visitsToday || 0} · 7d: ${k.visits7d || 0} · ${renderCeoDeltaBadge(k.visitsDelta, period) || `Total: ${k.visitsTotal || 0}`}</small>
         </div>
         <div class="ceo-kpi-card">
-          <span class="ceo-kpi-lbl">Visitantes únicos (7d)</span>
-          <strong class="ceo-kpi-val">${k.unique7d || 0}</strong>
-          <small>Hoje: ${k.uniqueToday || 0} · 30d: ${k.unique30d || 0}</small>
+          <span class="ceo-kpi-lbl">Visitantes únicos (${periodLabelMap[period]})</span>
+          <strong class="ceo-kpi-val">${uniqueMain}</strong>
+          <small>Hoje: ${k.uniqueToday || 0} · 7d: ${k.unique7d || 0} · ${renderCeoDeltaBadge(k.uniqueDelta, period) || `30d: ${k.unique30d || 0}`}</small>
         </div>
         <div class="ceo-kpi-card">
           <span class="ceo-kpi-lbl">Projetos na nuvem</span>
@@ -2973,7 +3128,7 @@ function renderCeoWorkspace() {
         <div class="ceo-kpi-card">
           <span class="ceo-kpi-lbl">Engajamento (7d)</span>
           <strong class="ceo-kpi-val">${k.engagementRate7d || 0}%</strong>
-          <small>${k.activeUsers7d || 0} ativos 7d · ${k.openReports || 0} reports abertos</small>
+          <small>${k.activeUsers7d || 0} de ${k.totalUsers || 0} usuários ativos</small>
         </div>
       </div>
 
@@ -2985,7 +3140,7 @@ function renderCeoWorkspace() {
         <div class="ceo-card">
           <div class="ceo-card-head"><h4>Online agora</h4><span>${(d.onlineList || []).length} ativo(s)</span></div>
           ${(d.onlineList || []).length === 0
-            ? '<div class="ceo-empty-note">Nenhuma sessão ativa registrada nos últimos 5 minutos.</div>'
+            ? '<div class="ceo-empty-compact">Nenhuma sessão ativa nos últimos 5 minutos.</div>'
             : `<div class="ceo-online-list">
                 ${(d.onlineList || []).slice(0, 12).map((o) => `
                   <div class="ceo-online-row">
@@ -2998,6 +3153,25 @@ function renderCeoWorkspace() {
                   </div>
                 `).join('')}
               </div>`}
+        </div>
+      </div>
+
+      <div class="ceo-grid-2">
+        <div class="ceo-card">
+          <div class="ceo-card-head"><h4>Origem do tráfego</h4><span>${periodLabelMap[period]}</span></div>
+          ${renderCeoRankList(d.sources, 'Sem dados de origem de tráfego neste período.', '#EA580C')}
+        </div>
+        <div class="ceo-card">
+          <div class="ceo-card-head">
+            <h4>Reports</h4>
+            <button type="button" class="ds-btn-secondary" style="padding:4px 10px;font-size:11px;" onclick="switchMode('reports')">Abrir Reports</button>
+          </div>
+          <div class="ceo-reports-stats">
+            <div class="ceo-mini-stat"><span>Pendentes</span><strong>${k.openReports || 0}</strong></div>
+            <div class="ceo-mini-stat"><span>Resolvidos</span><strong>${k.resolvedReports || 0}</strong></div>
+            <div class="ceo-mini-stat"><span>Tempo médio de resposta</span><strong>${formatDurationMinutes(k.avgReportResponseMinutes)}</strong></div>
+          </div>
+          ${(k.openReports || 0) === 0 ? '<div class="ceo-empty-compact">Não há reportes a serem resolvidos.</div>' : ''}
         </div>
       </div>
 
@@ -3028,32 +3202,137 @@ function renderCeoWorkspace() {
   } else if (sec === 'usage') {
     const devArr = [
       { code: 'desktop', name: 'Desktop / Notebook', count: Number(d.devices?.desktop) || 0 },
-      { code: 'mobile', name: 'Celular / Tablet', count: Number(d.devices?.mobile) || 0 }
-    ];
+      { code: 'mobile', name: 'Celular', count: Number(d.devices?.mobile) || 0 },
+      { code: 'tablet', name: 'Tablet', count: Number(d.devices?.tablet) || 0 }
+    ].filter((x) => x.count > 0);
     const themeArr = [
       { code: 'dark', name: 'Modo Escuro (#101117)', count: Number(d.themes?.dark) || 0 },
       { code: 'light', name: 'Modo Claro', count: Number(d.themes?.light) || 0 }
+    ].filter((x) => x.count > 0);
+    const calcLabelMap = {
+      numeric: 'Numérica', resources: 'Recursos', production: 'Produção',
+      energy: 'Energia', logistics: 'Logística', sink: 'AWESOME Sink', elevator: 'Elevador Espacial'
+    };
+    const calcNamed = (d.calcUses || []).map((c) => ({ ...c, name: calcLabelMap[c.code] || c.code }));
+
+    const f = d.funnel || { visited: 0, registered: 0, generatedLine: 0, savedProject: 0 };
+    const funnelSteps = [
+      { label: 'Visitou', count: Number(f.visited) || 0, prev: null },
+      { label: 'Criou conta', count: Number(f.registered) || 0, prev: Number(f.visited) || 0 },
+      { label: 'Gerou uma linha', count: Number(f.generatedLine) || 0, prev: Number(f.registered) || 0 },
+      { label: 'Salvou um projeto', count: Number(f.savedProject) || 0, prev: Number(f.generatedLine) || 0 }
     ];
+    const funnelMax = Math.max(1, ...funnelSteps.map((s) => s.count));
+    const hasFunnelData = funnelSteps.some((s) => s.count > 0);
+
+    const errSum = d.errorSummary || {};
+    const errCounters = [
+      { label: 'Login que falhou', count: Number(errSum.auth_login_fail) || 0 },
+      { label: 'Sessão expirada', count: Number(errSum.auth_session_expired) || 0 },
+      { label: 'Erro servidor auth', count: Number(errSum.auth_server_error) || 0 },
+      { label: 'Erro do front-end', count: Number(errSum.frontend_error) || 0 },
+      { label: 'Erro de API', count: Number(errSum.api_error) || 0 }
+    ];
+    const errTypeLabel = {
+      auth_login_fail: 'Login falhou',
+      auth_session_expired: 'Sessão expirada',
+      auth_server_error: 'Servidor Auth',
+      frontend_error: 'Front-end',
+      api_error: 'API'
+    };
+
     bodyHtml = `
       <div class="ceo-grid-2">
         <div class="ceo-card">
-          <div class="ceo-card-head"><h4>Abas / Ferramentas mais usadas</h4><span>Interações</span></div>
+          <div class="ceo-card-head"><h4>Abas mais abertas</h4><span>${periodLabelMap[period]}</span></div>
           ${renderCeoRankList(modesNamed, 'Sem dados de uso por aba ainda.', '#4C9AFF')}
         </div>
         <div class="ceo-card">
-          <div class="ceo-card-head"><h4>Idiomas</h4><span>Preferência</span></div>
-          ${renderCeoRankList(d.langs, 'Sem dados de idioma ainda.', '#B07CFF')}
+          <div class="ceo-card-head"><h4>Produtos e receitas mais gerados</h4><span>Top 10</span></div>
+          ${renderCeoRankList(d.itemsGenerated, 'Nenhuma linha gerada registrada neste período.', '#EA580C')}
         </div>
       </div>
+
       <div class="ceo-grid-2">
         <div class="ceo-card">
-          <div class="ceo-card-head"><h4>Dispositivos</h4><span>Desktop vs Mobile</span></div>
+          <div class="ceo-card-head"><h4>Uso de funções</h4><span>${periodLabelMap[period]}</span></div>
+          <div class="ceo-reports-stats">
+            <div class="ceo-mini-stat"><span>Linhas geradas</span><strong>${k.linesGeneratedPeriod || 0}</strong></div>
+            <div class="ceo-mini-stat"><span>Projetos salvos</span><strong>${k.projectsSavedPeriod || 0}</strong></div>
+            <div class="ceo-mini-stat"><span>Usos da Calculadora</span><strong>${k.calcUsesTotalPeriod || 0}</strong></div>
+          </div>
+          ${renderCeoRankList(calcNamed, 'Sem usos da Calculadora registrados neste período.', '#2DD4BF')}
+        </div>
+        <div class="ceo-card">
+          <div class="ceo-card-head"><h4>Funil de conversão</h4><span>${periodLabelMap[period]}</span></div>
+          ${!hasFunnelData
+            ? '<div class="ceo-empty-compact">Sem eventos suficientes para montar o funil.</div>'
+            : `<div class="ceo-rank-list">
+                ${funnelSteps.map((st, idx) => {
+                  const pct = idx === 0 ? 100 : (st.prev > 0 ? Math.round((st.count / st.prev) * 100) : 0);
+                  const barW = st.count > 0 ? Math.max(6, Math.round((st.count / funnelMax) * 100)) : 0;
+                  return `
+                    <div class="ceo-rank-row">
+                      <div class="ceo-rank-top">
+                        <span class="ceo-rank-name">${escText(st.label)}</span>
+                        <span class="ceo-rank-val"><strong>${st.count}</strong> ${idx > 0 ? `<small>(${pct}% da etapa ant.)</small>` : ''}</span>
+                      </div>
+                      <div class="ceo-rank-bar"><i style="width:${barW}%;background:#EA580C;"></i></div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>`}
+        </div>
+      </div>
+
+      <div class="ceo-grid-2">
+        <div class="ceo-card">
+          <div class="ceo-card-head"><h4>Dispositivos</h4><span>Desktop / Celular / Tablet</span></div>
           ${renderCeoRankList(devArr, 'Sem dados de dispositivo.', '#2DD4BF')}
+          <div class="ceo-card-head" style="margin-top:6px;"><h4>Resolução de tela</h4><span>Faixas</span></div>
+          ${renderCeoRankList(d.screens, 'Sem dados de resolução.', '#4C9AFF')}
+        </div>
+        <div class="ceo-card">
+          <div class="ceo-card-head"><h4>Navegadores</h4><span>User Agent</span></div>
+          ${renderCeoRankList(d.browsers, 'Sem dados de navegador.', '#B07CFF')}
+          <div class="ceo-card-head" style="margin-top:6px;"><h4>Sistemas operacionais</h4><span>SO</span></div>
+          ${renderCeoRankList(d.oses, 'Sem dados de sistema operacional.', '#EA580C')}
+        </div>
+      </div>
+
+      <div class="ceo-grid-2">
+        <div class="ceo-card">
+          <div class="ceo-card-head"><h4>Idiomas</h4><span>Preferência</span></div>
+          ${renderCeoRankList(d.langs, 'Sem dados de idioma ainda.', '#B07CFF')}
         </div>
         <div class="ceo-card">
           <div class="ceo-card-head"><h4>Temas</h4><span>Escuro vs Claro</span></div>
           ${renderCeoRankList(themeArr, 'Sem dados de tema.', '#EA580C')}
         </div>
+      </div>
+
+      <div class="ceo-card">
+        <div class="ceo-card-head"><h4>Erros e falhas</h4><span>${periodLabelMap[period]} · sem dados sensíveis</span></div>
+        <div class="ceo-err-counters">
+          ${errCounters.map((ec) => `<div class="ceo-mini-stat"><span>${escText(ec.label)}</span><strong>${ec.count}</strong></div>`).join('')}
+        </div>
+        ${(d.recentErrors || []).length === 0
+          ? '<div class="ceo-empty-compact">Nenhum erro registrado.</div>'
+          : `<div class="ceo-table-wrap">
+              <table class="ceo-users-table">
+                <thead><tr><th>Data/Hora</th><th>Tipo</th><th>Aba</th><th>Mensagem</th></tr></thead>
+                <tbody>
+                  ${(d.recentErrors || []).slice(0, 20).map((er) => `
+                    <tr>
+                      <td><small>${er.ts ? fmtDateBR(er.ts) : '—'}</small></td>
+                      <td><span class="ceo-err-badge">${escText(errTypeLabel[er.type] || er.type)}</span></td>
+                      <td>${escText(modeLabelMap[er.mode] || er.mode || '—')}</td>
+                      <td><small>${escText(er.msg || '')}</small></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>`}
       </div>
     `;
   } else {
@@ -3134,7 +3413,11 @@ function renderCeoWorkspace() {
           </div>
           <p>Acesso privado exclusivo do fundador · Atualizado: ${d.generatedAt ? fmtDateBR(d.generatedAt) : 'agora'}</p>
         </div>
-        <button type="button" class="ds-btn-primary" onclick="loadCeoDashboard()">${CeoPanelState.loading ? 'Atualizando...' : 'Atualizar'}</button>
+        <div class="ceo-period-pills" role="group" aria-label="Filtro de período">
+          ${['24h', '7d', '30d', 'all'].map((p) => `
+            <button type="button" class="ceo-period-btn ${period === p ? 'active' : ''}" onclick="setCeoPeriod('${p}')">${periodLabelMap[p]}</button>
+          `).join('')}
+        </div>
       </div>
       ${CeoPanelState.error ? `<div class="form-alert error">${escText(CeoPanelState.error)}</div>` : ''}
       ${bodyHtml}

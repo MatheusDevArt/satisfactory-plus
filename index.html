@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-  <link rel="stylesheet" href="./styles.css?v=48" />
+  <link rel="stylesheet" href="./styles.css?v=49" />
   <script>
     (function () {
       try {
@@ -47,57 +47,13 @@
       <p class="intro-subtitle home-subtitle">Tudo que você precisa para montar suas fábricas</p>
       <div class="splash-credit">Criado por Matheus Pinheiro</div>
 
-      <button type="button" class="home-scroll-cue home-scroll-icon-only" onclick="dismissIntroSplash()" aria-label="Entrar">
-        <span class="home-scroll-mouse" aria-hidden="true">
-          <span class="home-scroll-wheel"></span>
-        </span>
-        <svg class="home-scroll-chevron" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-      </button>
-    </div>
-  </section>
-
-  <div id="app-layout-root" class="app-layout-lr">
-    <!-- BARRA LATERAL DE NAVEGAÇÃO VERTICAL À ESQUERDA (ABAS VERTICAIS + ARTE INDUSTRIAL) -->
-    <nav id="main-nav-rail" class="main-nav-rail" aria-label="Navegação Principal">
-      <div class="nav-rail-top">
-        <button type="button" class="brand-home-trigger nav-rail-brand" onclick="openHomeScreen()" title="Voltar para a tela Home">
-          <img src="./assets/logo-splus.jpg" alt="Satisfactory+" class="brand-logo-img" />
-          <div class="brand-text">
-            <h1>Satisfactory+</h1>
-            <span id="app-version-label" class="brand-subtitle">v2.6</span>
-          </div>
-        </button>
-        <div class="nav-rail-quick-actions">
-          <button
-            type="button"
-            id="btn-theme-toggle"
-            class="btn-header-icon nav-rail-util-btn"
-            onclick="toggleTheme()"
-            title="Alternar entre Modo Claro e Modo Escuro"
-            aria-label="Alternar entre Modo Claro e Modo Escuro"
-          >
-            <svg class="ui-ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-            <span class="nav-rail-util-lbl" data-i18n="nav.dark">Escuro</span>
-          </button>
-          <button
-            type="button"
-            id="btn-collapse-nav-rail"
-            class="btn-header-icon nav-rail-util-btn"
-            onclick="toggleNavRailCollapse()"
-            title="Minimizar / Expandir barra de navegação"
-            aria-label="Minimizar ou expandir barra de navegação"
-          >
-            ⇤
-          </button>
-          <button
+      <button
             type="button"
             id="btn-collapse-sidebar"
             class="btn-header-icon nav-rail-util-btn"
-            onclick="toggleSidebarCollapse()"
-            title="Ocultar / Mostrar painel de controle da ferramenta"
-            aria-label="Ocultar ou mostrar painel de controle da ferramenta"
+            onclick="cycleNavSidebarCollapse()"
+            title="Minimizar barra de navegação"
+            aria-label="Alternar barra de navegação e painel de controle"
           >
             ◀
           </button>
@@ -506,11 +462,11 @@
   <script src="./js/icons.js?v=33"></script>
   <script src="./js/solver.js?v=42"></script>
   <script src="./js/design-system.js?v=41"></script>
-  <script src="./js/app.js?v=48"></script>
+  <script src="./js/app.js?v=49"></script>
   <script src="./js/factory-enhancements.js?v=41"></script>
   <script src="./js/tutorial.js?v=48"></script>
   <script src="./js/patch-notes.js?v=41"></script>
-  <script src="./js/account-features.js?v=48"></script>
-  <script src="./js/settings-i18n.js?v=44"></script>
+  <script src="./js/account-features.js?v=49"></script>
+  <script src="./js/settings-i18n.js?v=45"></script>
 </body>
 </html>

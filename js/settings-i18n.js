@@ -235,6 +235,7 @@ function applyAllUserPrefsToRuntime() {
   const rail = document.getElementById('main-nav-rail');
   if (rail) {
     rail.classList.toggle('is-collapsed', Boolean(p.navRailCollapsed));
+    if (typeof syncCollapseButtonState === 'function') syncCollapseButtonState();
   }
 
   // 2) Reduzir animações
@@ -530,6 +531,16 @@ function renderSettingsModalBody() {
         ${renderToggleRow('reduceMotion', 'Reduzir animações', 'Desativa transições e animação das esteiras', Boolean(p.reduceMotion))}
         ${renderToggleRow('energyAutoUnit', 'Formatar energia em MW e GW', 'Converte automaticamente valores grandes de energia', Boolean(p.energyAutoUnit))}
         ${renderToggleRow('autoPatchNotes', 'Mostrar patch notes ao atualizar', 'Exibe as novidades quando uma nova versão for publicada', Boolean(p.autoPatchNotes))}
+      </div>
+      <div class="sp-set-sec">
+        <div class="sp-set-sl">${(SettingsState.prefs?.lang === 'en-US') ? 'Privacy' : (SettingsState.prefs?.lang === 'es-ES' ? 'Privacidad' : 'Privacidade')}</div>
+        <div class="sp-set-hint">
+          ${(SettingsState.prefs?.lang === 'en-US')
+            ? 'This site collects anonymous usage data (visits, tabs used, country/state, device, and errors) to improve the tool, without identifying you.'
+            : (SettingsState.prefs?.lang === 'es-ES'
+              ? 'Este sitio recopila datos anónimos de uso (visitas, pestañas usadas, país/estado, dispositivo y errores) para mejorar la herramienta, sin identificarte.'
+              : 'Este site coleta dados anônimos de uso (visitas, abas usadas, país/estado, dispositivo e erros) para melhorar a ferramenta, sem identificar você.')}
+        </div>
       </div>
     `;
   } else if (activeTab === 'conta') {

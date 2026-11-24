@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { cleanupExpiredReports, applySecurityHeaders, sendJson } = require('../_lib/store');
+const { cleanupExpiredReports, cleanupExpiredAnalytics, applySecurityHeaders, sendJson } = require('../_lib/store');
 
 function isValidCronAuth(authHeader, cronSecret) {
   const expected = Buffer.from(`Bearer ${cronSecret}`, 'utf8');
@@ -24,10 +24,12 @@ module.exports = async function handler(req, res) {
 
   try {
     const result = await cleanupExpiredReports();
+    const analyticsResult = await cleanupExpiredAnalytics();
     return sendJson(res, 200, {
       ok: true,
       ranAt: new Date().toISOString(),
-      ...result
+      ...result,
+      ...analyticsResult
     });
   } catch (err) {
     console.error('[api/cron/cleanup] error:', err.message);

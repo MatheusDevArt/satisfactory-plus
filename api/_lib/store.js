@@ -944,6 +944,53 @@ async function cleanupExpiredReports() {
   return { deletedCount, deletedImages };
 }
 
+// ---------- Cleanup Raw Analytics Events (> 90 days, keep aggregates) ----------
+async function cleanupExpiredAnalytics() {
+  const now = Date.now();
+  const retentionMs = 90 * 24 * 60 * 60 * 1000;
+  const cutoffTs = now - retentionMs;
+  let prunedDays = 0;
+  let prunedErrors = 0;
+
+  try {
+    const dayBlobs = await listJsonBlobs('db/analytics/days/');
+    for (const b of dayBlobs) {
+      if (!b.pathname.endsWith('.json')) continue;
+      const d = await fetchJsonFromBlobUrl(b.url).catch(() => null);
+      if (!d || !d.date) continue;
+      const dTs = new Date(`${d.date}T12:00:00Z`).getTime();
+      if (dTs && dTs < cutoffTs) {
+        const hadRaw = (Array.isArray(d.uniqueIds) && d.uniqueIds.length > 0) ||
+          (Array.isArray(d.funnel?.lineIds) && d.funnel.lineIds.length > 0) ||
+          (Array.isArray(d.funnel?.projectIds) && d.funnel.projectIds.length > 0);
+        if (hadRaw) {
+          d.uniqueCount = Array.isArray(d.uniqueIds) ? d.uniqueIds.length : (d.uniqueCount || 0);
+          d.uniqueIds = [];
+          if (d.funnel) {
+            d.funnel = { lineIds: [], projectIds: [], lineCount: (d.funnel.lineIds || []).length, projectCount: (d.funnel.projectIds || []).length };
+          }
+          await writeJsonBlob(b.pathname, d).catch(() => {});
+          prunedDays++;
+        }
+      }
+    }
+  } catch {}
+
+  try {
+    const errPath = 'db/analytics/errors.json';
+    const errs = await readJsonBlob(errPath, false);
+    if (Array.isArray(errs)) {
+      const kept = errs.filter((e) => e && new Date(e.ts).getTime() >= cutoffTs);
+      if (kept.length !== errs.length) {
+        prunedErrors = errs.length - kept.length;
+        await writeJsonBlob(errPath, kept).catch(() => {});
+      }
+    }
+  } catch {}
+
+  return { prunedDays, prunedErrors };
+}
+
 module.exports = {
   SESSION_COOKIE_NAME,
   SESSION_TTL_MS,
@@ -993,5 +1040,6 @@ module.exports = {
   clearRateLimit,
   detectImageType,
   cleanupExpiredReports,
+  cleanupExpiredAnalytics,
   StorageUnavailableError
 };

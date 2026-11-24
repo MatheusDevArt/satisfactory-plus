@@ -37,8 +37,13 @@ const ALLOWED_MODES = new Set([
   'production', 'power', 'free', 'map', 'recipes', 'library', 'calculator', 'projects', 'reports', 'ceo'
 ]);
 
-function getTodayKey(dateObj = new Date()) {
-  return dateObj.toISOString().slice(0, 10);
+const ALLOWED_ERROR_TYPES = new Set([
+  'auth_login_fail', 'auth_session_expired', 'auth_server_error', 'frontend_error', 'api_error'
+]);
+
+function getUtcDateKey(offsetDays = 0, baseMs = Date.now()) {
+  const dt = new Date(baseMs - offsetDays * 24 * 60 * 60 * 1000);
+  return dt.toISOString().slice(0, 10);
 }
 
 function getGeoFromReq(req) {
@@ -54,6 +59,92 @@ function hashVisitor(ip, ua, salt) {
   return crypto.createHash('sha256').update(`${ip}|${ua}|${salt}`).digest('hex').slice(0, 16);
 }
 
+function parseUserAgentInfo(uaRaw, clientDevice) {
+  const ua = String(uaRaw || '');
+  const isTablet = /ipad|tablet|(android(?!.*mobile))/i.test(ua);
+  const isMobile = /mobile|iphone|ipod|android.*mobile|windows phone/i.test(ua);
+  let device = 'desktop';
+  if (clientDevice === 'tablet' || isTablet) device = 'tablet';
+  else if (clientDevice === 'mobile' || isMobile) device = 'mobile';
+
+  let browser = 'Outros';
+  if (/edg\//i.test(ua)) browser = 'Edge';
+  else if (/opr\/|opera/i.test(ua)) browser = 'Opera';
+  else if (/chrome|crios/i.test(ua) && !/edg\//i.test(ua)) browser = 'Chrome';
+  else if (/firefox|fxios/i.test(ua)) browser = 'Firefox';
+  else if (/safari/i.test(ua) && !/chrome|crios/i.test(ua)) browser = 'Safari';
+
+  let os = 'Outros';
+  if (/windows/i.test(ua)) os = 'Windows';
+  else if (/iphone|ipad|ipod/i.test(ua)) os = 'iOS';
+  else if (/android/i.test(ua)) os = 'Android';
+  else if (/mac os x|macintosh/i.test(ua)) os = 'macOS';
+  else if (/linux/i.test(ua)) os = 'Linux';
+
+  return { device, browser, os };
+}
+
+function normalizeScreenBucket(w) {
+  const width = Number(w) || 0;
+  if (width <= 0) return '';
+  if (width < 768) return '< 768px';
+  if (width < 1280) return '768–1279px';
+  if (width < 1440) return '1280–1439px';
+  if (width < 1920) return '1440–1919px';
+  return '1920px+';
+}
+
+function classifyTrafficSource(referrerRaw, utmRaw) {
+  const utm = String(utmRaw || '').trim().toLowerCase();
+  const ref = String(referrerRaw || '').trim().toLowerCase();
+  const hay = `${utm} ${ref}`;
+  if (!utm && !ref) return 'Acesso direto';
+  if (hay.includes('instagram') || hay.includes('ig.me') || utm === 'ig') return 'Instagram';
+  if (hay.includes('discord')) return 'Discord';
+  if (hay.includes('youtube') || hay.includes('youtu.be')) return 'YouTube';
+  if (hay.includes('twitch')) return 'Twitch';
+  if (hay.includes('google')) return 'Google';
+  return 'Outros';
+}
+
+function sanitizeErrorMessage(msg) {
+  return String(msg || 'Erro não especificado')
+    .replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '[email]')
+    .replace(/(password|senha|token|secret|authorization|cookie|hash|answer|resposta)\s*[:=]\s*[^\s,;]+/gi, '$1=[redacted]')
+    .replace(/Bearer\s+[A-Za-z0-9\-._~+/]+=*/gi, 'Bearer [redacted]')
+    .slice(0, 140);
+}
+
+function createEmptyDayDoc(dateKey) {
+  return {
+    date: dateKey,
+    visits: 0,
+    uniqueIds: [],
+    countries: {},
+    brStates: {},
+    modes: {},
+    devices: { desktop: 0, mobile: 0, tablet: 0 },
+    browsers: {},
+    oses: {},
+    screens: {},
+    sources: {},
+    themes: { dark: 0, light: 0 },
+    langs: {},
+    linesGenerated: 0,
+    projectsSaved: 0,
+    calcUses: {},
+    itemsGenerated: {},
+    funnel: { lineIds: [], projectIds: [] },
+    errors: {
+      auth_login_fail: 0,
+      auth_session_expired: 0,
+      auth_server_error: 0,
+      frontend_error: 0,
+      api_error: 0
+    }
+  };
+}
+
 module.exports = async function handler(req, res) {
   applySecurityHeaders(req, res);
   if (req.method === 'OPTIONS') return sendJson(res, 200, { ok: true });
@@ -63,94 +154,152 @@ module.exports = async function handler(req, res) {
 
   try {
     // -------------------------------------------------------------------------
-    // 1. POST /api/analytics?action=ping (Telemetria silenciosa — zero impacto UX)
+    // 1. POST /api/analytics?action=ping (Telemetria silenciosa em lote)
     // -------------------------------------------------------------------------
-    if (req.method === 'POST' && action === 'ping') {
+    if (req.method === 'POST' && (action === 'ping' || action === 'batch')) {
       if (!verifyCsrf(req)) return sendJson(res, 403, { error: 'CSRF inválido.' });
 
-      const ip = getClientIp(req);
-      const rl = await checkRateLimit(`rl_ping_${ip}`, 120, 10 * 60 * 1000);
-      if (!rl.allowed) return sendJson(res, 429, { ok: false });
-      await recordRateLimitHit(`rl_ping_${ip}`, 10 * 60 * 1000);
-
-      const body = await readRequestBody(req, 8 * 1024);
-      const eventType = String(body.event || 'heartbeat').slice(0, 24);
-      const modeRaw = String(body.mode || 'production').slice(0, 24);
-      const mode = ALLOWED_MODES.has(modeRaw) ? modeRaw : 'production';
-      const theme = (body.theme === 'light' || body.theme === 'dark') ? body.theme : 'dark';
-      const lang = ['pt-BR', 'en-US', 'es-ES'].includes(body.lang) ? body.lang : 'pt-BR';
-      const device = body.device === 'mobile' ? 'mobile' : 'desktop';
-      const sessionId = String(body.sid || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
-
-      const ua = String(req.headers['user-agent'] || '').slice(0, 120);
-      const { country, region } = getGeoFromReq(req);
-      const dayKey = getTodayKey();
-      const visitorId = sessionId || hashVisitor(ip, ua, dayKey);
       const now = Date.now();
+      const dayKey = getUtcDateKey(0, now);
+      const ip = getClientIp(req);
+      const ipRlKey = hashVisitor(ip, 'rl', dayKey);
+      const rl = await checkRateLimit(`rl_ping_${ipRlKey}`, 240, 10 * 60 * 1000);
+      if (rl.blocked) return sendJson(res, 429, { ok: false });
+      await recordRateLimitHit(`rl_ping_${ipRlKey}`, 10 * 60 * 1000);
 
-      // Verifica se usuário está logado (silencioso, sem exigir login)
+      const body = await readRequestBody(req, 32 * 1024);
+      const rawEvents = Array.isArray(body.events) ? body.events.slice(0, 30) : [body];
+      if (rawEvents.length === 0) return sendJson(res, 200, { ok: true });
+
+      const uaRaw = String(req.headers['user-agent'] || '').slice(0, 240);
+      const { country, region } = getGeoFromReq(req);
+
       let auth = null;
       try {
         auth = await getAuthenticatedUser(req, res, false);
       } catch {}
 
-      // 1a) Atualiza presença online (janela de 5 minutos)
+      const firstEv = rawEvents[0] || {};
+      const vidRaw = String(firstEv.vid || body.vid || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
+      const sidRaw = String(firstEv.sid || body.sid || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
+      const visitorId = vidRaw || sidRaw || hashVisitor(ip, uaRaw, dayKey);
+      const sessionId = sidRaw || visitorId;
+      const latestModeRaw = String(rawEvents[rawEvents.length - 1]?.mode || firstEv.mode || 'production').slice(0, 24);
+      const latestMode = ALLOWED_MODES.has(latestModeRaw) ? latestModeRaw : 'production';
+      const uaInfo = parseUserAgentInfo(uaRaw, firstEv.device);
+
+      // 1a) Atualiza presença online (janela de 5 minutos, sem cache de leitura)
       const onlinePath = 'db/analytics/online.json';
-      const onlineMap = (await readJsonBlob(onlinePath, true)) || {};
+      const onlineMap = (await readJsonBlob(onlinePath, false)) || {};
       const cutoff = now - 5 * 60 * 1000;
       const pruned = {};
       for (const [k, v] of Object.entries(onlineMap)) {
         if (v && Number(v.ts) >= cutoff) pruned[k] = v;
       }
-      pruned[visitorId] = {
+      pruned[sessionId] = {
         ts: now,
+        vid: visitorId,
         country,
         region,
-        mode,
-        device,
+        mode: latestMode,
+        device: uaInfo.device,
         username: auth?.user?.username || null,
         role: auth?.user?.role || 'guest'
       };
       await writeJsonBlob(onlinePath, pruned);
 
-      // 1b) Atualiza métricas agregadas do dia em visitas e trocas de aba
-      if (eventType === 'visit' || eventType === 'mode_switch') {
+      // 1b) Processa eventos no documento diário (sem cache de leitura)
+      const dayEvents = rawEvents.filter((ev) => ev && ev.event && ev.event !== 'heartbeat');
+      if (dayEvents.length > 0) {
         const dayPath = `db/analytics/days/${dayKey}.json`;
-        const dayDoc = (await readJsonBlob(dayPath, true)) || {
-          date: dayKey,
-          visits: 0,
-          uniqueIds: [],
-          countries: {},
-          brStates: {},
-          modes: {},
-          devices: { desktop: 0, mobile: 0 },
-          themes: { dark: 0, light: 0 },
-          langs: {}
-        };
+        const existing = await readJsonBlob(dayPath, false);
+        const dayDoc = existing ? { ...createEmptyDayDoc(dayKey), ...existing } : createEmptyDayDoc(dayKey);
+        if (!Array.isArray(dayDoc.uniqueIds)) dayDoc.uniqueIds = [];
+        if (!dayDoc.funnel || typeof dayDoc.funnel !== 'object') dayDoc.funnel = { lineIds: [], projectIds: [] };
+        if (!Array.isArray(dayDoc.funnel.lineIds)) dayDoc.funnel.lineIds = [];
+        if (!Array.isArray(dayDoc.funnel.projectIds)) dayDoc.funnel.projectIds = [];
+        if (!dayDoc.errors || typeof dayDoc.errors !== 'object') dayDoc.errors = createEmptyDayDoc(dayKey).errors;
 
-        if (eventType === 'visit') {
-          dayDoc.visits = (Number(dayDoc.visits) || 0) + 1;
-          if (!Array.isArray(dayDoc.uniqueIds)) dayDoc.uniqueIds = [];
-          if (!dayDoc.uniqueIds.includes(visitorId) && dayDoc.uniqueIds.length < 5000) {
-            dayDoc.uniqueIds.push(visitorId);
+        const newErrorEntries = [];
+
+        for (const ev of dayEvents) {
+          const eventType = String(ev.event || '').slice(0, 32);
+          const modeRaw = String(ev.mode || 'production').slice(0, 24);
+          const mode = ALLOWED_MODES.has(modeRaw) ? modeRaw : 'production';
+          const theme = (ev.theme === 'light' || ev.theme === 'dark') ? ev.theme : 'dark';
+          const lang = ['pt-BR', 'en-US', 'es-ES'].includes(ev.lang) ? ev.lang : 'pt-BR';
+
+          if (eventType === 'visit') {
+            dayDoc.visits = (Number(dayDoc.visits) || 0) + 1;
+            if (!dayDoc.uniqueIds.includes(visitorId) && dayDoc.uniqueIds.length < 10000) {
+              dayDoc.uniqueIds.push(visitorId);
+            }
+            dayDoc.countries[country] = (Number(dayDoc.countries[country]) || 0) + 1;
+            if (country === 'BR' && region) {
+              dayDoc.brStates[region] = (Number(dayDoc.brStates[region]) || 0) + 1;
+            }
+            dayDoc.devices[uaInfo.device] = (Number(dayDoc.devices[uaInfo.device]) || 0) + 1;
+            dayDoc.browsers[uaInfo.browser] = (Number(dayDoc.browsers[uaInfo.browser]) || 0) + 1;
+            dayDoc.oses[uaInfo.os] = (Number(dayDoc.oses[uaInfo.os]) || 0) + 1;
+            const scr = normalizeScreenBucket(ev.screenW);
+            if (scr) dayDoc.screens[scr] = (Number(dayDoc.screens[scr]) || 0) + 1;
+            const src = classifyTrafficSource(ev.referrer, ev.utmSource);
+            dayDoc.sources[src] = (Number(dayDoc.sources[src]) || 0) + 1;
+            dayDoc.themes[theme] = (Number(dayDoc.themes[theme]) || 0) + 1;
+            dayDoc.langs[lang] = (Number(dayDoc.langs[lang]) || 0) + 1;
+            if (mode !== 'ceo') {
+              dayDoc.modes[mode] = (Number(dayDoc.modes[mode]) || 0) + 1;
+            }
+          } else if (eventType === 'mode_switch') {
+            if (mode !== 'ceo') {
+              dayDoc.modes[mode] = (Number(dayDoc.modes[mode]) || 0) + 1;
+            }
+          } else if (eventType === 'line_generated') {
+            dayDoc.linesGenerated = (Number(dayDoc.linesGenerated) || 0) + 1;
+            const itemLabel = String(ev.item || '').trim().slice(0, 64);
+            if (itemLabel) {
+              dayDoc.itemsGenerated[itemLabel] = (Number(dayDoc.itemsGenerated[itemLabel]) || 0) + 1;
+            }
+            if (!dayDoc.funnel.lineIds.includes(visitorId) && dayDoc.funnel.lineIds.length < 10000) {
+              dayDoc.funnel.lineIds.push(visitorId);
+            }
+          } else if (eventType === 'project_saved') {
+            dayDoc.projectsSaved = (Number(dayDoc.projectsSaved) || 0) + 1;
+            if (!dayDoc.funnel.projectIds.includes(visitorId) && dayDoc.funnel.projectIds.length < 10000) {
+              dayDoc.funnel.projectIds.push(visitorId);
+            }
+          } else if (eventType === 'calc_used') {
+            const calcType = String(ev.calcType || 'numeric').trim().slice(0, 32);
+            dayDoc.calcUses[calcType] = (Number(dayDoc.calcUses[calcType]) || 0) + 1;
+          } else if (eventType === 'error') {
+            const errType = ALLOWED_ERROR_TYPES.has(ev.errType) ? ev.errType : 'frontend_error';
+            dayDoc.errors[errType] = (Number(dayDoc.errors[errType]) || 0) + 1;
+            newErrorEntries.push({
+              ts: new Date(now).toISOString(),
+              type: errType,
+              mode,
+              msg: sanitizeErrorMessage(ev.msg)
+            });
           }
-          dayDoc.countries[country] = (Number(dayDoc.countries[country]) || 0) + 1;
-          if (country === 'BR' && region) {
-            dayDoc.brStates[region] = (Number(dayDoc.brStates[region]) || 0) + 1;
-          }
-          dayDoc.devices[device] = (Number(dayDoc.devices[device]) || 0) + 1;
-          dayDoc.themes[theme] = (Number(dayDoc.themes[theme]) || 0) + 1;
-          dayDoc.langs[lang] = (Number(dayDoc.langs[lang]) || 0) + 1;
         }
-        dayDoc.modes[mode] = (Number(dayDoc.modes[mode]) || 0) + 1;
 
         await writeJsonBlob(dayPath, dayDoc);
+
+        if (newErrorEntries.length > 0) {
+          const errPath = 'db/analytics/errors.json';
+          const existingErrs = (await readJsonBlob(errPath, false)) || [];
+          const retentionCutoff = now - 90 * 24 * 60 * 60 * 1000;
+          const merged = [...newErrorEntries, ...(Array.isArray(existingErrs) ? existingErrs : [])]
+            .filter((e) => e && new Date(e.ts).getTime() >= retentionCutoff)
+            .slice(0, 100);
+          await writeJsonBlob(errPath, merged);
+        }
       }
 
-      // 1c) Atualiza último acesso/geo do usuário logado (no máximo 1x a cada 10 min)
+      // 1c) Atualiza último acesso/geo do usuário logado (no máximo 1x a cada 5 min)
       if (auth && auth.user && auth.user.usernameLower) {
         const lastTs = auth.user.lastSeenAt ? new Date(auth.user.lastSeenAt).getTime() : 0;
-        if (now - lastTs > 10 * 60 * 1000 || !auth.user.lastCountry) {
+        if (now - lastTs > 5 * 60 * 1000 || !auth.user.lastCountry) {
           auth.user.lastSeenAt = new Date(now).toISOString();
           auth.user.lastCountry = country;
           auth.user.lastRegion = region;
@@ -173,14 +322,30 @@ module.exports = async function handler(req, res) {
         return sendJson(res, 403, { error: 'Acesso restrito exclusivamente ao CEO.' });
       }
 
+      const periodRaw = String(url.searchParams.get('period') || '7d').toLowerCase();
+      const period = ['24h', '7d', '30d', 'all'].includes(periodRaw) ? periodRaw : '7d';
+
       const now = Date.now();
       const ms24h = 24 * 60 * 60 * 1000;
       const ms7d = 7 * ms24h;
       const ms30d = 30 * ms24h;
-      const todayKey = getTodayKey();
+      const todayKey = getUtcDateKey(0, now);
 
-      // Online agora
-      const onlineMap = (await readJsonBlob('db/analytics/online.json', true)) || {};
+      const buildKeySet = (days, offset = 0) => {
+        const s = new Set();
+        for (let i = 0; i < days; i++) s.add(getUtcDateKey(i + offset, now));
+        return s;
+      };
+      const keysToday = new Set([todayKey]);
+      const keys7d = buildKeySet(7, 0);
+      const keys30d = buildKeySet(30, 0);
+
+      const periodDays = period === '24h' ? 1 : (period === '7d' ? 7 : (period === '30d' ? 30 : 0));
+      const currKeys = periodDays > 0 ? buildKeySet(periodDays, 0) : null;
+      const prevKeys = periodDays > 0 ? buildKeySet(periodDays, periodDays) : null;
+
+      // Online agora (leitura fresca, sem cache)
+      const onlineMap = (await readJsonBlob('db/analytics/online.json', false)) || {};
       const cutoff = now - 5 * 60 * 1000;
       const onlineList = Object.entries(onlineMap)
         .filter(([, v]) => v && Number(v.ts) >= cutoff)
@@ -214,18 +379,35 @@ module.exports = async function handler(req, res) {
       const sharedBlobs = await listJsonBlobs('db/shared_projects/').catch(() => []);
       const sharedProjects = sharedBlobs.filter((b) => b.pathname.endsWith('.json')).length;
 
-      // Reports
+      // Reports (pendentes, resolvidos e tempo médio até resposta)
       const reportBlobs = await listJsonBlobs('db/reports/').catch(() => []);
       let totalReports = 0;
       let openReports = 0;
+      let resolvedReports = 0;
+      let respTimeSumMs = 0;
+      let respTimeCount = 0;
       for (const b of reportBlobs) {
         if (!b.pathname.endsWith('.json')) continue;
         totalReports++;
         try {
           const rep = await fetchJsonFromBlobUrl(b.url);
-          if (rep && rep.status !== 'resolvido' && rep.status !== 'arquivado') openReports++;
+          if (!rep) continue;
+          const st = String(rep.status || 'novo').toLowerCase();
+          if (st === 'resolvido' || st === 'feito') {
+            resolvedReports++;
+          } else if (st !== 'arquivado') {
+            openReports++;
+          }
+          const createdMs = rep.createdAt ? new Date(rep.createdAt).getTime() : 0;
+          const respIso = rep.adminReply?.createdAt || rep.resolvedAt || rep.statusUpdatedAt || null;
+          const respMs = respIso ? new Date(respIso).getTime() : 0;
+          if (createdMs && respMs && respMs > createdMs) {
+            respTimeSumMs += (respMs - createdMs);
+            respTimeCount++;
+          }
         } catch {}
       }
+      const avgReportResponseMinutes = respTimeCount > 0 ? Math.round(respTimeSumMs / respTimeCount / 60000) : null;
 
       // Usuários cadastrados (SEMPRE sanitizados — nunca expor hashes!)
       const userBlobs = await listJsonBlobs('db/users/').catch(() => []);
@@ -233,8 +415,12 @@ module.exports = async function handler(req, res) {
       let newUsers24h = 0;
       let newUsers7d = 0;
       let newUsers30d = 0;
+      let newUsersPeriod = 0;
+      let newUsersPrevPeriod = 0;
       let activeUsers7d = 0;
       const newUsersByDay = {};
+
+      const periodMs = periodDays * ms24h;
 
       for (const b of userBlobs) {
         if (!b.pathname.endsWith('.json')) continue;
@@ -247,6 +433,14 @@ module.exports = async function handler(req, res) {
           if (createdTs && now - createdTs <= ms7d) newUsers7d++;
           if (createdTs && now - createdTs <= ms30d) newUsers30d++;
           if (lastSeenTs && now - lastSeenTs <= ms7d) activeUsers7d++;
+
+          if (period === 'all') {
+            newUsersPeriod++;
+          } else if (createdTs) {
+            const age = now - createdTs;
+            if (age <= periodMs) newUsersPeriod++;
+            else if (age <= periodMs * 2) newUsersPrevPeriod++;
+          }
 
           if (createdTs) {
             const dk = new Date(createdTs).toISOString().slice(0, 10);
@@ -281,74 +475,119 @@ module.exports = async function handler(req, res) {
       let visits7d = 0;
       let visits30d = 0;
       let visitsTotal = 0;
+      let visitsPeriod = 0;
+      let visitsPrevPeriod = 0;
+
       const uniqueTodaySet = new Set();
       const unique7dSet = new Set();
       const unique30dSet = new Set();
+      const uniquePeriodSet = new Set();
+      const uniquePrevPeriodSet = new Set();
 
       const countryTotals = {};
       const brStateTotals = {};
       const modeTotals = {};
-      const deviceTotals = { desktop: 0, mobile: 0 };
+      const deviceTotals = { desktop: 0, mobile: 0, tablet: 0 };
+      const browserTotals = {};
+      const osTotals = {};
+      const screenTotals = {};
+      const sourceTotals = {};
       const themeTotals = { dark: 0, light: 0 };
       const langTotals = {};
+      const calcUsesTotals = {};
+      const itemsGeneratedTotals = {};
+      const errorTotals = {
+        auth_login_fail: 0,
+        auth_session_expired: 0,
+        auth_server_error: 0,
+        frontend_error: 0,
+        api_error: 0
+      };
+      let linesGeneratedPeriod = 0;
+      let projectsSavedPeriod = 0;
+      const funnelLineSet = new Set();
+      const funnelProjectSet = new Set();
+
+      const addMap = (target, src) => {
+        Object.entries(src || {}).forEach(([k, n]) => {
+          target[k] = (target[k] || 0) + (Number(n) || 0);
+        });
+      };
 
       for (const b of dayBlobs) {
         if (!b.pathname.endsWith('.json')) continue;
         try {
-          const d = await fetchJsonFromBlobUrl(b.url);
+          const isRecent = b.pathname.endsWith(`${todayKey}.json`);
+          const d = isRecent ? await readJsonBlob(b.pathname, false) : await fetchJsonFromBlobUrl(b.url);
           if (!d || !d.date) continue;
           dayDocsMap[d.date] = d;
           const v = Number(d.visits) || 0;
           visitsTotal += v;
-          const dTs = new Date(`${d.date}T12:00:00Z`).getTime();
-          const age = now - dTs;
 
-          if (d.date === todayKey) {
+          if (keysToday.has(d.date)) {
             visitsToday += v;
             (d.uniqueIds || []).forEach((id) => uniqueTodaySet.add(id));
           }
-          if (age <= ms7d + ms24h) {
+          if (keys7d.has(d.date)) {
             visits7d += v;
             (d.uniqueIds || []).forEach((id) => unique7dSet.add(id));
           }
-          if (age <= ms30d + ms24h) {
+          if (keys30d.has(d.date)) {
             visits30d += v;
             (d.uniqueIds || []).forEach((id) => unique30dSet.add(id));
           }
 
-          Object.entries(d.countries || {}).forEach(([k, n]) => {
-            countryTotals[k] = (countryTotals[k] || 0) + (Number(n) || 0);
-          });
-          Object.entries(d.brStates || {}).forEach(([k, n]) => {
-            brStateTotals[k] = (brStateTotals[k] || 0) + (Number(n) || 0);
-          });
-          Object.entries(d.modes || {}).forEach(([k, n]) => {
-            modeTotals[k] = (modeTotals[k] || 0) + (Number(n) || 0);
-          });
-          deviceTotals.desktop += Number(d.devices?.desktop) || 0;
-          deviceTotals.mobile += Number(d.devices?.mobile) || 0;
-          themeTotals.dark += Number(d.themes?.dark) || 0;
-          themeTotals.light += Number(d.themes?.light) || 0;
-          Object.entries(d.langs || {}).forEach(([k, n]) => {
-            langTotals[k] = (langTotals[k] || 0) + (Number(n) || 0);
-          });
+          if (prevKeys && prevKeys.has(d.date)) {
+            visitsPrevPeriod += v;
+            (d.uniqueIds || []).forEach((id) => uniquePrevPeriodSet.add(id));
+          }
+
+          const inPeriod = !currKeys || currKeys.has(d.date);
+          if (inPeriod) {
+            visitsPeriod += v;
+            (d.uniqueIds || []).forEach((id) => uniquePeriodSet.add(id));
+            addMap(countryTotals, d.countries);
+            addMap(brStateTotals, d.brStates);
+            addMap(modeTotals, d.modes);
+            deviceTotals.desktop += Number(d.devices?.desktop) || 0;
+            deviceTotals.mobile += Number(d.devices?.mobile) || 0;
+            deviceTotals.tablet += Number(d.devices?.tablet) || 0;
+            addMap(browserTotals, d.browsers);
+            addMap(osTotals, d.oses);
+            addMap(screenTotals, d.screens);
+            addMap(sourceTotals, d.sources);
+            themeTotals.dark += Number(d.themes?.dark) || 0;
+            themeTotals.light += Number(d.themes?.light) || 0;
+            addMap(langTotals, d.langs);
+            addMap(calcUsesTotals, d.calcUses);
+            addMap(itemsGeneratedTotals, d.itemsGenerated);
+            linesGeneratedPeriod += Number(d.linesGenerated) || 0;
+            projectsSavedPeriod += Number(d.projectsSaved) || 0;
+            (d.funnel?.lineIds || []).forEach((id) => funnelLineSet.add(id));
+            (d.funnel?.projectIds || []).forEach((id) => funnelProjectSet.add(id));
+            Object.keys(errorTotals).forEach((ek) => {
+              errorTotals[ek] += Number(d.errors?.[ek]) || 0;
+            });
+          }
         } catch {}
       }
 
       // Série dos últimos 14 dias
       const dailySeries = [];
       for (let i = 13; i >= 0; i--) {
-        const dt = new Date(now - i * ms24h);
-        const dk = dt.toISOString().slice(0, 10);
+        const dk = getUtcDateKey(i, now);
         const dDoc = dayDocsMap[dk];
         dailySeries.push({
           date: dk,
           label: `${dk.slice(8, 10)}/${dk.slice(5, 7)}`,
           visits: Number(dDoc?.visits) || 0,
-          unique: Array.isArray(dDoc?.uniqueIds) ? dDoc.uniqueIds.length : 0,
+          unique: Math.max(Array.isArray(dDoc?.uniqueIds) ? dDoc.uniqueIds.length : 0, Number(dDoc?.uniqueCount) || 0),
           newUsers: newUsersByDay[dk] || 0
         });
       }
+
+      const recentErrorsRaw = (await readJsonBlob('db/analytics/errors.json', false)) || [];
+      const recentErrors = Array.isArray(recentErrorsRaw) ? recentErrorsRaw.slice(0, 20) : [];
 
       const rankEntries = (obj, nameMap = null) => Object.entries(obj)
         .filter(([, count]) => count > 0)
@@ -359,8 +598,11 @@ module.exports = async function handler(req, res) {
         }))
         .sort((a, b) => b.count - a.count);
 
+      const calcUsesTotalPeriod = Object.values(calcUsesTotals).reduce((a, b) => a + (Number(b) || 0), 0);
+
       return sendJson(res, 200, {
         ok: true,
+        period,
         generatedAt: new Date(now).toISOString(),
         kpis: {
           onlineNow: onlineList.length,
@@ -368,28 +610,53 @@ module.exports = async function handler(req, res) {
           newUsers24h,
           newUsers7d,
           newUsers30d,
+          newUsersPeriod,
+          newUsersDelta: period === 'all' ? null : (newUsersPeriod - newUsersPrevPeriod),
           activeUsers7d,
-          engagementRate7d: users.length > 0 ? Math.round((activeUsers7d / users.length) * 100) : 0,
+          engagementRate7d: users.length > 0 ? Math.min(100, Math.round((activeUsers7d / users.length) * 100)) : 0,
           visitsToday,
           visits7d,
           visits30d,
           visitsTotal,
+          visitsPeriod,
+          visitsDelta: period === 'all' ? null : (visitsPeriod - visitsPrevPeriod),
           uniqueToday: uniqueTodaySet.size,
           unique7d: unique7dSet.size,
           unique30d: unique30dSet.size,
+          uniquePeriod: uniquePeriodSet.size,
+          uniqueDelta: period === 'all' ? null : (uniquePeriodSet.size - uniquePrevPeriodSet.size),
           totalProjects,
           sharedProjects,
           avgProjectsPerUser: users.length > 0 ? Number((totalProjects / users.length).toFixed(2)) : 0,
           openReports,
-          totalReports
+          resolvedReports,
+          totalReports,
+          avgReportResponseMinutes,
+          linesGeneratedPeriod,
+          projectsSavedPeriod,
+          calcUsesTotalPeriod
         },
         dailySeries,
         countries: rankEntries(countryTotals, COUNTRY_NAMES),
         brStates: rankEntries(brStateTotals, BR_STATE_NAMES),
         modes: rankEntries(modeTotals),
         devices: deviceTotals,
+        browsers: rankEntries(browserTotals),
+        oses: rankEntries(osTotals),
+        screens: rankEntries(screenTotals),
+        sources: rankEntries(sourceTotals),
         themes: themeTotals,
         langs: rankEntries(langTotals),
+        calcUses: rankEntries(calcUsesTotals),
+        itemsGenerated: rankEntries(itemsGeneratedTotals).slice(0, 10),
+        funnel: {
+          visited: uniquePeriodSet.size,
+          registered: newUsersPeriod,
+          generatedLine: funnelLineSet.size,
+          savedProject: funnelProjectSet.size
+        },
+        errorSummary: errorTotals,
+        recentErrors,
         onlineList,
         users
       });
