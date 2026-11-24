@@ -289,6 +289,11 @@ function applyI18nToDOM() {
     const translated = tI18n(key, '');
     if (translated) el.textContent = translated;
   });
+  document.querySelectorAll('.top-lang-btn[data-lang]').forEach((btn) => {
+    const isAct = btn.getAttribute('data-lang') === lang;
+    btn.classList.toggle('active', isAct);
+    btn.setAttribute('aria-pressed', isAct ? 'true' : 'false');
+  });
 }
 
 function setAppLanguage(lang) {

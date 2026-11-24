@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-  <link rel="stylesheet" href="./styles.css?v=49" />
+  <link rel="stylesheet" href="./styles.css?v=50" />
   <script>
     (function () {
       try {
@@ -237,19 +237,10 @@
 
       <!-- ORIENTAÇÃO DO FLUXO, TUTORIAL, CONTA E REPORTAR NO CANTO SUPERIOR DIREITO -->
       <div id="top-right-floating-actions" class="top-right-floating-actions">
-        <div class="floating-orient-pill" id="orient-pill-wrap" role="group" aria-label="Direção do fluxo">
-          <button id="orient-lr" class="orient-btn active" onclick="setFlowOrientation('LR')" title="Esquerda → Direita">
-            →
-          </button>
-          <button id="orient-rl" class="orient-btn" onclick="setFlowOrientation('RL')" title="Direita → Esquerda">
-            ←
-          </button>
-          <button id="orient-tb" class="orient-btn" onclick="setFlowOrientation('TB')" title="Cima → Baixo">
-            ↓
-          </button>
-          <button id="orient-bt" class="orient-btn" onclick="setFlowOrientation('BT')" title="Baixo → Cima">
-            ↑
-          </button>
+        <div class="top-lang-switcher" id="top-lang-switcher" role="group" aria-label="Idioma">
+          <button type="button" class="top-lang-btn" data-lang="pt-BR" onclick="setAppLanguage('pt-BR')" title="Português (BR)">PT</button>
+          <button type="button" class="top-lang-btn" data-lang="en-US" onclick="setAppLanguage('en-US')" title="English (US)">EN</button>
+          <button type="button" class="top-lang-btn" data-lang="es-ES" onclick="setAppLanguage('es-ES')" title="Español">ES</button>
         </div>
         <button id="btn-open-tutorial" class="btn-tutorial-pill" onclick="openTutorialModal()" title="Abrir Tutorial Interativo da Ferramenta">
           <svg class="ui-ico" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
@@ -329,6 +320,12 @@
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
           </svg>
           <span id="global-oc-badge" class="hud-oc-badge hidden"></span>
+        </button>
+        <button id="btn-cycle-orientation" class="hud-btn hud-icon-btn" onclick="cycleFlowOrientation()" title="Direção do fluxo: Esquerda → Direita" aria-label="Alterar direção do fluxo">
+          <svg id="icon-flow-orientation" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
         </button>
       </div>
 
@@ -497,11 +494,11 @@
   <script src="./js/icons.js?v=33"></script>
   <script src="./js/solver.js?v=42"></script>
   <script src="./js/design-system.js?v=41"></script>
-  <script src="./js/app.js?v=49"></script>
+  <script src="./js/app.js?v=50"></script>
   <script src="./js/factory-enhancements.js?v=41"></script>
   <script src="./js/tutorial.js?v=48"></script>
   <script src="./js/patch-notes.js?v=41"></script>
   <script src="./js/account-features.js?v=51"></script>
-  <script src="./js/settings-i18n.js?v=46"></script>
+  <script src="./js/settings-i18n.js?v=47"></script>
 </body>
 </html>

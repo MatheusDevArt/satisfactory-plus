@@ -491,15 +491,24 @@ function toggle3DView() {
 }
 
 function syncOrientationButtons() {
-  const map = {
-    LR: document.getElementById('orient-lr'),
-    RL: document.getElementById('orient-rl'),
-    TB: document.getElementById('orient-tb'),
-    BT: document.getElementById('orient-bt')
-  };
-  Object.entries(map).forEach(([key, el]) => {
-    if (el) el.classList.toggle('active', AppState.orientation === key);
-  });
+  const btn = document.getElementById('btn-cycle-orientation');
+  const ico = document.getElementById('icon-flow-orientation');
+  const orient = AppState.orientation || 'LR';
+  const cfg = {
+    LR: { deg: 0, label: 'Esquerda → Direita' },
+    TB: { deg: 90, label: 'Cima → Baixo' },
+    RL: { deg: 180, label: 'Direita → Esquerda' },
+    BT: { deg: 270, label: 'Baixo → Cima' }
+  }[orient] || { deg: 0, label: 'Esquerda → Direita' };
+  if (ico) ico.style.transform = `rotate(${cfg.deg}deg)`;
+  if (btn) btn.title = `Direção do fluxo: ${cfg.label} (clique para alternar)`;
+}
+
+function cycleFlowOrientation() {
+  const order = ['LR', 'TB', 'RL', 'BT'];
+  const idx = order.indexOf(AppState.orientation || 'LR');
+  const next = order[(idx + 1) % order.length];
+  setFlowOrientation(next);
 }
 
 function setFlowOrientation(orient) {
