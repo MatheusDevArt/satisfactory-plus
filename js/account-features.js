@@ -3167,12 +3167,15 @@ function renderCeoWorkspace() {
         <div class="ceo-kpi-card">
           <span class="ceo-kpi-lbl">Visitas (${periodLabelMap[period]})</span>
           <strong class="ceo-kpi-val">${visitsMain}</strong>
-          <small>Novas: <strong>${k.newVisitsPeriod || 0}</strong> · Recorrentes: <strong>${k.returningVisitsPeriod || 0}</strong> · ${renderCeoDeltaBadge(k.visitsDelta, period) || `Total: ${k.visitsTotal || 0}`}</small>
+          <small>Hoje: ${k.visitsToday || 0} · 7d: ${k.visits7d || 0} · ${renderCeoDeltaBadge(k.visitsDelta, period) || `Total: ${k.visitsTotal || 0}`}</small>
         </div>
         <div class="ceo-kpi-card">
-          <span class="ceo-kpi-lbl">Visitantes únicos (${periodLabelMap[period]})</span>
-          <strong class="ceo-kpi-val">${uniqueMain}</strong>
-          <small>Hoje: ${k.uniqueToday || 0} · 7d: ${k.unique7d || 0} · ${renderCeoDeltaBadge(k.uniqueDelta, period) || `30d: ${k.unique30d || 0}`}</small>
+          <span class="ceo-kpi-lbl">Visitas novas (${periodLabelMap[period]})</span>
+          <div class="ceo-kpi-split">
+            <div><strong class="ceo-kpi-val">${k.newVisitsPeriod || 0}</strong><small>Novas</small></div>
+            <div class="ceo-kpi-split-sep"></div>
+            <div><strong class="ceo-kpi-val is-sub">${k.returningVisitsPeriod || 0}</strong><small>Recorrentes</small></div>
+          </div>
         </div>
         <div class="ceo-kpi-card">
           <span class="ceo-kpi-lbl">Projetos na nuvem</span>
@@ -3186,17 +3189,24 @@ function renderCeoWorkspace() {
         </div>
       </div>
 
-      <div class="ceo-grid-2">
-        <div class="ceo-card">
-          <div class="ceo-card-head"><h4>Visitas nos últimos 14 dias</h4><span>Passe o mouse nas barras</span></div>
-          ${chartHtml}
+      <div class="ceo-overview-grid-3">
+        <div class="ceo-overview-col-stack">
+          <div class="ceo-card">
+            <div class="ceo-card-head"><h4>Visitas nos últimos 14 dias</h4><span>Passe o mouse nas barras</span></div>
+            ${chartHtml}
+          </div>
+          <div class="ceo-card">
+            <div class="ceo-card-head"><h4>Origem do tráfego</h4><span>${periodLabelMap[period]}</span></div>
+            ${renderCeoRankList(d.sources, 'Sem dados de origem de tráfego neste período.', '#EA580C')}
+          </div>
         </div>
-        <div class="ceo-card">
+
+        <div class="ceo-card ceo-card-tall">
           <div class="ceo-card-head"><h4>Online agora</h4><span>${(d.onlineList || []).length} ativo(s)</span></div>
           ${(d.onlineList || []).length === 0
             ? '<div class="ceo-empty-compact">Nenhuma sessão ativa nos últimos 5 minutos.</div>'
-            : `<div class="ceo-online-list">
-                ${(d.onlineList || []).slice(0, 12).map((o) => `
+            : `<div class="ceo-online-list ceo-online-list-tall">
+                ${(d.onlineList || []).slice(0, 20).map((o) => `
                   <div class="ceo-online-row">
                     <div>
                       <strong>${o.username ? escText(o.username) : 'Visitante'}</strong>
@@ -3208,19 +3218,13 @@ function renderCeoWorkspace() {
                 `).join('')}
               </div>`}
         </div>
-      </div>
 
-      <div class="ceo-grid-2">
-        <div class="ceo-card">
-          <div class="ceo-card-head"><h4>Origem do tráfego</h4><span>${periodLabelMap[period]}</span></div>
-          ${renderCeoRankList(d.sources, 'Sem dados de origem de tráfego neste período.', '#EA580C')}
-        </div>
-        <div class="ceo-card">
+        <div class="ceo-card ceo-card-tall">
           <div class="ceo-card-head">
             <h4>Reports</h4>
             <button type="button" class="ds-btn-secondary" style="padding:4px 10px;font-size:11px;" onclick="switchMode('reports')">Abrir Reports</button>
           </div>
-          <div class="ceo-reports-stats">
+          <div class="ceo-reports-stats ceo-reports-stats-2col">
             <div class="ceo-mini-stat"><span>Total recebidos</span><strong>${k.totalReports || 0}</strong></div>
             <div class="ceo-mini-stat"><span>Enviados hoje</span><strong>${k.reportsToday || 0}</strong></div>
             <div class="ceo-mini-stat"><span>Pendentes</span><strong>${k.openReports || 0}</strong></div>
