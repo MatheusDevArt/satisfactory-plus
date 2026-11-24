@@ -150,18 +150,28 @@ async function translateTextToPt(text) {
 }
 
 async function notifyCeoNewReport(rep) {
-  const typeLabels = { bug: 'Bug', sugestao: 'Sugestão', melhoria: 'Melhoria', duvida: 'Dúvida' };
+  const typeLabels = {
+    bug: 'Bug',
+    suggestion: 'Sugestão de melhoria',
+    sugestao: 'Sugestão de melhoria',
+    rating: 'Avaliação',
+    melhoria: 'Melhoria',
+    duvida: 'Dúvida'
+  };
   const typeLabel = typeLabels[rep.type] || rep.type || 'Report';
-  const subject = `[Satisfactory+] Novo report (${typeLabel}): ${String(rep.title || '').slice(0, 70)}`;
+  const ratingLine = (rep.type === 'rating' && rep.rating) ? `Nota: ${'★'.repeat(rep.rating)}${'☆'.repeat(5 - rep.rating)} (${rep.rating}/5)` : '';
+  const subject = `[Satisfactory+] Novo report (${typeLabel})${rep.title ? `: ${String(rep.title).slice(0, 70)}` : ''}`;
   const textBody = [
     `Novo report recebido no Satisfactory+`,
     `Autor: ${rep.username || 'Usuário'}`,
     `Tipo: ${typeLabel}`,
-    `Título: ${rep.title || ''}`,
+    ratingLine,
+    rep.title ? `Título: ${rep.title}` : '',
     `Mensagem: ${rep.message || ''}`,
+    (rep.images && rep.images.length > 0) ? `Anexos: ${rep.images.length} imagem(ns)` : '',
     `Data: ${rep.createdAt || new Date().toISOString()}`,
     `Acesse: https://satisfactory-plus.vercel.app`
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 
   const tasks = [];
 
