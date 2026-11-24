@@ -3017,6 +3017,7 @@ function renderCeoMode(sidebarEl, emptyOverlay) {
           <button type="button" class="ds-btn-secondary" style="width:100%;" onclick="exportCeoReportCsv()">Exportar Usuários (.CSV)</button>
           <button type="button" class="ds-btn-secondary" style="width:100%;" onclick="exportCeoBusinessReport()">Relatório Executivo (.HTML)</button>
           <button type="button" class="ds-btn-secondary" style="width:100%;" onclick="exportCeoReportJson()">Dados Brutos (.JSON)</button>
+          <button type="button" class="ds-btn-secondary" style="width:100%;border-color:rgba(239,68,68,0.45);color:#f87171;" onclick="resetCeoAnalyticsData()">Zerar dados do painel</button>
         </div>
       `
     })}
@@ -3033,6 +3034,23 @@ function setCeoPeriod(period) {
   if (!['24h', '7d', '30d', 'all'].includes(period)) return;
   CeoPanelState.period = period;
   loadCeoDashboard();
+}
+
+async function resetCeoAnalyticsData() {
+  if (!AccountState.user || AccountState.user.role !== 'admin') return;
+  const ok = await openCustomConfirmModal(
+    'Tem certeza que deseja zerar todas as visitas, sessões online, geolocalização, funil e logs de erro do Painel CEO? As contas cadastradas e projetos dos usuários NÃO serão apagados.',
+    'Zerar métricas'
+  );
+  if (!ok) return;
+  const res = await apiFetch('/api/analytics?action=reset', { method: 'POST', body: JSON.stringify({}) });
+  if (!res.ok) {
+    showAccountToast(res.data?.error || 'Não foi possível zerar os dados do painel.', 'error');
+    return;
+  }
+  showAccountToast('Dados do Painel CEO zerados! Contagem iniciada a partir de agora.', 'success');
+  CeoPanelState.data = null;
+  await loadCeoDashboard();
 }
 
 async function loadCeoDashboard() {
@@ -3474,7 +3492,7 @@ function renderCeoWorkspace() {
             <span class="user-role-tag ceo-role-tag">CEO</span>
             <h2>Painel Executivo — Satisfactory+</h2>
           </div>
-          <p>Acesso privado exclusivo do fundador · Atualizado: ${d.generatedAt ? fmtDateBR(d.generatedAt) : 'agora'}</p>
+          <p>Acesso privado exclusivo do fundador · Atualizado: ${d.generatedAt ? fmtDateBR(d.generatedAt) : 'agora'}${d.resetAt ? ` · Contagem desde: ${fmtDateBR(d.resetAt)}` : ''}</p>
         </div>
         <div class="ceo-period-pills" role="group" aria-label="Filtro de período">
           ${['24h', '7d', '30d', 'all'].map((p) => `

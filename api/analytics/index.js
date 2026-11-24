@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const {
   readJsonBlob,
   writeJsonBlob,
+  deleteBlobByPathname,
   listJsonBlobs,
   fetchJsonFromBlobUrl,
   getClientIp,
@@ -14,6 +15,42 @@ const {
   recordRateLimitHit,
   StorageUnavailableError
 } = require('../_lib/store');
+
+// Época de reset automático: ao publicar esta atualização, limpa dados antigos/duplicados
+// e inicia a contagem do Painel CEO limpa a partir deste momento (sem apagar contas/projetos reais).
+const ANALYTICS_RESET_EPOCH = '2026-11-24T03:41:00.000Z';
+const ANALYTICS_META_PATH = 'db/analytics/meta.json';
+
+async function performAnalyticsReset(resetBy = 'system', epochTag = ANALYTICS_RESET_EPOCH) {
+  const dayBlobs = await listJsonBlobs('db/analytics/days/').catch(() => []);
+  const BATCH = 10;
+  for (let i = 0; i < dayBlobs.length; i += BATCH) {
+    const slice = dayBlobs.slice(i, i + BATCH);
+    await Promise.all(
+      slice.map((b) => (b && b.pathname ? deleteBlobByPathname(b.pathname).catch(() => {}) : Promise.resolve()))
+    );
+  }
+  await Promise.all([
+    deleteBlobByPathname('db/analytics/online.json').catch(() => {}),
+    deleteBlobByPathname('db/analytics/known_visitors.json').catch(() => {}),
+    deleteBlobByPathname('db/analytics/errors.json').catch(() => {})
+  ]);
+  const meta = {
+    resetAt: new Date().toISOString(),
+    epochApplied: epochTag,
+    resetBy: String(resetBy || 'system').slice(0, 40)
+  };
+  await writeJsonBlob(ANALYTICS_META_PATH, meta);
+  return meta;
+}
+
+async function ensureAnalyticsEpoch() {
+  const meta = await readJsonBlob(ANALYTICS_META_PATH, false).catch(() => null);
+  if (meta && meta.epochApplied === ANALYTICS_RESET_EPOCH && meta.resetAt) {
+    return meta;
+  }
+  return await performAnalyticsReset('auto-epoch', ANALYTICS_RESET_EPOCH);
+}
 
 const COUNTRY_NAMES = {
   BR: 'Brasil', US: 'Estados Unidos', PT: 'Portugal', AR: 'Argentina', CL: 'Chile',
@@ -183,6 +220,7 @@ module.exports = async function handler(req, res) {
     if (req.method === 'POST' && (action === 'ping' || action === 'batch')) {
       if (!verifyCsrf(req)) return sendJson(res, 403, { error: 'CSRF inválido.' });
 
+      await ensureAnalyticsEpoch();
       const now = Date.now();
       const dayKey = getUtcDateKey(0, now);
       const ip = getClientIp(req);
@@ -369,6 +407,22 @@ module.exports = async function handler(req, res) {
     }
 
     // -------------------------------------------------------------------------
+    // 1.5. POST /api/analytics?action=reset (Zerar todas as métricas — EXCLUSIVO CEO)
+    // -------------------------------------------------------------------------
+    if (req.method === 'POST' && action === 'reset') {
+      if (!verifyCsrf(req)) return sendJson(res, 403, { error: 'CSRF inválido.' });
+      const auth = await getAuthenticatedUser(req, res, false);
+      if (!auth || !auth.user) {
+        return sendJson(res, 401, { error: 'Autenticação necessária.' });
+      }
+      if (auth.user.role !== 'admin') {
+        return sendJson(res, 403, { error: 'Acesso restrito exclusivamente ao CEO.' });
+      }
+      const meta = await performAnalyticsReset(auth.user.username || 'CEO', ANALYTICS_RESET_EPOCH);
+      return sendJson(res, 200, { ok: true, resetAt: meta.resetAt });
+    }
+
+    // -------------------------------------------------------------------------
     // 2. GET /api/analytics?action=dashboard (EXCLUSIVO CEO — role === 'admin')
     // -------------------------------------------------------------------------
     if (req.method === 'GET' && action === 'dashboard') {
@@ -379,6 +433,10 @@ module.exports = async function handler(req, res) {
       if (auth.user.role !== 'admin') {
         return sendJson(res, 403, { error: 'Acesso restrito exclusivamente ao CEO.' });
       }
+
+      const meta = await ensureAnalyticsEpoch();
+      const resetAt = meta?.resetAt || ANALYTICS_RESET_EPOCH;
+      const resetTs = new Date(resetAt).getTime() || 0;
 
       const periodRaw = String(url.searchParams.get('period') || '24h').toLowerCase();
       const period = ['24h', '7d', '30d', 'all'].includes(periodRaw) ? periodRaw : '24h';
@@ -505,22 +563,26 @@ module.exports = async function handler(req, res) {
           if (!u || !u.username) continue;
           const createdTs = u.createdAt ? new Date(u.createdAt).getTime() : 0;
           const lastSeenTs = u.lastSeenAt ? new Date(u.lastSeenAt).getTime() : (u.lastLoginAt ? new Date(u.lastLoginAt).getTime() : createdTs);
-          if (createdTs && now - createdTs <= ms24h) newUsers24h++;
-          if (createdTs && now - createdTs <= ms7d) newUsers7d++;
-          if (createdTs && now - createdTs <= ms30d) newUsers30d++;
-          if (lastSeenTs && now - lastSeenTs <= ms7d) activeUsers7d++;
+          const createdAfterReset = createdTs >= resetTs;
+          const seenAfterReset = lastSeenTs >= resetTs;
+          if (createdAfterReset && now - createdTs <= ms24h) newUsers24h++;
+          if (createdAfterReset && now - createdTs <= ms7d) newUsers7d++;
+          if (createdAfterReset && now - createdTs <= ms30d) newUsers30d++;
+          if (seenAfterReset && now - lastSeenTs <= ms7d) activeUsers7d++;
 
-          if (period === 'all') {
-            newUsersPeriod++;
-          } else if (createdTs) {
-            const age = now - createdTs;
-            if (age <= periodMs) newUsersPeriod++;
-            else if (age <= periodMs * 2) newUsersPrevPeriod++;
-          }
+          if (createdAfterReset) {
+            if (period === 'all') {
+              newUsersPeriod++;
+            } else if (createdTs) {
+              const age = now - createdTs;
+              if (age <= periodMs) newUsersPeriod++;
+              else if (age <= periodMs * 2) newUsersPrevPeriod++;
+            }
 
-          if (createdTs) {
-            const dk = new Date(createdTs).toISOString().slice(0, 10);
-            newUsersByDay[dk] = (newUsersByDay[dk] || 0) + 1;
+            if (createdTs) {
+              const dk = new Date(createdTs).toISOString().slice(0, 10);
+              newUsersByDay[dk] = (newUsersByDay[dk] || 0) + 1;
+            }
           }
 
           const cCode = u.lastCountry || '';
@@ -692,6 +754,7 @@ module.exports = async function handler(req, res) {
       return sendJson(res, 200, {
         ok: true,
         period,
+        resetAt,
         generatedAt: new Date(now).toISOString(),
         kpis: {
           onlineNow: onlineList.length,
