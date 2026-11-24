@@ -230,6 +230,8 @@
     while (cur) {
       if (SKIP_TAGS.has(cur.tagName)) return true;
       if (cur.id === 'ceo-workspace-view') return true;
+      if (cur.hasAttribute && (cur.hasAttribute('data-no-i18n') || cur.hasAttribute('data-lang'))) return true;
+      if (cur.classList && (cur.classList.contains('top-lang-switcher') || cur.classList.contains('top-lang-btn'))) return true;
       cur = cur.parentElement;
     }
     return false;
